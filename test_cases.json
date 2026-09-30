@@ -122,7 +122,7 @@
   },
   {
     "id": "clarkerosen_oc",
-    "notes": "Mismo arresto (OCSO, 03/08/2023) con 2 casos: CF-010421 (reporte 23-47652) y MM-005527 (23-47653). En la ventana entra también MM-000205 (UCF, 01/08). Se espera el CF y el MM como relacionado.",
+    "notes": "Mismo arresto (OCSO, 03/08/2023) con 2 casos: CF-010421 (reporte 23-47652) y MM-005527 (23-47653). En la ventana entra también MM-000205 (UCF, 01/08). Se espera el CF y el MM como relacionado. Validado 2026-09-30: OK.",
     "first_name": "David",
     "middle_name": "Alexander",
     "last_name": "Clarkerosen",
@@ -137,7 +137,7 @@
   },
   {
     "id": "clarkerosen_ucf",
-    "notes": "Trespass en UCF (UCF Police, reporte 2023-2031), arresto 01/08/2023 00:50. Dos días después hay otro arresto (OCSO) que no debe confundirse.",
+    "notes": "Trespass en UCF (UCF Police, reporte 2023-2031), arresto 01/08/2023 00:50. Dos días después hay otro arresto (OCSO) que no debe confundirse. Validado 2026-09-30: OK.",
     "first_name": "David",
     "middle_name": "Alexander",
     "last_name": "Clarkerosen",

@@ -30,7 +30,11 @@ StatusCallback = Callable[[str], None]
 def search_window(query: LookupQuery, county: CountyConfig) -> tuple[Optional[date], Optional[date]]:
     start_anchor = query.incident_date or query.arrest_date
     if not start_anchor:
-        return None, None
+        if not query.approx_date:
+            return None, None
+        # Solo hay una fecha aproximada (publicación): el arresto suele ser
+        # anterior a la nota, así que la ventana mira sobre todo hacia atrás.
+        return query.approx_date - timedelta(days=30), min(query.approx_date + timedelta(days=7), today())
     end_anchor = max(d for d in (query.incident_date, query.arrest_date) if d)
     date_from = start_anchor - timedelta(days=county.window_days_before)
     date_to = min(end_anchor + timedelta(days=county.window_days_after), today())

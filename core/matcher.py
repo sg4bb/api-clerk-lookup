@@ -15,13 +15,14 @@ import re
 from typing import Callable, Optional
 
 from .models import CaseCandidate, CaseDetails, LookupQuery, MatchScore
+from .charges import categorize
 from .utils import age_on, normalize, split_defendant, surname_key
 
 MIN_SCORE = 60      # % de confianza mínimo para devolver un caso
 MIN_MARGIN = 15     # ventaja mínima (en puntos %) sobre el segundo mejor
 
 # Puntos máximos por criterio.
-W_NAME, W_MIDDLE, W_OFFENSE, W_ARREST, W_AGENCY, W_AGE = 30, 5, 25, 15, 20, 10
+W_NAME, W_MIDDLE, W_OFFENSE, W_ARREST, W_AGENCY, W_AGE, W_CHARGES = 30, 5, 25, 15, 20, 10, 15
 
 _AGENCY_ALIASES = {
     "police department": "pd",
@@ -99,6 +100,7 @@ def max_points(query: LookupQuery, details: CaseDetails) -> int:
     total += W_AGENCY if query.agency and any(x.agency for x in details.charges) else 0
     anchor = query.incident_date or query.arrest_date
     total += W_AGE if query.age is not None and c.dob and anchor else 0
+    total += W_CHARGES if categorize(query.charges) and categorize(x.description for x in details.charges) else 0
     return total
 
 
@@ -160,6 +162,19 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
         else:
             score -= 15
             reasons.append(f"edad distinta ({real_age} vs {query.age})")
+
+    # Cargos: categorías del artículo contra categorías del caso. Desempata
+    # casos del mismo día (p. ej. un hurto y un burglary en el mismo arresto).
+    q_cats = categorize(query.charges)
+    c_cats = categorize(c.description for c in details.charges)
+    if q_cats and c_cats:
+        shared = q_cats & c_cats
+        if shared:
+            score += round(W_CHARGES * len(shared) / len(q_cats))
+            reasons.append(f"cargos coinciden ({', '.join(sorted(shared))})")
+        else:
+            score -= 10
+            reasons.append(f"cargos distintos ({', '.join(sorted(c_cats))})")
 
     possible = max_points(query, details)
     confidence = round(100 * max(score, 0) / possible)

@@ -1,0 +1,29 @@
+{
+  "people": [
+    {
+      "first_name": "Thomas",
+      "middle_name": null,
+      "last_name": "Mues",
+      "suffix": null,
+      "age": null,
+      "role": "suspect",
+      "evidence": "Thomas Mues"
+    }
+  ],
+  "incident_date": "Friday",
+  "incident_date_evidence": null,
+  "arrest_date": null,
+  "city": null,
+  "county": null,
+  "state": null,
+  "agency": "Orlando Police Department",
+  "charges": [
+    "trafficking hydrocodone",
+    "trafficking in oxycodone",
+    "possession of new drugs without a prescription",
+    "trafficking in amphetamines",
+    "possession of alprazolam",
+    "robbery with a deadly weapon and mask"
+  ],
+  "summary": null
+}

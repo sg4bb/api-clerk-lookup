@@ -188,6 +188,25 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class ChargesTest(unittest.TestCase):
+    def test_categories_article_vs_portal(self):
+        from core.charges import categorize
+        self.assertEqual(categorize(["robbery with a firearm wearing a mask"]), {"robbery", "weapon"})
+        self.assertEqual(categorize(["ROBBERY: ARMED W/FIREARM"]), {"robbery", "weapon"})
+        self.assertEqual(categorize(["RESISTING OFFICER WITHOUT VIOLENCE"]), {"resisting"})
+        self.assertEqual(categorize(["BURGLARY OF UNOCCUPIED STRUCTURE"]), {"burglary"})
+        self.assertIn("drugs", categorize(["Trafficking hydrocodone"]))
+
+    def test_charges_break_same_day_tie(self):
+        from core.models import Charge
+        q = LookupQuery(first_name="Darrica", last_name="Ward", county="orange",
+                        incident_date=date(2024, 9, 4), charges=["burglary"])
+        burg, theft = ward_details(), ward_details()
+        burg.charges = [Charge(date(2024, 9, 4), "BURGLARY TO STRUCTURE", None, None, None, None)]
+        theft.charges = [Charge(date(2024, 9, 4), "PETIT THEFT", None, None, None, None)]
+        self.assertGreater(score_case(q, burg).score, score_case(q, theft).score)
+
+
 class SameIncidentTest(unittest.TestCase):
     """Escenario basado en CLARKEROSEN, DAVID ALEXANDER (Orange, agosto 2023)."""
 

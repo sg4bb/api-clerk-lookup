@@ -26,6 +26,11 @@ class LookupQuery:
     age: Optional[int] = None         # edad que reporta el artículo
     agency: Optional[str] = None      # "Orlando Police Department"
     case_types: list[str] = field(default_factory=lambda: ["CF", "MM", "CT"])
+    # Cargos tal como los describe el artículo ("armed robbery", ...).
+    charges: list[str] = field(default_factory=list)
+    # Fecha aproximada (p. ej. publicación del artículo) cuando no se conoce
+    # la del incidente ni la del arresto. Solo sirve para la ventana de búsqueda.
+    approx_date: Optional[date] = None
     # Los artículos casi nunca traen el segundo nombre; por defecto se usa
     # solo para puntuar, no para filtrar la búsqueda.
     use_middle_name_in_search: bool = False
