@@ -54,22 +54,39 @@ def normalize_agency(text: Optional[str]) -> str:
         value = value.replace(long, short)
     value = re.sub(r"\bpolice\b", "pd", value)
     value = re.sub(r"\bsheriff s?\b|\bsheriffs?\b", "so", value)
-    value = re.sub(r"\b(department|dept|office)\b", "", value)
+    value = re.sub(r"\bdeput(y|ies)\b", "so", value)
+    value = re.sub(r"\b(department|dept|office|officers?|detectives?|investigators?|agents?)\b", "", value)
     value = re.sub(r"\b(the|city of)\b", "", value)
-    value = re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"\b(\w+)( \1\b)+", r"\1", re.sub(r"\s+", " ", value).strip())  # "so so" -> "so"
     return _AGENCY_ACRONYMS.get(value.replace(" ", ""), value)
 
 
 def _name_points(query: LookupQuery, defendant: str, reasons: list[str]) -> Optional[int]:
     """Puntos por nombre. None = el apellido no coincide (descartar)."""
     last, first, middle = split_defendant(defendant)
+    points = 0
+    use_middle = True
+    q_last, q_middle = surname_key(query.last_name), surname_key(query.middle_name)
     # Apellidos compuestos: "Cruz Peraza", "Cruz-Peraza" y "Cruzperaza"
     # se tratan como el mismo apellido.
-    if surname_key(last) != surname_key(query.last_name):
+    if surname_key(last) == q_last:
+        pass
+    # Doble apellido repartido distinto: el artículo dice "Javier Rosado Martinez"
+    # (Rosado como segundo nombre) y el portal "ROSADO MARTINEZ, JAVIER", o al revés.
+    elif q_middle and surname_key(last) == q_middle + q_last:
+        reasons.append(f"apellido compuesto ({last})")
+        use_middle = False
+    elif middle and surname_key(middle + " " + last) == q_last:
+        reasons.append(f"apellido compuesto ({middle} {last})")
+        use_middle = False
+    # Solo uno de los dos apellidos: "ROSADO, JAVIER" para "Rosado Martinez".
+    elif _one_of_compound(last, query.last_name) or _one_of_compound(query.last_name, last):
+        points -= 5
+        reasons.append(f"apellido parcial ({last})")
+    else:
         reasons.append(f"apellido distinto ({last})")
         return None
 
-    points = 0
     q_first = normalize(query.first_name)
     if first == q_first:
         points += W_NAME
@@ -81,7 +98,7 @@ def _name_points(query: LookupQuery, defendant: str, reasons: list[str]) -> Opti
         reasons.append(f"nombre distinto ({first})")
         return None
 
-    if query.middle_name and middle:
+    if use_middle and query.middle_name and middle:
         if middle.split()[0][:1] == normalize(query.middle_name)[:1]:
             points += W_MIDDLE
             reasons.append("segundo nombre coincide")
@@ -89,6 +106,12 @@ def _name_points(query: LookupQuery, defendant: str, reasons: list[str]) -> Opti
             points -= 10
             reasons.append(f"segundo nombre distinto ({middle})")
     return points
+
+
+def _one_of_compound(simple: str, compound: str) -> bool:
+    """True si 'simple' es uno de los apellidos de 'compound' ('rosado' en 'Rosado Martinez')."""
+    parts = [surname_key(p) for p in re.split(r"[\s\-]+", normalize(compound)) if p]
+    return len(parts) >= 2 and surname_key(simple) in parts
 
 
 def prelim_score(query: LookupQuery, candidate: CaseCandidate) -> int:
@@ -101,6 +124,10 @@ def prelim_score(query: LookupQuery, candidate: CaseCandidate) -> int:
     if anchor and candidate.filed_date:
         gap = abs((candidate.filed_date - anchor).days)
         points += max(0, 20 - gap // 3)
+    elif query.date_from and candidate.filed_date and query.date_from <= candidate.filed_date <= (query.date_to or candidate.filed_date):
+        points += 10   # solo se sabe el mes o el año: basta con caer en el rango
+    if query.age is not None and candidate.dob and query.age_as_of:
+        points += 10 if abs(age_on(candidate.dob, query.age_as_of) - query.age) <= 1 else -10
     return max(points, 1)
 
 
@@ -113,7 +140,7 @@ def max_points(query: LookupQuery, details: CaseDetails) -> int:
     total += W_OFFENSE if query.incident_date and any(x.offense_date for x in details.charges) else 0
     total += W_ARREST if query.arrest_date and any(x.arrest_date for x in details.charges) else 0
     total += W_AGENCY if query.agency and any(x.agency for x in details.charges) else 0
-    anchor = query.incident_date or query.arrest_date
+    anchor = query.age_as_of or query.incident_date or query.arrest_date
     total += W_AGE if query.age is not None and c.dob and anchor else 0
     total += W_CHARGES if categorize(query.charges) and categorize(x.description for x in details.charges) else 0
     return total
@@ -168,7 +195,7 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
 
     # Edad reportada contra fecha de nacimiento.
     dob = details.candidate.dob
-    anchor: Optional[date] = query.incident_date or query.arrest_date
+    anchor: Optional[date] = query.age_as_of or query.incident_date or query.arrest_date
     if query.age is not None and dob and anchor:
         real_age = age_on(dob, anchor)
         if abs(real_age - query.age) <= 1:

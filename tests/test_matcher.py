@@ -293,5 +293,57 @@ class AgencyNamesTest(unittest.TestCase):
         self.assertNotEqual(n("Orlando Police"), n("Orange County Sheriff's Office"))
 
 
+class OldCaseArticlesTest(unittest.TestCase):
+    """Notas de sentencia: edad actual, fecha solo con el año y doble apellido."""
+
+    @staticmethod
+    def details(defendant, dob, offense, agency="Orange County Sheriff's Office"):
+        from core.models import Charge
+        cand = CaseCandidate("2022-CF-000001-A-O", defendant, "", "Closed", dob, offense, "/x")
+        return CaseDetails(cand, [Charge(offense, "MURDER", None, offense, agency, "2022-1")], [])
+
+    def test_age_is_compared_at_publication_date(self):
+        # Tenía 32 en el crimen (06/2023) y 33 cuando salió la nota (03/2024).
+        q = LookupQuery(first_name="Tyrese", last_name="Johnson", county="orange", age=33,
+                        incident_date=date(2023, 6, 24), age_as_of=date(2024, 3, 18))
+        m = score_case(q, self.details("JOHNSON, TYRESE", date(1990, 12, 1), date(2023, 6, 24)))
+        self.assertIn("edad coincide (33)", m.reasons)
+
+    def test_double_surname_split_differently(self):
+        q = LookupQuery(first_name="Javier", middle_name="Rosado", last_name="Martinez", county="orange",
+                        agency="Orange County deputies", charges=["murdering"])
+        m = score_case(q, self.details("ROSADO MARTINEZ, JAVIER", date(1968, 1, 1), date(2022, 5, 1)))
+        self.assertFalse(m.disqualified)
+        self.assertIn("agencia coincide", m.reasons)
+        q2 = LookupQuery(first_name="Javier", last_name="Rosado Martinez", county="orange")
+        self.assertFalse(score_case(q2, self.details("MARTINEZ, JAVIER ROSADO", None, date(2022, 5, 1))).disqualified)
+        self.assertFalse(score_case(q2, self.details("ROSADO, JAVIER", None, date(2022, 5, 1))).disqualified)
+        partial = score_case(q2, self.details("MARTINEZ, JAVIER", None, date(2022, 5, 1)))
+        self.assertIn("apellido parcial (martinez)", partial.reasons)
+        self.assertTrue(score_case(q2, self.details("LOPEZ, JAVIER", None, date(2022, 5, 1))).disqualified)
+
+    def test_window_reaches_publication_when_arrest_unknown(self):
+        """Tyrese Johnson: crimen 24/06/2023, caso abierto 20/10/2023 (arresto por orden 24/10), nota 18/03/2024."""
+        from core.lookup import search_window
+        from counties import get_county
+        orange = get_county("orange")
+        q = LookupQuery(first_name="Tyrese", last_name="Johnson", county="orange",
+                        incident_date=date(2023, 6, 24), published_date=date(2024, 3, 18))
+        date_from, date_to = search_window(q, orange)
+        self.assertEqual(date_from, date(2023, 6, 17))
+        self.assertTrue(date_from <= date(2023, 10, 20) <= date_to)
+        # Con fecha de arresto la ventana sigue siendo corta.
+        q2 = LookupQuery(first_name="X", last_name="Y", county="orange", incident_date=date(2023, 6, 24),
+                         arrest_date=date(2023, 6, 24), published_date=date(2024, 3, 18))
+        self.assertEqual(search_window(q2, orange)[1], date(2023, 8, 8))
+
+    def test_year_only_search_window(self):
+        from core.lookup import search_window
+        from counties import get_county
+        q = LookupQuery(first_name="Javier", last_name="Rosado Martinez", county="orange",
+                        date_from=date(2021, 12, 25), date_to=date(2023, 2, 14))
+        self.assertEqual(search_window(q, get_county("orange")), (date(2021, 12, 25), date(2023, 2, 14)))
+
+
 if __name__ == "__main__":
     unittest.main()

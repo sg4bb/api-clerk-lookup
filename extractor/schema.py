@@ -24,6 +24,8 @@ class Extraction(BaseModel):
     incident_date: Optional[str] = Field(None, description="YYYY-MM-DD date the crime happened")
     incident_date_evidence: Optional[str] = Field(
         None, description="Verbatim words the date was derived from (e.g. 'Friday around 6 p.m.')")
+    incident_date_precision: Optional[Literal["day", "month", "year"]] = Field(
+        None, description="'day' if the article gives the exact day; 'month' or 'year' if it only gives that")
     arrest_date: Optional[str] = Field(None, description="YYYY-MM-DD date of the arrest, if stated or clearly implied")
     city: Optional[str] = None
     county: Optional[str] = Field(None, description="County of the incident, e.g. 'Orange'")

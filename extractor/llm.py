@@ -34,7 +34,8 @@ Rules:
 Never include victims, witnesses, officers, deputies, attorneys, judges, relatives or officials. \
 Each person is an OBJECT (see the template), never a plain string. \
 Copy names exactly as written. Put Jr./Sr./III in "suffix", not in the last name. \
-Keep compound surnames whole (e.g. "Cruz Peraza"). \
+Keep compound surnames whole (e.g. "Cruz Peraza"). Hispanic names with two surnames go entirely \
+in last_name ("Javier Rosado Martinez" -> first_name "Javier", last_name "Rosado Martinez", middle_name null). \
 role: "arrested" if the article says the person was arrested, taken into custody or booked; \
 "charged" if charged but not arrested; "suspect" only if police are still looking for them. \
 age: the number from phrases like "23-year-old" or "Name, 23,". \
@@ -43,7 +44,10 @@ age: the number from phrases like "23-year-old" or "Name, 23,". \
 It is NOT the publication date and NOT a court date. For relative days ("Friday", "last night", \
 "Tuesday morning") use the calendar of recent days given with the article. \
 If the article covers several crimes, use the date of the crime that led to the arrest. \
-Put the exact words you used in incident_date_evidence. Use null if it cannot be determined.
+Put the exact words you used in incident_date_evidence. Use null if it cannot be determined. \
+If the article only gives the month or the year (e.g. "in June 2023", "back in 2022"), use the first day \
+of that month or year and set incident_date_precision to "month" or "year"; never invent a day. \
+Otherwise set incident_date_precision to "day".
 3. arrest_date: YYYY-MM-DD, only if stated or clearly implied (e.g. "arrived as he was leaving \
 the store ... taken into custody" means the same day as the incident); otherwise null.
 4. agency: the agency that made the arrest (e.g. "Orlando Police Department").
@@ -54,7 +58,7 @@ county: if not stated, use the county of that city (Orlando -> Orange).
 
 Respond only with a JSON object with exactly this shape:
 {"people": [{"first_name": "...", "middle_name": null, "last_name": "...", "suffix": null, "age": 23, \
-"role": "arrested", "evidence": "..."}], "incident_date": "YYYY-MM-DD", "incident_date_evidence": "...", \
+"role": "arrested", "evidence": "..."}], "incident_date": "YYYY-MM-DD", "incident_date_evidence": "...", "incident_date_precision": "day", \
 "arrest_date": "YYYY-MM-DD", "city": "...", "county": "...", "state": "FL", "agency": "...", \
 "charges": ["..."], "summary": "..."}"""
 

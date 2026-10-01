@@ -8,6 +8,7 @@ Uso (con el entorno virtual activado):
     python run_article.py https://... --suspect 2   # si el artículo nombra a varios arrestados
     python run_article.py mues --dry-run --model google/gemma-4-31b-it   # probar otro modelo
     python run_article.py mues --reuse           # reusa la extracción guardada (sin volver a llamar a NVIDIA)
+    python run_article.py -i                     # modo interactivo: pega links uno tras otro (simula el worker)
 
 Resultados en output/<id>/: article.txt, extraction.json, query.json,
 result.json y el PDF. Conviene correr primero --dry-run y revisar
@@ -58,8 +59,11 @@ def _is_url(value: str) -> bool:
 
 
 def _slug(url: str) -> str:
-    last = [p for p in re.split(r"[/?#]", url) if p][-1]
-    return re.sub(r"[^a-z0-9]+", "-", last.lower()).strip("-")[:50] or "articulo"
+    """Nombre de carpeta a partir del link: el tramo más descriptivo de la ruta."""
+    path = re.split(r"[?#]", url)[0]
+    parts = [p for p in path.split("/")[3:] if p]
+    words = [p for p in parts if "-" in p] or parts or ["articulo"]
+    return re.sub(r"[^a-z0-9]+", "-", words[-1].lower())[:50].strip("-") or "articulo"
 
 
 def _write(path: Path, data: Any) -> None:
@@ -81,7 +85,7 @@ def load_saved(out: Path):
 
 def process(case: dict[str, Any], base_output: Path, dry_run: bool, suspect: int,
             reuse: bool = False) -> tuple[str, str]:
-    from extractor import ExtractionError, FetchError, build_query, extract, fetch_article
+    from extractor import ExtractionError, FetchError, OutOfScope, build_query, extract, fetch_article
 
     out = base_output / case["id"]
     out.mkdir(parents=True, exist_ok=True)
@@ -98,6 +102,9 @@ def process(case: dict[str, Any], base_output: Path, dry_run: bool, suspect: int
             extraction = extract(article.text, article.title, published, article.url)
             _write(out / "extraction.json", extraction.model_dump())
         aq = build_query(extraction, article, suspect_index=case.get("suspect", suspect) - 1)
+    except OutOfScope as exc:
+        # Otro estado u otro condado: se avisa sin abrir el portal (no gasta CAPTCHA).
+        return "NO_SOPORTADO", str(exc)
     except (FetchError, ExtractionError) as exc:
         return "ERROR", str(exc)
     except Exception as exc:  # que un artículo con problemas no detenga los demás
@@ -110,7 +117,10 @@ def process(case: dict[str, Any], base_output: Path, dry_run: bool, suspect: int
     name = " ".join(x for x in (q.first_name, q.middle_name, q.last_name, aq.person.suffix) if x)
     print(f"  Persona:    {name}" + (f", {q.age} años" if q.age else "") + f"  [{aq.person.role}]")
     print(f"  Evidencia:  \"{aq.person.evidence}\"")
-    print(f"  Incidente:  {q.incident_date}  ({aq.extraction.incident_date_evidence or 'sin cita'})")
+    if q.incident_date or not q.date_from:
+        print(f"  Incidente:  {q.incident_date}  ({aq.extraction.incident_date_evidence or 'sin cita'})")
+    else:
+        print(f"  Incidente:  entre {q.date_from} y {q.date_to}  ({aq.extraction.incident_date_evidence})")
     print(f"  Arresto:    {q.arrest_date}")
     print(f"  Agencia:    {q.agency}   Condado: {q.county}")
     print(f"  Cargos:     {'; '.join(q.charges) or '-'}")
@@ -122,14 +132,15 @@ def process(case: dict[str, Any], base_output: Path, dry_run: bool, suspect: int
         print(f"  AVISO:      {warning}")
 
     if dry_run:
-        return "EXTRAÍDO", f"{q.first_name} {q.last_name}, incidente {q.incident_date}"
+        when = q.incident_date or (f"{q.date_from} a {q.date_to}" if q.date_from else "sin fecha")
+        return "EXTRAÍDO", f"{q.first_name} {q.last_name}, incidente {when}"
 
     result = run_lookup(q, out)
     _write(out / "result.json", result.to_dict())
     mark = verdict(case, result)
     if result.case_number:
         detail = f"{result.case_number} ({result.score}% confianza)"
-        detail += f" -> {result.document}" if result.document else ""
+        detail += f" -> {result.pdf_path}" if result.pdf_path else (f" -> {result.document}" if result.document else "")
         if result.related_cases:
             detail += f"  [mismo arresto: {', '.join(result.related_cases)}]"
     else:
@@ -139,12 +150,34 @@ def process(case: dict[str, Any], base_output: Path, dry_run: bool, suspect: int
     return mark, detail
 
 
+def interactive(base_output: Path, args) -> int:
+    """Pide links por consola y procesa cada uno apenas se pega (como hará el worker con la tabla)."""
+    mode = "solo extracción (--dry-run)" if args.dry_run else "extracción + portal + PDF"
+    print(f"\nModo interactivo: {mode}. Pega un link y pulsa Enter; Enter vacío para salir.")
+    while True:
+        try:
+            url = input("\nLink> ").strip().strip('"')
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+        if not url:
+            return 0
+        if not _is_url(url):
+            print("  Eso no parece un link (debe empezar con http:// o https://).")
+            continue
+        case = {"id": _slug(url), "url": url}
+        mark, detail = process(case, base_output, args.dry_run, args.suspect, args.reuse)
+        print(f"\n  => {mark}: {detail}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Artículo -> incident report")
     parser.add_argument("targets", nargs="*", help="links o ids de article_cases.json (por defecto, todos)")
     parser.add_argument("--dry-run", action="store_true", help="solo extraer datos, sin abrir el portal")
     parser.add_argument("--suspect", type=int, default=1, help="qué persona usar si hay varias (1, 2, ...)")
     parser.add_argument("--model", help="modelo de NVIDIA solo para esta corrida (reemplaza NVIDIA_MODEL)")
+    parser.add_argument("-i", "--interactive", action="store_true",
+                        help="pedir links por consola, uno tras otro, hasta dejarlo vacío")
     parser.add_argument("--reuse", action="store_true",
                         help="reusar el artículo y la extracción guardados en output/<id>/ (no llama a NVIDIA)")
     args = parser.parse_args()
@@ -157,12 +190,15 @@ def main() -> int:
     for noisy in ("httpx", "openai", "trafilatura", "htmldate", "courlan"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
+    base_output = Path(os.getenv("OUTPUT_DIR", "output"))
+    if args.interactive:
+        return interactive(base_output, args)
+
     cases = load_targets(args.targets)
     if not cases:
         print(f"No hay casos con link en {CASES_FILE}")
         return 2
 
-    base_output = Path(os.getenv("OUTPUT_DIR", "output"))
     summary = []
     for i, case in enumerate(cases, 1):
         print(f"\n{'#' * 60}\n  Artículo {i}/{len(cases)}: {case['id']}\n{'#' * 60}")

@@ -23,14 +23,6 @@ _DAY_BEFORE = ("yesterday", "last night", "overnight")
 _ARREST_WORDS = re.compile(r"\b(arrested|arrest|custody|booked|jailed|apprehended|detained|turned (?:him|her)self in)\b", re.I)
 _DATELINE = re.compile(r"^\s*([A-Z][A-Z .'\-]{2,30}),\s*(?:Fla\.?|Florida|FL)\b", re.M)
 
-# Agencias que solo actúan dentro del condado de Orange.
-ORANGE_AGENCIES = (
-    "orlando police", "orange county sheriff", "winter park police", "apopka police", "ocoee police",
-    "winter garden police", "maitland police", "windermere police", "edgewood police", "belle isle police",
-    "eatonville police", "university of central florida police", "ucf police", "opd", "ocso",
-)
-
-
 def resolve_relative_day(text: Optional[str], published: Optional[date]) -> Optional[date]:
     """'Friday', 'Friday night', 'yesterday'... -> fecha, contando hacia atrás desde la publicación."""
     if not text or not published:
@@ -115,8 +107,34 @@ def repair(extraction: Extraction, text: str, published: Optional[date]) -> tupl
     return extraction.model_copy(update=updates), notes
 
 
-def county_from_agency(agency: Optional[str]) -> Optional[str]:
-    a = normalize(agency)
-    if a and any(re.search(rf"\b{re.escape(key)}\b", a) for key in ORANGE_AGENCIES):
-        return "orange"
+_MONTHS = ("january|february|march|april|june|july|august|september|october|november|december|"
+           "jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec")
+_DAY_SIGNALS = [
+    rf"\b(?:{_MONTHS}|may)\.?\s+\d{{1,2}}(?:st|nd|rd|th)?\b",          # June 24, May 3rd
+    rf"\b\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:{_MONTHS}|may)\b",    # 24 June, 3rd of May
+    r"\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b",                               # 6/24/2023
+    r"\b\d{4}-\d{2}-\d{2}\b",
+    r"\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+    r"\b(?:yesterday|today|tonight|last night|this morning|this afternoon|this evening|overnight)\b",
+]
+_PRECISION_RANK = {"day": 0, "month": 1, "year": 2}
+
+
+def evidence_precision(evidence: Optional[str]) -> Optional[str]:
+    """Qué tan exacta es la fecha según la cita: 'day', 'month', 'year' o None (no se sabe)."""
+    if not evidence:
+        return None
+    low = evidence.lower()
+    if any(re.search(p, low) for p in _DAY_SIGNALS):
+        return "day"
+    if re.search(rf"\b(?:{_MONTHS})\b", low) or re.search(r"\bMay\s+(?:of\s+)?\d{4}\b", evidence):
+        return "month"
+    if re.search(r"\b(?:19|20)\d{2}\b", low):
+        return "year"
     return None
+
+
+def date_precision(model_value: Optional[str], evidence: Optional[str]) -> str:
+    """La más conservadora entre lo que dice el modelo y lo que muestra la cita."""
+    found = [p for p in (model_value, evidence_precision(evidence)) if p in _PRECISION_RANK]
+    return max(found, key=_PRECISION_RANK.get) if found else "day"

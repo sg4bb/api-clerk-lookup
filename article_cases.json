@@ -19,5 +19,11 @@
     "url": "https://www.wesh.com/article/man-coma-after-orlando-police-arrest/71105815",
     "expected_case": "2026-CF-004242-A-O",
     "notes": "Terry Lorenzo Mitchell, parada de tráfico de OPD el 27/03/2026. Validado 30/09/2026: ICJIS Arrest Affidavit, reporte 2026-00111240."
+  },
+  {
+    "id": "johnson",
+    "url": "https://www.fox35orlando.com/news/florida-man-sentenced-to-life-in-2023-killing-of-ex-girlfriend",
+    "expected_case": "2023-CF-013905-A-O",
+    "notes": "Nota de sentencia (18/03/2024). Crimen 24/06/2023, arresto por orden el 24/10/2023, caso abierto el 20/10/2023: la ventana de búsqueda tiene que llegar hasta la publicación."
   }
 ]

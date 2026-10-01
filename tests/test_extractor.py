@@ -88,6 +88,68 @@ class BuildQueryTest(unittest.TestCase):
         self.assertIsNone(aq.query.arrest_date)
 
 
+class OutOfScopeTest(unittest.TestCase):
+    """Artículos de fuera de Florida o de condados sin soporte: se avisa sin abrir el portal."""
+
+    def reason(self, **kw):
+        from extractor import OutOfScope
+        with self.assertRaises(OutOfScope) as ctx:
+            build_query(extraction(**kw), ARTICLE)
+        return ctx.exception
+
+    def test_other_state(self):
+        exc = self.reason(state="GA", county="Fulton", city="Atlanta", agency="Atlanta Police Department")
+        self.assertEqual(exc.reason, "state")
+        self.assertIn("solo se buscan casos de Florida", str(exc))
+        self.assertEqual(self.reason(state="Georgia", county=None, city="Atlanta", agency=None).reason, "state")
+
+    def test_county_not_in_florida_without_state(self):
+        self.assertEqual(self.reason(state=None, county="Fulton", city="Atlanta", agency="Atlanta PD").reason, "state")
+
+    def test_ocala(self):
+        exc = self.reason(county=None, city="Ocala", agency="Ocala Police Department")
+        self.assertEqual((exc.reason, exc.county), ("county", "Marion"))
+        self.assertIn("Ocala (Marion County, FL)", str(exc))
+        self.assertIn("Orange County", str(exc))
+
+    def test_florida_county_named(self):
+        exc = self.reason(county="Seminole County", city="Sanford", agency="Sanford Police Department")
+        self.assertEqual((exc.reason, exc.county), ("county", "Seminole"))
+        self.assertEqual(self.reason(county="Miami-Dade", city="Miami", agency=None).county, "Miami-Dade")
+        self.assertEqual(self.reason(county="St. Johns", city=None, agency=None).county, "St. Johns")
+
+    def test_unknown(self):
+        self.assertEqual(self.reason(county=None, city=None, state=None, agency="Police").reason, "unknown")
+
+    def test_orange_from_agency_or_city(self):
+        self.assertEqual(build_query(extraction(county=None, city=None, agency="OPD"), ARTICLE).query.county, "orange")
+        self.assertEqual(build_query(extraction(county=None, city="Apopka", agency=None), ARTICLE).query.county, "orange")
+
+
+class DatePrecisionTest(unittest.TestCase):
+    def test_year_only_becomes_range(self):
+        text = TEXT + " The man committed the act back in 2022."
+        art = Article(url="u", title="t", text=text, published=date(2026, 7, 14), via="direct")
+        aq = build_query(extraction(incident_date="2022-01-01", arrest_date=None,
+                                    incident_date_evidence="committed the act back in 2022"), art)
+        q = aq.query
+        self.assertIsNone(q.incident_date)
+        self.assertEqual((q.date_from, q.date_to), (date(2021, 12, 25), date(2023, 2, 14)))
+        self.assertIsNone(q.approx_date)
+        self.assertEqual(q.age_as_of, date(2026, 7, 14))
+
+    def test_month_only(self):
+        aq = build_query(extraction(incident_date="2023-06-01", incident_date_precision="month",
+                                    incident_date_evidence="in June 2023"), ARTICLE)
+        self.assertEqual((aq.query.date_from, aq.query.date_to), (date(2023, 5, 25), date(2023, 8, 14)))
+
+    def test_exact_day_kept(self):
+        aq = build_query(extraction(incident_date="2023-10-20",
+                                    incident_date_evidence="on June 24, 2023 around 6 p.m. Friday"), ARTICLE)
+        self.assertEqual(aq.query.incident_date, date(2023, 10, 20))
+        self.assertIsNone(aq.query.date_from)
+
+
 class RepairTest(unittest.TestCase):
     PUB = date(2023, 10, 23)  # lunes
 

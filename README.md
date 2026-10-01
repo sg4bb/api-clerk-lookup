@@ -49,6 +49,10 @@ python run_article.py mues --dry-run --reuse # repite la validación con la extr
 
 Si NVIDIA está saturado (error 503 "Worker local total request limit reached", frecuente en el plan gratuito), el programa espera y reintenta (10 s, 20 s, 40 s, 60 s...) hasta `NVIDIA_RETRY_MAX_S` segundos (300 por defecto). Con `NVIDIA_FALLBACK_MODEL` (uno o varios, separados por coma) prueba primero esos modelos antes de esperar; un modelo retirado por NVIDIA se salta con un aviso. Para comparar un modelo antes de usarlo: `python run_article.py mues --dry-run --model <modelo>`. Si un artículo falla, los demás siguen.
 
+**Fuera de alcance:** si el artículo es de otro estado o de un condado de Florida sin soporte (Ocala → Marion, por ejemplo), el resultado es `NO_SOPORTADO` con el lugar detectado. Se decide después de la extracción y antes de abrir el portal, así que no gasta CAPTCHA. El condado se toma del modelo, de la agencia (`counties/florida.py`, `AGENCY_TO_COUNTY`) o de la ciudad (`CITY_TO_COUNTY`).
+
+**Modo interactivo:** `python run_article.py -i` (o `-i --dry-run`) pide links por consola y procesa cada uno al pegarlo, como hará el worker con la tabla.
+
 Revisa primero con `--dry-run`: en `output/<id>/` quedan `article.txt`, `extraction.json` y `query.json`, y en pantalla se ve la cita del artículo de la que salió cada dato. Si la nota nombra a varios arrestados, `--suspect 2` elige al segundo. Los casos viven en `article_cases.json` (`id`, `url`, `expected_case`).
 
 ## CAPTCHA
@@ -101,6 +105,6 @@ Si los mejores candidatos empatan pero son **del mismo arresto** (comparten el n
 ## Fases
 
 1. **Hecho:** `run_local.py` con casos de prueba en `test_cases.json` (validado contra Orange el 2026-09-29).
-2. **En prueba:** `run_article.py`, extractor de artículos (texto + NVIDIA NIM -> `LookupQuery`).
+2. **Hecho:** `run_article.py`, del link del artículo al PDF (validado con Mues, Hughes y Mitchell el 2026-09-30).
 3. Worker + tabla `lookup_jobs` en el Supabase sandbox.
 4. Navegador remoto con live view, deploy e integración en el dashboard.

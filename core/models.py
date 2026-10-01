@@ -31,6 +31,17 @@ class LookupQuery:
     # Fecha aproximada (p. ej. publicación del artículo) cuando no se conoce
     # la del incidente ni la del arresto. Solo sirve para la ventana de búsqueda.
     approx_date: Optional[date] = None
+    # Rango de búsqueda explícito cuando el artículo solo da el mes o el año
+    # ("back in 2022"). Tiene prioridad sobre approx_date.
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    # Fecha de publicación del artículo. Si no se sabe cuándo fue el arresto,
+    # el caso pudo abrirse meses después del crimen (orden de captura tras la
+    # investigación), pero siempre antes de la nota: la búsqueda llega hasta aquí.
+    published_date: Optional[date] = None
+    # Fecha a la que corresponde "age" (la publicación del artículo). Una nota
+    # de sentencia dice la edad actual, no la que tenía en el incidente.
+    age_as_of: Optional[date] = None
     # Los artículos casi nunca traen el segundo nombre; por defecto se usa
     # solo para puntuar, no para filtrar la búsqueda.
     use_middle_name_in_search: bool = False

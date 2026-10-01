@@ -30,7 +30,7 @@ CASES_FILE = Path("test_cases.json")
 # Campos del JSON que no son parte de LookupQuery.
 META_FIELDS = {"id", "notes", "skip", "expected_case", "expected_status"}
 QUERY_FIELDS = {f.name for f in fields(LookupQuery)}
-DATE_FIELDS = {"incident_date", "arrest_date", "approx_date"}
+DATE_FIELDS = {"incident_date", "arrest_date", "approx_date", "date_from", "date_to", "age_as_of", "published_date"}
 
 
 class CaseFileError(Exception):

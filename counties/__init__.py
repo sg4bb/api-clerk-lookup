@@ -22,3 +22,12 @@ def get_county(name: str, state: str = "FL") -> CountyConfig:
     except KeyError:
         supported = ", ".join(sorted(counties)) or "ninguno"
         raise KeyError(f"Condado '{name}, {state}' no soportado (soportados: {supported})") from None
+
+
+def supported_counties(state: str = "FL") -> list[str]:
+    """Nombres legibles de los condados soportados ('Orange County')."""
+    return sorted(c.name for c in _BY_STATE.get(state.upper(), {}).values())
+
+
+def is_supported(county_key: str, state: str = "FL") -> bool:
+    return _key(county_key) in _BY_STATE.get(state.upper(), {})

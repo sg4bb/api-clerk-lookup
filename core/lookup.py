@@ -28,7 +28,20 @@ StatusCallback = Callable[[str], None]
 
 
 def search_window(query: LookupQuery, county: CountyConfig) -> tuple[Optional[date], Optional[date]]:
+    """Rango de fechas de apertura del caso para el formulario del portal.
+
+    - Con fecha de arresto: el caso se abre a los pocos días -> ventana corta.
+    - Sin fecha de arresto: el arresto pudo ser meses después del crimen (en
+      Orange, Tyrese Johnson: crimen 24/06/2023, caso abierto 20/10/2023), así
+      que la ventana se estira hasta la publicación del artículo.
+    """
+    published_limit = query.published_date + timedelta(days=14) if query.published_date else None
     start_anchor = query.incident_date or query.arrest_date
+    if not start_anchor and (query.date_from or query.date_to):
+        date_to = query.date_to or today()
+        if not query.arrest_date and published_limit:
+            date_to = max(date_to, published_limit)
+        return query.date_from, min(date_to, today())
     if not start_anchor:
         if not query.approx_date:
             return None, None
@@ -37,8 +50,10 @@ def search_window(query: LookupQuery, county: CountyConfig) -> tuple[Optional[da
         return query.approx_date - timedelta(days=30), min(query.approx_date + timedelta(days=7), today())
     end_anchor = max(d for d in (query.incident_date, query.arrest_date) if d)
     date_from = start_anchor - timedelta(days=county.window_days_before)
-    date_to = min(end_anchor + timedelta(days=county.window_days_after), today())
-    return date_from, date_to
+    date_to = end_anchor + timedelta(days=county.window_days_after)
+    if not query.arrest_date and published_limit:
+        date_to = max(date_to, published_limit)
+    return date_from, min(date_to, today())
 
 
 def run_lookup(
@@ -74,7 +89,9 @@ def run_lookup(
 
             ranked = sorted(candidates, key=lambda c: prelim_score(query, c), reverse=True)
             ranked = [c for c in ranked if prelim_score(query, c) > 0]
-            ranked = ranked[: county.max_candidates_to_open]
+            # Sin día exacto (solo mes o año) hay más homónimos posibles: se abren más casos.
+            limit = county.max_candidates_to_open * (1 if (query.incident_date or query.arrest_date) else 2)
+            ranked = ranked[:limit]
 
             scored = []
             for candidate in ranked:
