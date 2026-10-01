@@ -6,6 +6,7 @@ Uso (con el entorno virtual activado):
     python run_article.py mues                   # extrae, busca en el portal y descarga el PDF
     python run_article.py https://...            # un link cualquiera
     python run_article.py https://... --suspect 2   # si el artículo nombra a varios arrestados
+    python run_article.py mues --dry-run --model google/gemma-4-31b-it   # probar otro modelo
     python run_article.py mues --reuse           # reusa la extracción guardada (sin volver a llamar a NVIDIA)
 
 Resultados en output/<id>/: article.txt, extraction.json, query.json,
@@ -99,6 +100,9 @@ def process(case: dict[str, Any], base_output: Path, dry_run: bool, suspect: int
         aq = build_query(extraction, article, suspect_index=case.get("suspect", suspect) - 1)
     except (FetchError, ExtractionError) as exc:
         return "ERROR", str(exc)
+    except Exception as exc:  # que un artículo con problemas no detenga los demás
+        logging.exception("Error inesperado con %s", case["id"])
+        return "ERROR", f"{type(exc).__name__}: {exc}"
 
     _write(out / "query.json", asdict(aq.query))
     q = aq.query
@@ -140,11 +144,14 @@ def main() -> int:
     parser.add_argument("targets", nargs="*", help="links o ids de article_cases.json (por defecto, todos)")
     parser.add_argument("--dry-run", action="store_true", help="solo extraer datos, sin abrir el portal")
     parser.add_argument("--suspect", type=int, default=1, help="qué persona usar si hay varias (1, 2, ...)")
+    parser.add_argument("--model", help="modelo de NVIDIA solo para esta corrida (reemplaza NVIDIA_MODEL)")
     parser.add_argument("--reuse", action="store_true",
                         help="reusar el artículo y la extracción guardados en output/<id>/ (no llama a NVIDIA)")
     args = parser.parse_args()
 
     load_dotenv()
+    if args.model:
+        os.environ["NVIDIA_MODEL"] = args.model
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
                         datefmt="%H:%M:%S")
     for noisy in ("httpx", "openai", "trafilatura", "htmldate", "courlan"):

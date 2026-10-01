@@ -31,6 +31,15 @@ _AGENCY_ALIASES = {
     "sheriffs office": "so",
     "sheriff office": "so",
     "florida highway patrol": "fhp",
+    "university of central florida": "ucf",
+}
+# Siglas que usan las notas de prensa ("OPD arrested...").
+_AGENCY_ACRONYMS = {
+    "opd": "orlando pd",
+    "ocso": "orange county so",
+    "wppd": "winter park pd",
+    "ucfpd": "ucf pd",
+    "fhp": "fhp",
 }
 
 
@@ -39,10 +48,16 @@ def _similar(a: str, b: str) -> float:
 
 
 def normalize_agency(text: Optional[str]) -> str:
+    """'Orlando Police', 'Orlando Police Department', 'OPD' y 'Orlando PD' -> 'orlando pd'."""
     value = normalize(text)
     for long, short in _AGENCY_ALIASES.items():
         value = value.replace(long, short)
-    return value.replace("city of ", "").strip()
+    value = re.sub(r"\bpolice\b", "pd", value)
+    value = re.sub(r"\bsheriff s?\b|\bsheriffs?\b", "so", value)
+    value = re.sub(r"\b(department|dept|office)\b", "", value)
+    value = re.sub(r"\b(the|city of)\b", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return _AGENCY_ACRONYMS.get(value.replace(" ", ""), value)
 
 
 def _name_points(query: LookupQuery, defendant: str, reasons: list[str]) -> Optional[int]:

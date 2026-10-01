@@ -184,8 +184,6 @@ class MatcherTest(unittest.TestCase):
             self.assertNotIn("segundo nombre distinto (jr)", m.reasons)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ChargesTest(unittest.TestCase):
@@ -280,3 +278,20 @@ class SameIncidentTest(unittest.TestCase):
         june = self.case("2023-MM-003876-A-O", date(2023, 6, 3), date(2023, 6, 2), "2023-400000")
         winner, status = pick_best(self.scored(june, right))
         self.assertEqual((status, winner[1].candidate.case_number), ("found", "2023-CF-010421-A-O"))
+
+
+class AgencyNamesTest(unittest.TestCase):
+    """Las notas escriben la agencia de muchas formas (caso Hughes: 'Orlando Police')."""
+
+    def test_variants(self):
+        from core.matcher import normalize_agency as n
+        for name in ("Orlando Police", "Orlando Police Department", "OPD", "Orlando PD"):
+            self.assertEqual(n(name), "orlando pd", name)
+        for name in ("Orange County Sheriff", "Orange County Sheriff's Office", "OCSO"):
+            self.assertEqual(n(name), "orange county so", name)
+        self.assertEqual(n("UCF Police"), n("University of Central Florida Police Department"))
+        self.assertNotEqual(n("Orlando Police"), n("Orange County Sheriff's Office"))
+
+
+if __name__ == "__main__":
+    unittest.main()

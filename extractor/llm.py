@@ -24,7 +24,7 @@ from .schema import Extraction
 log = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://integrate.api.nvidia.com/v1"
-DEFAULT_MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+DEFAULT_MODEL = "google/gemma-4-31b-it"
 
 SYSTEM_PROMPT = """You extract facts from a U.S. local news article about a crime. \
 The goal is to find the court case of the person who was ARRESTED or CHARGED.
@@ -85,8 +85,8 @@ def extract(article_text: str, title: str, published: Optional[str], url: str) -
     if not api_key:
         raise ExtractionError("Falta NVIDIA_API_KEY en el archivo .env")
     client = OpenAI(base_url=os.getenv("NVIDIA_BASE_URL", DEFAULT_BASE_URL), api_key=api_key,
-                    timeout=float(os.getenv("NVIDIA_TIMEOUT_S", "180")), max_retries=2)
-    model = os.getenv("NVIDIA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+                    timeout=float(os.getenv("NVIDIA_TIMEOUT_S", "180")), max_retries=0)
+    models = model_list()
     # Es un modelo de razonamiento: piensa antes de responder y eso consume tokens.
     max_tokens = int(os.getenv("NVIDIA_MAX_TOKENS", "8192"))
     schema = Extraction.model_json_schema()
@@ -113,8 +113,8 @@ def extract(article_text: str, title: str, published: Optional[str], url: str) -
     for name, extra in variants:
         started = time.monotonic()
         try:
-            response = client.chat.completions.create(
-                model=model, messages=messages, temperature=0, max_tokens=max_tokens, **extra)
+            response, used = _create_with_retry(client, models, messages=messages, temperature=0,
+                                                max_tokens=max_tokens, **extra)
         except BadRequestError as exc:
             log.info("El API no acepta el modo %s (%s); pruebo el siguiente", name, _short(exc))
             last_error = exc
@@ -123,12 +123,82 @@ def extract(article_text: str, title: str, published: Optional[str], url: str) -
         log.info("Respuesta del modelo en %.0f s (modo %s)", time.monotonic() - started, name)
         try:
             result = Extraction.model_validate(_parse_json(content))
-            log.info("Extracción lista (modelo %s, modo %s)", model, name)
+            log.info("Extracción lista (modelo %s, modo %s)", used, name)
             return result
         except (ValueError, ValidationError) as exc:
             log.warning("Respuesta inválida del modelo (modo %s): %s", name, _short(exc))
             last_error = exc
     raise ExtractionError(f"El modelo no devolvió datos válidos: {_short(last_error)}")
+
+
+RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
+
+
+GONE_STATUS = {404, 410}   # modelo inexistente o retirado ("end of life")
+_GONE: set[str] = set()    # retirados detectados en esta corrida (no se vuelven a pedir)
+
+
+def model_list() -> list[str]:
+    """NVIDIA_MODEL primero y después los de NVIDIA_FALLBACK_MODEL (separados por coma)."""
+    primary = os.getenv("NVIDIA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    fallbacks = [m.strip() for m in os.getenv("NVIDIA_FALLBACK_MODEL", "").split(",") if m.strip()]
+    return [primary] + [m for m in fallbacks if m != primary]
+
+
+def _create_with_retry(client, models: list[str], **kwargs):
+    """Llama al API esperando y reintentando cuando NVIDIA está saturado.
+
+    El plan gratuito responde 503 "Worker local total request limit reached"
+    cuando el modelo tiene todas sus plazas ocupadas; suele liberarse en
+    segundos o minutos. Primero prueba los modelos de respaldo, sin esperar;
+    si todos están saturados espera cada vez más (10 s, 20 s, 40 s, 60 s...)
+    hasta NVIDIA_RETRY_MAX_S en total. Un modelo retirado (404/410) se saca
+    de la lista con un aviso. Los errores 400 (parámetro no aceptado) suben tal cual.
+    """
+    from openai import APIConnectionError, APIStatusError, APITimeoutError, BadRequestError
+
+    models = [m for m in models if m not in _GONE] or list(models)
+    budget = float(os.getenv("NVIDIA_RETRY_MAX_S", "300"))
+    deadline = time.monotonic() + budget
+    wait, attempt, index = 10.0, 0, 0
+    while True:
+        model = models[index % len(models)]
+        attempt += 1
+        try:
+            return client.chat.completions.create(model=model, **kwargs), model
+        except BadRequestError:
+            raise
+        except (APITimeoutError, APIConnectionError, APIStatusError) as exc:
+            status = getattr(exc, "status_code", None)
+            if status in GONE_STATUS:
+                log.warning("El modelo %s no está disponible en NVIDIA (%s): %s", model, status, _short(exc))
+                models.remove(model)
+                _GONE.add(model)
+                if not models:
+                    raise ExtractionError(
+                        f"El modelo {model} no existe o fue retirado por NVIDIA ({status}). "
+                        "Cambia NVIDIA_MODEL en .env por uno de build.nvidia.com.") from exc
+                continue
+            if status is not None and status not in RETRYABLE_STATUS:
+                raise ExtractionError(f"NVIDIA rechazó la solicitud ({status}): {_short(exc)}") from exc
+            index += 1
+            reason = f"error {status}" if status else type(exc).__name__
+            if index % len(models):
+                log.warning("NVIDIA no disponible con %s (%s); pruebo %s", model, reason, models[index % len(models)])
+                continue
+            pause = wait
+            retry_after = getattr(getattr(exc, "response", None), "headers", {}).get("retry-after", "")
+            if retry_after.isdigit():
+                pause = max(pause, float(retry_after))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ExtractionError(
+                    f"NVIDIA sigue saturado después de {budget:.0f} s y {attempt} intento(s): {_short(exc)}. "
+                    "Vuelve a intentarlo en unos minutos (o sube NVIDIA_RETRY_MAX_S).") from exc
+            pause = min(pause, remaining)
+            log.warning("NVIDIA no disponible con %s (%s); reintento en %.0f s", model, reason, pause)
+            time.sleep(pause)
+            wait = min(wait * 2, 60.0)
 
 
 def _parse_json(content: str) -> dict:
@@ -144,4 +214,12 @@ def _parse_json(content: str) -> dict:
 
 
 def _short(exc: Optional[Exception]) -> str:
-    return str(exc).replace("\n", " ")[:200] if exc else "sin detalle"
+    if exc is None:
+        return "sin detalle"
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        inner = body.get("error") if isinstance(body.get("error"), dict) else body
+        detail = inner.get("detail") or inner.get("message")
+        if detail:
+            return str(detail).replace("\n", " ")[:300]
+    return str(exc).replace("\n", " ")[:200]

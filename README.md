@@ -43,9 +43,11 @@ python run_article.py mues --dry-run --reuse # repite la validación con la extr
 ```
 
 1. **Texto:** `trafilatura` descarga la nota y separa el cuerpo de menús y anuncios, junto con la fecha de publicación. Si el sitio bloquea la descarga, la abre en un Chrome oculto.
-2. **Datos:** el texto va a NVIDIA NIM (`NVIDIA_MODEL`, el mismo modelo del AI Review) con la librería `openai` como cliente. Se le pide un JSON con estructura fija (`guided_json`): arrestados, fecha del incidente (resolviendo "el viernes" con la fecha de publicación), agencia, condado y cargos.
+2. **Datos:** el texto va a NVIDIA NIM (`NVIDIA_MODEL`, por defecto `google/gemma-4-31b-it`, con GLM y Nemotron de respaldo) con la librería `openai` como cliente. Se le pide un JSON con estructura fija (`guided_json`): arrestados, fecha del incidente (resolviendo "el viernes" con la fecha de publicación), agencia, condado y cargos.
 3. **Ajustes:** si el modelo deja campos a medias, se completan con reglas sobre el propio texto: "Friday" pasa a fecha contando desde la publicación, la edad sale de "23-year-old", la ciudad del encabezado "ORLANDO, Fla." y el condado de la agencia (OPD, OCSO, etc.). En pantalla salen como `AJUSTE`.
 4. **Validación:** se descarta cualquier nombre que no aparezca en el artículo y cualquier fecha posterior a la publicación. Si no hay fecha, se busca en el mes previo a la publicación. Los cargos sirven para distinguir casos del mismo día.
+
+Si NVIDIA está saturado (error 503 "Worker local total request limit reached", frecuente en el plan gratuito), el programa espera y reintenta (10 s, 20 s, 40 s, 60 s...) hasta `NVIDIA_RETRY_MAX_S` segundos (300 por defecto). Con `NVIDIA_FALLBACK_MODEL` (uno o varios, separados por coma) prueba primero esos modelos antes de esperar; un modelo retirado por NVIDIA se salta con un aviso. Para comparar un modelo antes de usarlo: `python run_article.py mues --dry-run --model <modelo>`. Si un artículo falla, los demás siguen.
 
 Revisa primero con `--dry-run`: en `output/<id>/` quedan `article.txt`, `extraction.json` y `query.json`, y en pantalla se ve la cita del artículo de la que salió cada dato. Si la nota nombra a varios arrestados, `--suspect 2` elige al segundo. Los casos viven en `article_cases.json` (`id`, `url`, `expected_case`).
 

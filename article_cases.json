@@ -2,19 +2,22 @@
   {
     "id": "mues",
     "url": "https://fox35orlando.com/news/orlando-cvs-pharmacy-hit-by-armed-robber-in-pursuit-of-viagra-police-say-please-cooperate-or-i-will-shoot",
-    "expected_case": ["2023-CF-013960-A-O", "2023-MM-007430-A-O"],
-    "notes": "CVS Curry Ford Rd, viernes 20/10/2023. El CF (21/10) tiene el affidavit del artículo; el MM es del mismo arresto."
+    "expected_case": [
+      "2023-CF-013960-A-O",
+      "2023-MM-007430-A-O"
+    ],
+    "notes": "CVS Curry Ford Rd, viernes 20/10/2023. El CF (21/10) tiene el affidavit del artículo; el MM es del mismo arresto. Validado 30/09/2026 (96%)."
   },
   {
     "id": "hughes",
-    "url": "PEGA_AQUI_EL_LINK_DE_WFTV",
-    "expected_case": ["2023-CF-004439-A-O", "2023-CF-004817-A-O"],
-    "notes": "Tres robos (Dunkin', Popeyes, Amscot); arresto el 06/04/2023. El CF-004439 es el del artículo (robo con arma de fuego)."
+    "url": "https://www.wftv.com/news/local/police-man-confesses-robbing-3-orlando-businesses-within-half-mile-each-other/FIVBLHOB5ZDVZGOTQU4YUMLIGY/",
+    "expected_case": "2023-CF-004439-A-O",
+    "notes": "Tres robos (Dunkin' 15/03, Popeyes 24/03, Amscot 06/04); arresto por el Amscot. Validado 30/09/2026: CF-004439 (Amscot, 97%). CF-004817 y CF-004865 son los otros dos robos, no este incidente."
   },
   {
     "id": "mitchell",
-    "url": "PEGA_AQUI_EL_LINK_DE_WESH",
-    "expected_case": null,
-    "notes": "Terry Mitchell, en coma tras un arresto de OPD (marzo de 2026). Falta el número de caso: el PDF enviado era el de Angel Rodriguez."
+    "url": "https://www.wesh.com/article/man-coma-after-orlando-police-arrest/71105815",
+    "expected_case": "2026-CF-004242-A-O",
+    "notes": "Terry Lorenzo Mitchell, parada de tráfico de OPD el 27/03/2026. Validado 30/09/2026: ICJIS Arrest Affidavit, reporte 2026-00111240."
   }
 ]
