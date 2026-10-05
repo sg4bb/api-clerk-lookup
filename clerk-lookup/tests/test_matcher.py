@@ -1,0 +1,349 @@
+"""Tests del matcher y del parseo, sin navegador ni red.
+
+    python -m unittest discover tests
+"""
+
+import unittest
+from datetime import date
+
+from adapters.orange_myeclerk import OrangeMyEClerkAdapter
+from core.matcher import pick_best, prelim_score, score_case
+from core.models import CaseCandidate, CaseDetails, DocketEntry, LookupQuery
+from core.utils import format_short_us, last_name_variants, parse_us_date, split_defendant
+
+QUERY = LookupQuery(
+    first_name="Darrica", last_name="Ward", middle_name="Leandra", county="orange",
+    incident_date=date(2024, 9, 4), arrest_date=date(2024, 9, 10),
+    agency="Orlando Police Department",
+)
+
+# Datos reales leídos del portal el 2026-09-29.
+WARD_ROW = {
+    "cells": {
+        "#": "1", "Case Number": "2024-CF-012151-A-O",
+        "Description": "STATE OF FLORIDA - VS - WARD, DARRICA LEANDRA",
+        "Type": "Criminal Felony", "Status": "Closed", "DOB": "03/07/1995",
+        "Judge Name": "Sonia McDowell", "Date": "09/05/2024",
+    },
+    "href": "/CaseDetails?cItem=abc",
+}
+WARD_CHARGE = {
+    "Offense Date": "9/4/2024",
+    "Charge": "1. FALSE IMPRISONMENT\nStatute: 787.02(2)\nThird Degree - Felony",
+    "Plea": "",
+    "Arrest": "9/10/2024\nOBTS:8888888888\nSequence:1\nControl Number:2024-336326\nArresting Agency:Orlando Police Department",
+    "Disposition": "", "Sentence": "",
+}
+
+
+def ward_details() -> CaseDetails:
+    candidate = OrangeMyEClerkAdapter._parse_result_row(WARD_ROW)
+    return CaseDetails(
+        candidate=candidate,
+        charges=[OrangeMyEClerkAdapter._parse_charge(WARD_CHARGE)],
+        docket=[
+            DocketEntry(date(2024, 9, 11), "Affidavit of Insolvency and Indigency", "/DocView/Doc?eCode=1"),
+            DocketEntry(date(2024, 9, 11), "Arrest Affidavit", "/DocView/Doc?eCode=2"),
+            DocketEntry(date(2024, 9, 5), "Affidavit to Issue Warrant", "/DocView/Doc?eCode=3"),
+        ],
+    )
+
+
+class UtilsTest(unittest.TestCase):
+    def test_dates(self):
+        self.assertEqual(parse_us_date("09/05/2024"), date(2024, 9, 5))
+        self.assertEqual(parse_us_date("9/4/24"), date(2024, 9, 4))
+        self.assertEqual(format_short_us(date(2024, 9, 1)), "9/1/24")
+
+    def test_last_name_variants(self):
+        self.assertEqual(last_name_variants("Ward"), ["Ward"])
+        self.assertEqual(last_name_variants("Cruz Peraza"), ["Cruz Peraza", "CruzPeraza", "Cruz-Peraza"])
+        self.assertEqual(last_name_variants("Cruzperaza"), ["Cruzperaza"])
+        self.assertEqual(last_name_variants("Cruz-Peraza"), ["Cruz-Peraza", "CruzPeraza", "Cruz Peraza"])
+
+    def test_suffix_is_not_middle_name(self):
+        self.assertEqual(split_defendant("RODRIGUEZ, WILFREDO JR"), ("rodriguez", "wilfredo", ""))
+        self.assertEqual(split_defendant("RODRIGUEZ, WILFREDO PUJOL"), ("rodriguez", "wilfredo", "pujol"))
+        self.assertEqual(split_defendant("SMITH III, JOHN"), ("smith", "john", ""))
+
+    def test_split_defendant(self):
+        self.assertEqual(split_defendant("WARD, DARRICA LEANDRA"), ("ward", "darrica", "leandra"))
+
+
+class OrangeParsingTest(unittest.TestCase):
+    def test_both_description_formats(self):
+        # Textos exactos del portal (capturas del 2026-09-30).
+        for description, expected in [
+            ("STATE OF FLORIDA - VS - RODRIGUEZ, WILFREDO JR", "RODRIGUEZ, WILFREDO JR"),
+            ("STATE OF FLORIDA vs. RODRIGUEZ, WILFREDO PUJOL", "RODRIGUEZ, WILFREDO PUJOL"),
+            ("STATE OF FLORIDA vs. RODRIGUEZ, JUSTIN LUIS", "RODRIGUEZ, JUSTIN LUIS"),
+        ]:
+            row = {"cells": {**WARD_ROW["cells"], "Description": description}, "href": "/x"}
+            self.assertEqual(OrangeMyEClerkAdapter._parse_result_row(row).defendant, expected)
+
+
+    def test_result_row(self):
+        c = OrangeMyEClerkAdapter._parse_result_row(WARD_ROW)
+        self.assertEqual(c.case_number, "2024-CF-012151-A-O")
+        self.assertEqual(c.defendant, "WARD, DARRICA LEANDRA")
+        self.assertEqual(c.filed_date, date(2024, 9, 5))
+
+    def test_charge(self):
+        ch = OrangeMyEClerkAdapter._parse_charge(WARD_CHARGE)
+        self.assertEqual(ch.description, "FALSE IMPRISONMENT")
+        self.assertEqual(ch.statute, "787.02(2)")
+        self.assertEqual(ch.arrest_date, date(2024, 9, 10))
+        self.assertEqual(ch.agency, "Orlando Police Department")
+        self.assertEqual(ch.control_number, "2024-336326")
+
+
+class MatcherTest(unittest.TestCase):
+    def test_ward_is_found(self):
+        match = score_case(QUERY, ward_details())
+        self.assertGreaterEqual(match.score, 90, match.reasons)
+        winner, status = pick_best([(match, ward_details())])
+        self.assertEqual(status, "found")
+
+    def test_poor_query_still_found(self):
+        # Artículo escueto: solo nombre, apellido y fecha del incidente.
+        poor = LookupQuery(first_name="Darrica", last_name="Ward", county="orange",
+                           incident_date=date(2024, 9, 4))
+        match = score_case(poor, ward_details())
+        self.assertEqual(match.score, 100, match.reasons)
+        self.assertEqual(pick_best([(match, ward_details())])[1], "found")
+
+    def test_wrong_agency_lowers_confidence(self):
+        # Nombre y fecha exactos pero otra agencia: baja mucho la confianza
+        # pero sigue en el umbral (los artículos a veces citan otra agencia).
+        wrong = LookupQuery(first_name="Darrica", last_name="Ward", county="orange",
+                            incident_date=date(2024, 9, 4), agency="Orange County Sheriff's Office")
+        match = score_case(wrong, ward_details())
+        self.assertEqual(match.score, 60, match.reasons)
+        self.assertIn("agencia distinta (orlando pd)", match.reasons)
+
+    def test_other_first_name_is_discarded(self):
+        details = ward_details()
+        details.candidate.defendant = "WARD, MICHAEL JAMES"
+        self.assertTrue(score_case(QUERY, details).disqualified)
+        self.assertEqual(prelim_score(QUERY, details.candidate), 0)
+
+    def test_two_similar_cases_are_ambiguous(self):
+        a, b = ward_details(), ward_details()
+        winner, status = pick_best([(score_case(QUERY, a), a), (score_case(QUERY, b), b)])
+        self.assertEqual(status, "ambiguous")
+
+    def test_document_priority_skips_indigency(self):
+        from counties import get_county
+        adapter = OrangeMyEClerkAdapter(page=None, county=get_county("orange"), captcha=None)
+        docs = adapter.find_documents(ward_details())
+        self.assertEqual(docs[0].description, "Arrest Affidavit")
+        self.assertNotIn("Affidavit of Insolvency and Indigency", [d.description for d in docs])
+
+
+    def test_complaint_is_used_when_no_arrest_affidavit(self):
+        # Docket real de 2024-CF-012159-A-O (resumido).
+        from counties import get_county
+        adapter = OrangeMyEClerkAdapter(page=None, county=get_county("orange"), captcha=None)
+        details = ward_details()
+        details.docket = [
+            DocketEntry(date(2025, 7, 24), "Motion to Dismiss Complaint", "/d?1"),
+            DocketEntry(date(2024, 12, 26), "Information Filed", "/d?2"),
+            DocketEntry(date(2024, 9, 6), "Affidavit of Insolvency and Indigency", "/d?3"),
+            DocketEntry(date(2024, 9, 6), "Complaint", "/d?4"),
+        ]
+        docs = adapter.find_documents(details)
+        self.assertEqual([d.description for d in docs], ["Complaint"])
+
+
+    def test_compound_surname_variants_match(self):
+        details = ward_details()
+        details.candidate.defendant = "CRUZ PERAZA, REINALDO"
+        for last in ("Cruzperaza", "Cruz Peraza", "Cruz-Peraza"):
+            q = LookupQuery(first_name="Reinaldo", last_name=last, county="orange",
+                            incident_date=date(2024, 9, 4))
+            self.assertFalse(score_case(q, details).disqualified, last)
+
+
+    def test_vs_dot_format_is_not_discarded(self):
+        details = ward_details()
+        details.candidate.defendant = OrangeMyEClerkAdapter._parse_result_row(
+            {"cells": {**WARD_ROW["cells"], "Description": "STATE OF FLORIDA vs. RODRIGUEZ, WILFREDO PUJOL"},
+             "href": "/x"}).defendant
+        q = LookupQuery(first_name="Wilfredo", last_name="Rodriguez", county="orange",
+                        incident_date=date(2024, 9, 4))
+        self.assertFalse(score_case(q, details).disqualified)
+
+    def test_suffix_in_query_or_portal(self):
+        details = ward_details()
+        details.candidate.defendant = "RODRIGUEZ, WILFREDO JR"
+        for last in ("Rodriguez", "Rodriguez Jr."):
+            q = LookupQuery(first_name="Wilfredo", last_name=last, middle_name="A", county="orange",
+                            incident_date=date(2024, 9, 4))
+            m = score_case(q, details)
+            self.assertFalse(m.disqualified, last)
+            self.assertNotIn("segundo nombre distinto (jr)", m.reasons)
+
+
+
+
+class ChargesTest(unittest.TestCase):
+    def test_categories_article_vs_portal(self):
+        from core.charges import categorize
+        self.assertEqual(categorize(["robbery with a firearm wearing a mask"]), {"robbery", "weapon"})
+        self.assertEqual(categorize(["ROBBERY: ARMED W/FIREARM"]), {"robbery", "weapon"})
+        self.assertEqual(categorize(["RESISTING OFFICER WITHOUT VIOLENCE"]), {"resisting"})
+        self.assertEqual(categorize(["BURGLARY OF UNOCCUPIED STRUCTURE"]), {"burglary"})
+        self.assertIn("drugs", categorize(["Trafficking hydrocodone"]))
+
+    def test_charges_break_same_day_tie(self):
+        from core.models import Charge
+        q = LookupQuery(first_name="Darrica", last_name="Ward", county="orange",
+                        incident_date=date(2024, 9, 4), charges=["burglary"])
+        burg, theft = ward_details(), ward_details()
+        burg.charges = [Charge(date(2024, 9, 4), "BURGLARY TO STRUCTURE", None, None, None, None)]
+        theft.charges = [Charge(date(2024, 9, 4), "PETIT THEFT", None, None, None, None)]
+        self.assertGreater(score_case(q, burg).score, score_case(q, theft).score)
+
+
+class SameIncidentTest(unittest.TestCase):
+    """Escenario basado en CLARKEROSEN, DAVID ALEXANDER (Orange, agosto 2023)."""
+
+    QUERY = LookupQuery(first_name="David", last_name="Clarkerosen", county="orange",
+                        incident_date=date(2023, 8, 2), arrest_date=date(2023, 8, 2),
+                        agency="Orlando Police Department")
+
+    @staticmethod
+    def case(number, filed, offense, control, docs=("Complaint",)):
+        from core.models import Charge
+        cand = CaseCandidate(number, "CLARKEROSEN, DAVID ALEXANDER", "", "Closed",
+                             date(1994, 1, 6), filed, "/x")
+        charges = [Charge(offense, "X", None, offense, "Orlando Police Department", control)]
+        docket = [DocketEntry(filed, d, f"/doc/{number}") for d in docs]
+        return CaseDetails(cand, charges, docket)
+
+    def scored(self, *cases):
+        return [(score_case(self.QUERY, c), c) for c in cases]
+
+    def adapter(self):
+        from counties import get_county
+        return OrangeMyEClerkAdapter(page=None, county=get_county("orange"), captcha=None)
+
+    def test_cf_and_mm_same_incident_pick_cf(self):
+        from core.matcher import related_cases, resolve_same_incident
+        cf = self.case("2023-CF-010421-A-O", date(2023, 8, 3), date(2023, 8, 2), "2023-500001")
+        mm = self.case("2023-MM-005527-A-O", date(2023, 8, 3), date(2023, 8, 2), "2023-500001")
+        other = self.case("2023-MM-000205-A-E", date(2023, 8, 1), date(2023, 7, 31), "2023-499000")
+        scored = self.scored(mm, other, cf)
+        self.assertEqual(pick_best(scored)[1], "ambiguous")          # CF y MM empatan
+        adapter = self.adapter()
+        winner = resolve_same_incident(scored, lambda d: bool(adapter.find_documents(d)))
+        self.assertEqual(winner[1].candidate.case_number, "2023-CF-010421-A-O")
+        self.assertEqual(related_cases(winner[1], scored), ["2023-MM-005527-A-O"])
+        other_score = score_case(self.QUERY, other).score
+        self.assertLess(other_score, 90, "el incidente de 2 días antes debe quedar atrás")
+
+    def test_consecutive_reports_same_arrest(self):
+        # Datos reales: 23-47652 (CF) y 23-47653 (MM), mismo arresto del 03/08/2023.
+        from core.matcher import resolve_same_incident, same_incident
+        cf = self.case("2023-CF-010421-A-O", date(2023, 8, 3), date(2023, 8, 3), "23-47652")
+        mm = self.case("2023-MM-005527-A-O", date(2023, 8, 3), date(2023, 8, 3), "23-47653")
+        self.assertTrue(same_incident(cf, mm))
+        winner = resolve_same_incident(self.scored(mm, cf), lambda d: True)
+        self.assertEqual(winner[1].candidate.case_number, "2023-CF-010421-A-O")
+
+    def test_prefers_the_case_that_has_the_document(self):
+        from core.matcher import resolve_same_incident
+        cf = self.case("2023-CF-010421-A-O", date(2023, 8, 3), date(2023, 8, 2), "2023-500001",
+                       docs=("Information Filed",))
+        mm = self.case("2023-MM-005527-A-O", date(2023, 8, 3), date(2023, 8, 2), "2023-500001")
+        adapter = self.adapter()
+        winner = resolve_same_incident(self.scored(cf, mm), lambda d: bool(adapter.find_documents(d)))
+        self.assertEqual(winner[1].candidate.case_number, "2023-MM-005527-A-O")
+
+    def test_different_incidents_stay_ambiguous(self):
+        from core.matcher import resolve_same_incident
+        # Mismo día pero otra agencia: arrestos distintos.
+        from core.models import Charge
+        a = self.case("2023-MM-005527-A-O", date(2023, 8, 3), date(2023, 8, 2), "2023-500001")
+        b = self.case("2023-MM-005530-A-O", date(2023, 8, 3), date(2023, 8, 2), "2023-500777")
+        b.charges = [Charge(date(2023, 8, 2), "X", None, date(2023, 8, 2), "Orange County Sheriff's Office", "2023-500777")]
+        self.QUERY = LookupQuery(first_name="David", last_name="Clarkerosen", county="orange",
+                                 incident_date=date(2023, 8, 2), arrest_date=date(2023, 8, 2))
+        scored = self.scored(a, b)
+        self.assertEqual(pick_best(scored)[1], "ambiguous")
+        self.assertIsNone(resolve_same_incident(scored, lambda d: True))
+
+    def test_distant_case_in_same_year_is_not_a_contender(self):
+        right = self.case("2023-CF-010421-A-O", date(2023, 8, 3), date(2023, 8, 2), "2023-500001")
+        june = self.case("2023-MM-003876-A-O", date(2023, 6, 3), date(2023, 6, 2), "2023-400000")
+        winner, status = pick_best(self.scored(june, right))
+        self.assertEqual((status, winner[1].candidate.case_number), ("found", "2023-CF-010421-A-O"))
+
+
+class AgencyNamesTest(unittest.TestCase):
+    """Las notas escriben la agencia de muchas formas (caso Hughes: 'Orlando Police')."""
+
+    def test_variants(self):
+        from core.matcher import normalize_agency as n
+        for name in ("Orlando Police", "Orlando Police Department", "OPD", "Orlando PD"):
+            self.assertEqual(n(name), "orlando pd", name)
+        for name in ("Orange County Sheriff", "Orange County Sheriff's Office", "OCSO"):
+            self.assertEqual(n(name), "orange county so", name)
+        self.assertEqual(n("UCF Police"), n("University of Central Florida Police Department"))
+        self.assertNotEqual(n("Orlando Police"), n("Orange County Sheriff's Office"))
+
+
+class OldCaseArticlesTest(unittest.TestCase):
+    """Notas de sentencia: edad actual, fecha solo con el año y doble apellido."""
+
+    @staticmethod
+    def details(defendant, dob, offense, agency="Orange County Sheriff's Office"):
+        from core.models import Charge
+        cand = CaseCandidate("2022-CF-000001-A-O", defendant, "", "Closed", dob, offense, "/x")
+        return CaseDetails(cand, [Charge(offense, "MURDER", None, offense, agency, "2022-1")], [])
+
+    def test_age_is_compared_at_publication_date(self):
+        # Tenía 32 en el crimen (06/2023) y 33 cuando salió la nota (03/2024).
+        q = LookupQuery(first_name="Tyrese", last_name="Johnson", county="orange", age=33,
+                        incident_date=date(2023, 6, 24), age_as_of=date(2024, 3, 18))
+        m = score_case(q, self.details("JOHNSON, TYRESE", date(1990, 12, 1), date(2023, 6, 24)))
+        self.assertIn("edad coincide (33)", m.reasons)
+
+    def test_double_surname_split_differently(self):
+        q = LookupQuery(first_name="Javier", middle_name="Rosado", last_name="Martinez", county="orange",
+                        agency="Orange County deputies", charges=["murdering"])
+        m = score_case(q, self.details("ROSADO MARTINEZ, JAVIER", date(1968, 1, 1), date(2022, 5, 1)))
+        self.assertFalse(m.disqualified)
+        self.assertIn("agencia coincide", m.reasons)
+        q2 = LookupQuery(first_name="Javier", last_name="Rosado Martinez", county="orange")
+        self.assertFalse(score_case(q2, self.details("MARTINEZ, JAVIER ROSADO", None, date(2022, 5, 1))).disqualified)
+        self.assertFalse(score_case(q2, self.details("ROSADO, JAVIER", None, date(2022, 5, 1))).disqualified)
+        partial = score_case(q2, self.details("MARTINEZ, JAVIER", None, date(2022, 5, 1)))
+        self.assertIn("apellido parcial (martinez)", partial.reasons)
+        self.assertTrue(score_case(q2, self.details("LOPEZ, JAVIER", None, date(2022, 5, 1))).disqualified)
+
+    def test_window_reaches_publication_when_arrest_unknown(self):
+        """Tyrese Johnson: crimen 24/06/2023, caso abierto 20/10/2023 (arresto por orden 24/10), nota 18/03/2024."""
+        from core.lookup import search_window
+        from counties import get_county
+        orange = get_county("orange")
+        q = LookupQuery(first_name="Tyrese", last_name="Johnson", county="orange",
+                        incident_date=date(2023, 6, 24), published_date=date(2024, 3, 18))
+        date_from, date_to = search_window(q, orange)
+        self.assertEqual(date_from, date(2023, 6, 17))
+        self.assertTrue(date_from <= date(2023, 10, 20) <= date_to)
+        # Con fecha de arresto la ventana sigue siendo corta.
+        q2 = LookupQuery(first_name="X", last_name="Y", county="orange", incident_date=date(2023, 6, 24),
+                         arrest_date=date(2023, 6, 24), published_date=date(2024, 3, 18))
+        self.assertEqual(search_window(q2, orange)[1], date(2023, 8, 8))
+
+    def test_year_only_search_window(self):
+        from core.lookup import search_window
+        from counties import get_county
+        q = LookupQuery(first_name="Javier", last_name="Rosado Martinez", county="orange",
+                        date_from=date(2021, 12, 25), date_to=date(2023, 2, 14))
+        self.assertEqual(search_window(q, get_county("orange")), (date(2021, 12, 25), date(2023, 2, 14)))
+
+
+if __name__ == "__main__":
+    unittest.main()
