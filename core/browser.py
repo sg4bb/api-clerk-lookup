@@ -56,6 +56,8 @@ def open_browser(headless: bool = False) -> Iterator[BrowserSession]:
 
     channel = os.getenv("BROWSER_CHANNEL", "chrome").strip() or None
     profile_dir = os.getenv("BROWSER_PROFILE_DIR", ".browser-profile").strip()
+    # Solo para pruebas automáticas: sin ventana no hay quien resuelva el CAPTCHA.
+    headless = headless or os.getenv("BROWSER_HEADLESS", "").strip() in ("1", "true", "yes")
 
     with sync_playwright() as p:
         if profile_dir:

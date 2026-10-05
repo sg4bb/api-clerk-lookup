@@ -202,10 +202,27 @@ def wait_until_solved(page: Page, timeout_s: int) -> None:
 
 
 class ManualLocalCaptcha:
-    """El navegador está visible en tu PC y lo resuelves tú."""
+    """El navegador está visible en tu PC y lo resuelves tú.
+
+    `on_waiting(None, timeout_s)` y `on_done()` permiten que el worker marque
+    el job como "esperando CAPTCHA" aunque la ventana esté en esta máquina.
+    """
+
+    def __init__(self, on_waiting=None, on_done=None) -> None:
+        self.on_waiting = on_waiting
+        self.on_done = on_done
 
     def solve(self, page: Page, timeout_s: int) -> None:
         timeout_s = int(os.getenv("CAPTCHA_TIMEOUT_S", timeout_s))
+        if self.on_waiting:
+            self.on_waiting(None, timeout_s)
+        try:
+            self._solve(page, timeout_s)
+        finally:
+            if self.on_done:
+                self.on_done()
+
+    def _solve(self, page: Page, timeout_s: int) -> None:
         page.bring_to_front()
         print("\n" + "=" * 60)
         print("  CAPTCHA: resuélvelo en la ventana de Chrome que se abrió.")
@@ -254,8 +271,8 @@ LIVE_VIEW_PAGE = """<!doctype html>
 class LiveViewCaptcha:
     """Navegador remoto: el CAPTCHA se resuelve desde el live view.
 
-    `on_waiting(url)` avisa que hay un CAPTCHA esperando (en la Fase 3 escribirá
-    el enlace en la fila del job para que el dashboard muestre el iframe) y
+    `on_waiting(url, timeout_s)` avisa que hay un CAPTCHA esperando (el worker
+    escribe el enlace en la fila del job para que el dashboard muestre el iframe) y
     `on_done()` avisa que ya no hace falta. Sin `on_waiting`, modo de prueba:
     se crea una página local con el iframe, igual a como lo mostrará el
     dashboard, y se abre en tu navegador.
@@ -278,7 +295,7 @@ class LiveViewCaptcha:
         timeout_s = min(int(os.getenv("CAPTCHA_TIMEOUT_S", timeout_s)), int(os.getenv("REMOTE_CAPTCHA_TIMEOUT_S", "480")))
         original = self._focus_on_captcha(page)
         if self.on_waiting:
-            self.on_waiting(self.embed_url)
+            self.on_waiting(self.embed_url, timeout_s)
         else:
             self._open_test_page(timeout_s)
         try:

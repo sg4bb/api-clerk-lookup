@@ -62,6 +62,8 @@ def run_lookup(
     captcha: Optional[CaptchaHandler] = None,
     headless: bool = False,
     on_status: StatusCallback = lambda s: log.info("estado: %s", s),
+    on_captcha_waiting=None,
+    on_captcha_done=None,
 ) -> LookupResult:
     county = get_county(query.county, query.state)
     adapter_cls = get_adapter(county.platform)
@@ -71,8 +73,9 @@ def run_lookup(
     with open_browser(headless=headless) as session:
         page = session.page
         if captcha is None:
-            captcha = (LiveViewCaptcha(session.live_view_url, output_dir=output_dir)
-                       if session.remote else ManualLocalCaptcha())
+            captcha = (LiveViewCaptcha(session.live_view_url, on_captcha_waiting, on_captcha_done,
+                                       output_dir=output_dir)
+                       if session.remote else ManualLocalCaptcha(on_captcha_waiting, on_captcha_done))
         adapter = adapter_cls(page, county, captcha)
         adapter.remote = session.remote
         try:

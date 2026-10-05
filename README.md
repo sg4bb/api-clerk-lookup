@@ -84,6 +84,8 @@ core/
   matcher.py    puntúa candidatos y elige un único caso
   charges.py    agrupa cargos por tipo (robo, drogas, DUI...) para el matcher
   lookup.py     orquestador: consulta -> PDF
+  pipeline.py   proceso completo: link del artículo -> PDF (lo usa el worker)
+  jobs.py       cola lookup_jobs y bucket de PDFs en Supabase
   browser.py    abre el navegador (local o remoto según BROWSER_PROVIDER)
   remote.py     sesión de Browserbase: crear, live view, liberar
   documents.py  convierte lo que entrega un visor (TIFF, páginas) en PDF
@@ -96,8 +98,9 @@ extractor/
   llm.py        NVIDIA NIM -> datos estructurados
   schema.py     estructura que debe devolver el modelo
   __init__.py   validación y armado de LookupQuery
-worker.py       Fase 3: procesa la tabla lookup_jobs de Supabase
-sql/            Fase 3: tabla lookup_jobs (borrador, aún no se corre)
+worker.py       procesa la tabla lookup_jobs de Supabase
+enqueue.py      crea un pedido y muestra su avance (simula al dashboard)
+sql/            tabla lookup_jobs, permisos, Realtime y bucket de PDFs
 tests/          tests sin navegador
 ```
 
@@ -112,9 +115,46 @@ Descarta los candidatos cuyo apellido o nombre no coincide (tolera apellidos com
 
 Si los mejores candidatos empatan pero son **del mismo arresto** (comparten el número de reporte de la agencia, o tienen la misma fecha de arresto, las mismas fechas de ofensa y la misma agencia), elige uno: primero el que tiene el documento, luego CF antes que MM o CT. Los demás salen en `related_cases`. Si empatan casos de arrestos distintos, responde `ambiguous` en vez de adivinar. En `test_cases.json`, `expected_case` puede ser una lista cuando varios casos son igual de válidos. Los pesos están en `core/matcher.py`.
 
+## Cola de pedidos (Fase 3)
+
+El dashboard no llama al backend: inserta una fila en la tabla `lookup_jobs` de Supabase y escucha sus cambios. El worker toma la fila, hace todo el proceso y va escribiendo el avance.
+
+**Preparación (una vez):**
+
+1. En Supabase (proyecto sandbox) > SQL Editor, pega y corre `sql/001_lookup_jobs.sql`. Crea la tabla, las funciones del worker, los permisos, Realtime y el bucket privado `incident-reports`.
+2. En `.env`, pon `SUPABASE_SERVICE_ROLE_KEY` (Project Settings > API Keys). Esa clave solo vive en el `.env` del worker.
+
+**Probar sin dashboard** (dos consolas):
+
+```powershell
+python worker.py                 # consola 1: queda escuchando la cola
+python enqueue.py mues           # consola 2: crea un pedido y muestra su avance, como haría el dashboard
+python enqueue.py https://...    # con cualquier link
+python enqueue.py --list         # últimos pedidos
+```
+
+**Estados** (`status`; `status_detail` trae un texto listo para mostrar):
+`pending` → `fetching` → `extracting` → `searching` → `awaiting_captcha` → `searching` → `downloading` → final.
+Finales: `found` (con `case_number`, `confidence`, `pdf_path`), `no_document`, `not_found`, `ambiguous`, `unsupported`, `captcha_timeout`, `error`.
+
+**CAPTCHA:** mientras `status = awaiting_captcha`, la fila trae `live_view_url` (con navegador remoto). El dashboard lo muestra en un iframe de 540x700 y lo quita cuando el estado cambia. Con `BROWSER_PROVIDER=local` el CAPTCHA aparece en el Chrome de la PC del worker y `live_view_url` queda vacío.
+
+**Lo que hará el dashboard** (con el cliente de Supabase y un usuario con sesión):
+
+```js
+const { data: job } = await supabase.from('lookup_jobs').insert({ article_url }).select().single()
+supabase.channel('job-' + job.id)
+  .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'lookup_jobs', filter: `id=eq.${job.id}` },
+      ({ new: row }) => render(row))      // row.status, row.status_detail, row.live_view_url, row.pdf_path...
+  .subscribe()
+// PDF: supabase.storage.from('incident-reports').createSignedUrl(row.pdf_path, 3600)
+```
+
+Cada usuario solo ve sus propios pedidos y sus propios PDF (RLS). Si el worker se cierra a mitad de un pedido, a los 20 minutos queda marcado como `error`.
+
 ## Fases
 
 1. **Hecho:** `run_local.py` con casos de prueba en `test_cases.json` (validado contra Orange el 2026-09-29).
-2. **Hecho:** `run_article.py`, del link del artículo al PDF (validado con Mues, Hughes y Mitchell el 2026-09-30).
-3. Worker + tabla `lookup_jobs` en el Supabase sandbox.
-4. Navegador remoto con live view, deploy e integración en el dashboard.
+2. **Hecho:** `run_article.py`, del link del artículo al PDF (validado el 2026-09-30).
+3. **En prueba:** `worker.py` + tabla `lookup_jobs` (`enqueue.py` simula al dashboard).
+4. **Validado en prueba (2026-10-05):** navegador remoto con el CAPTCHA en un iframe. Falta: ventana flotante en el dashboard y despliegue del worker en un servidor.
