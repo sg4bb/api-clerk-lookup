@@ -97,7 +97,7 @@ def run_article(
                             on_captcha_waiting=on_captcha_waiting, on_captcha_done=on_captcha_done)
     except Exception as exc:   # p. ej. no se pudo abrir el navegador
         log.exception("No se pudo hacer la búsqueda en el portal")
-        result.message = f"No se pudo abrir el navegador o el portal: {type(exc).__name__}: {exc}"
+        result.message = f"Could not open the browser or the court portal: {type(exc).__name__}: {exc}"
         return result
     result.lookup, result.status, result.message = lookup, lookup.status, lookup.message
     return result

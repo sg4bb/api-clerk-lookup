@@ -100,7 +100,7 @@ begin
   end if;
   return query
     update lookup_jobs
-       set status = 'fetching', status_detail = 'Leyendo el artículo…',
+       set status = 'fetching', status_detail = 'Reading the article…',
            worker_id = p_worker_id, claimed_at = now(), heartbeat_at = now(),
            attempts = attempts + 1
      where id = v_id
@@ -116,7 +116,7 @@ declare
 begin
   update lookup_jobs
      set status = 'error',
-         status_detail = 'El proceso se interrumpió. Vuelve a intentarlo.',
+         status_detail = 'The search was interrupted. Try again.',
          live_view_url = null, captcha_expires_at = null, finished_at = now()
    where status in ('fetching', 'extracting', 'searching', 'awaiting_captcha', 'downloading')
      and coalesce(heartbeat_at, claimed_at, created_at) < now() - make_interval(mins => p_minutes);

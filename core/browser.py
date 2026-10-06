@@ -84,7 +84,7 @@ def _launch_persistent(p, profile_dir: str, channel, headless: bool):
     except Exception as exc:
         if "already in use" in str(exc).lower() or "lock" in str(exc).lower():
             raise RuntimeError(
-                f"El perfil {profile_dir} está en uso: cierra la otra ventana de Chrome del script") from exc
+                f"The browser profile {profile_dir} is in use: close the script's other Chrome window") from exc
         log.warning("No se pudo abrir el canal %r (%s); uso Chromium de Playwright", channel, exc)
         return p.chromium.launch_persistent_context(profile_dir, headless=headless, **CONTEXT_OPTIONS)
 

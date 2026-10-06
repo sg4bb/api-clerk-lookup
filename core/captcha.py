@@ -185,7 +185,7 @@ def wait_until_solved(page: Page, timeout_s: int) -> None:
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise CaptchaTimeout("Nadie resolvió el CAPTCHA a tiempo")
+            raise CaptchaTimeout("The CAPTCHA was not solved in time")
         try:
             page.wait_for_function(RECAPTCHA_SOLVED_JS, timeout=min(remaining, 15) * 1000, polling=500)
             break

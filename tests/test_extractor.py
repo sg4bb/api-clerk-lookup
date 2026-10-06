@@ -111,7 +111,7 @@ class OutOfScopeTest(unittest.TestCase):
     def test_other_state(self):
         exc = self.reason(state="GA", county="Fulton", city="Atlanta", agency="Atlanta Police Department")
         self.assertEqual(exc.reason, "state")
-        self.assertIn("solo se buscan casos de Florida", str(exc))
+        self.assertIn("only Florida cases are searched", str(exc))
         self.assertEqual(self.reason(state="Georgia", county=None, city="Atlanta", agency=None).reason, "state")
 
     def test_county_not_in_florida_without_state(self):

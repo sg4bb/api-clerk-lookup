@@ -19,4 +19,4 @@ def get_adapter(platform: str) -> type[ClerkAdapter]:
     try:
         return ADAPTERS[platform]
     except KeyError:
-        raise KeyError(f"No hay adaptador para la plataforma '{platform}'") from None
+        raise KeyError(f"No adapter for the platform '{platform}'") from None

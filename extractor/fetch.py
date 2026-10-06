@@ -77,9 +77,9 @@ def fetch_article(url: str) -> Article:
 
     if not _usable(article):
         if blocked:
-            raise FetchError("El sitio del artículo bloquea las visitas desde tu ubicación o exige una "
-                             "verificación (no se pudo leer la nota).")
-        raise FetchError("No pude extraer el texto del artículo (¿página bloqueada o con muro de pago?)")
+            raise FetchError("The news site blocks visits from this location or requires a "
+                             "verification, so the article could not be read.")
+        raise FetchError("Could not read the article text (the page may be blocked or behind a paywall).")
     article.text = article.text[:MAX_TEXT_CHARS]
     log.info("Artículo: %r (%d caracteres, publicado %s, vía %s)",
              article.title, len(article.text), article.published, article.via)

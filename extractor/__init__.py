@@ -73,14 +73,14 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
         if _word_in(person.first_name, haystack) and _surname_in(person.last_name, haystack):
             people.append(person)
         else:
-            warnings.append(f"Descarté '{person.first_name} {person.last_name}': el nombre no aparece en el artículo")
+            warnings.append(f"Dropped '{person.first_name} {person.last_name}': the name does not appear in the article")
     if not people:
         detail = f" ({'; '.join(warnings)})" if warnings else ""
-        raise ExtractionError(f"El artículo no nombra a ningún arrestado o acusado{detail}")
+        raise ExtractionError(f"The article does not name anyone arrested or charged{detail}")
 
     ranked = [p for p in people if p.role in ARRESTED_ROLES] + [p for p in people if p.role not in ARRESTED_ROLES]
     if suspect_index >= len(ranked):
-        raise ExtractionError(f"Solo hay {len(ranked)} persona(s); --suspect {suspect_index + 1} no existe")
+        raise ExtractionError(f"The article names only {len(ranked)} person(s); number {suspect_index + 1} does not exist")
     person = ranked[suspect_index]
     if person.role == "suspect":
         warnings.append(f"{person.first_name} {person.last_name} figura como sospechoso, no como arrestado: "
@@ -189,11 +189,11 @@ def resolve_county(extraction: Extraction) -> str:
     """Clave del condado soportado ('orange') o OutOfScope con un mensaje claro."""
     state = _state_code(extraction.state)
     city = (extraction.city or "").strip() or None
-    place = ", ".join(p for p in (city, state) if p) or "lugar desconocido"
+    place = ", ".join(p for p in (city, state) if p) or "an unknown location"
     supported = ", ".join(supported_counties("FL"))
 
     if state and state != "FL":
-        raise OutOfScope("state", f"El artículo es de {place}: por ahora solo se buscan casos de Florida.",
+        raise OutOfScope("state", f"The article is about {place}. For now, only Florida cases are searched.",
                          state=state, city=city)
 
     # 1) El condado que dio el modelo; 2) la agencia; 3) la ciudad.
@@ -204,14 +204,14 @@ def resolve_county(extraction: Extraction) -> str:
 
     if county is None:
         if extraction.county and not state:
-            raise OutOfScope("state", f"El condado '{extraction.county}' no es de Florida ({place}): "
-                                      "por ahora solo se buscan casos de Florida.", county=extraction.county, city=city)
-        raise OutOfScope("unknown", f"No pude determinar el condado del artículo (ciudad: {city or '-'}, "
-                                    f"condado: {extraction.county or '-'}, agencia: {extraction.agency or '-'}).",
+            raise OutOfScope("state", f"'{extraction.county}' County is not in Florida ({place}). "
+                                      "For now, only Florida cases are searched.", county=extraction.county, city=city)
+        raise OutOfScope("unknown", f"Could not tell which county the article is about (city: {city or '-'}, "
+                                    f"county: {extraction.county or '-'}, agency: {extraction.agency or '-'}).",
                          state=state, county=extraction.county, city=city)
     if not is_supported(county, "FL"):
         name = florida.ALL_COUNTIES[county]
         where = f"{city} ({name} County, FL)" if city else f"{name} County, FL"
-        raise OutOfScope("county", f"El artículo es de {where}. Ese condado todavía no está soportado "
-                                   f"(soportados: {supported}).", state="FL", county=name, city=city)
+        raise OutOfScope("county", f"The article is about {where}. That county is not covered yet "
+                                   f"(covered: {supported}).", state="FL", county=name, city=city)
     return county

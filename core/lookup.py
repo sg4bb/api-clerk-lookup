@@ -92,8 +92,8 @@ def run_lookup(
                 if candidates:
                     break
             if not candidates:
-                return LookupResult("not_found", message="La búsqueda no devolvió casos"
-                                    + (f" (apellidos probados: {', '.join(variants)})" if len(variants) > 1 else ""))
+                return LookupResult("not_found", message="The portal search returned no cases"
+                                    + (f" (last names tried: {', '.join(variants)})" if len(variants) > 1 else ""))
 
             ranked = sorted(candidates, key=lambda c: prelim_score(query, c), reverse=True)
             ranked = [c for c in ranked if prelim_score(query, c) > 0]
@@ -122,8 +122,8 @@ def run_lookup(
                              winner[1].candidate.case_number)
             if not winner:
                 return LookupResult(status, candidates=summary,
-                                    message="Ningún caso supera el umbral" if status == "not_found"
-                                    else "Varios casos empatan; hace falta más información")
+                                    message="No case on the portal matches the article closely enough" if status == "not_found"
+                                    else "Several cases match equally; more details are needed to pick one")
 
             match, details = winner
             related = related_cases(details, scored)
@@ -143,7 +143,7 @@ def run_lookup(
                 return LookupResult(
                     "no_document", case_number=details.candidate.case_number,
                     score=match.score, reasons=match.reasons, candidates=summary,
-                    message="El caso existe pero ningún documento del docket coincide con los buscados",
+                    message="The case exists, but its docket has no incident report or arrest affidavit to download",
                     related_cases=related,
                     docket=docket,
                 )

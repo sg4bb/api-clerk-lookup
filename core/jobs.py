@@ -51,7 +51,7 @@ class JobStore:
             hint = ""
             if response.status_code == 404 or "PGRST" in response.text:
                 hint = " ¿Ya corriste sql/001_lookup_jobs.sql en el proyecto?"
-            raise JobsError(f"Supabase rechazó {what} ({response.status_code}): {response.text[:300]}{hint}")
+            raise JobsError(f"Supabase rejected the request ({what}, {response.status_code}): {response.text[:300]}{hint}")
         return response
 
     # --- Cola -------------------------------------------------------------
@@ -97,7 +97,7 @@ class JobStore:
         path = f"{job_id}/{safe}"
         r = self._http.post(f"/storage/v1/object/{BUCKET}/{quote(path)}", content=pdf.read_bytes(),
                             headers={"Content-Type": "application/pdf", "x-upsert": "true"}, timeout=120)
-        self._check(r, "subir el PDF")
+        self._check(r, "upload the PDF")
         return path
 
     def signed_url(self, path: str, seconds: int = 3600) -> str:

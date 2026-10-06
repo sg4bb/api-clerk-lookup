@@ -126,7 +126,7 @@ class OrangeMyEClerkAdapter(ClerkAdapter):
         if not page.locator("#caseList").count():
             error = page.locator(".validation-summary-errors, .field-validation-error, .alert-danger")
             message = error.first.inner_text().strip() if error.count() else "sin tabla de resultados"
-            raise SearchError(f"El portal no devolvió resultados: {message}")
+            raise SearchError(f"The portal returned no results: {message}")
 
         rows = self._read_all_results()
         return [c for c in (self._parse_result_row(r) for r in rows) if c]
@@ -174,7 +174,7 @@ class OrangeMyEClerkAdapter(ClerkAdapter):
             codes,
         )
         if sorted(selected) != sorted(codes):
-            raise SearchError(f"No se pudieron marcar los tipos de caso {codes} (quedaron {selected})")
+            raise SearchError(f"Could not select the case types {codes} (selected: {selected})")
         log.info("Tipos de caso marcados: %s", selected)
 
     def _read_all_results(self) -> list[dict]:
@@ -239,7 +239,7 @@ class OrangeMyEClerkAdapter(ClerkAdapter):
     def open_case(self, candidate: CaseCandidate) -> CaseDetails:
         link = self.page.locator("#caseList a.caseLink", has_text=candidate.case_number).first
         if not link.count():
-            raise SearchError(f"No encuentro el link de {candidate.case_number} en los resultados")
+            raise SearchError(f"The link for {candidate.case_number} was not found in the results")
         link.scroll_into_view_if_needed()
 
         detail_page = None
@@ -312,17 +312,17 @@ class OrangeMyEClerkAdapter(ClerkAdapter):
 
     def download(self, details: CaseDetails, entry: DocketEntry, dest_dir: Path) -> Path:
         if not entry.doc_ref:
-            raise DownloadError(f"'{entry.description}' no tiene link de documento")
+            raise DownloadError(f"'{entry.description}' has no document link")
         url = self.url(entry.doc_ref)
         # page.request comparte las cookies de la sesión del navegador; el
         # Referer imita haber hecho clic desde el detalle del caso.
         status, content_type, body = self.fetch(self.page, url, details.source_url)
         if status >= 400:
-            raise DownloadError(f"HTTP {status} al descargar '{entry.description}'")
+            raise DownloadError(f"HTTP {status} while downloading '{entry.description}'")
 
         if not is_pdf(body):
             if "html" not in content_type.lower():
-                raise DownloadError(f"La respuesta no es un PDF ni un visor ({content_type})")
+                raise DownloadError(f"The response is neither a PDF nor a viewer ({content_type})")
             log.info("El documento abre en un visor; obtengo el PDF desde el visor")
             body = self._pdf_from_viewer(url, details.source_url, dest_dir / "debug")
 
@@ -350,8 +350,8 @@ class OrangeMyEClerkAdapter(ClerkAdapter):
                 if body:
                     return body
             self._save_viewer_debug(viewer, responses, debug_dir)
-            raise DownloadError("El documento abre en un visor y no pude obtener el PDF; "
-                                f"diagnóstico en {debug_dir}")
+            raise DownloadError("The document opens in a viewer and the PDF could not be retrieved; "
+                                f"diagnostics in {debug_dir}")
         finally:
             viewer.close()
 

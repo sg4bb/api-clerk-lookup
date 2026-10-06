@@ -83,11 +83,11 @@ def extract(article_text: str, title: str, published: Optional[str], url: str) -
     try:
         from openai import BadRequestError, OpenAI
     except ImportError as exc:  # pragma: no cover
-        raise ExtractionError("Falta la librería openai: python -m pip install -r requirements.txt") from exc
+        raise ExtractionError("The openai library is missing: python -m pip install -r requirements.txt") from exc
 
     api_key = os.getenv("NVIDIA_API_KEY", "").strip()
     if not api_key:
-        raise ExtractionError("Falta NVIDIA_API_KEY en el archivo .env")
+        raise ExtractionError("NVIDIA_API_KEY is missing from the .env file")
     client = OpenAI(base_url=os.getenv("NVIDIA_BASE_URL", DEFAULT_BASE_URL), api_key=api_key,
                     timeout=float(os.getenv("NVIDIA_TIMEOUT_S", "180")), max_retries=0)
     models = model_list()
@@ -132,7 +132,7 @@ def extract(article_text: str, title: str, published: Optional[str], url: str) -
         except (ValueError, ValidationError) as exc:
             log.warning("Respuesta inválida del modelo (modo %s): %s", name, _short(exc))
             last_error = exc
-    raise ExtractionError(f"El modelo no devolvió datos válidos: {_short(last_error)}")
+    raise ExtractionError(f"The AI model did not return valid data: {_short(last_error)}")
 
 
 RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
@@ -180,11 +180,11 @@ def _create_with_retry(client, models: list[str], **kwargs):
                 _GONE.add(model)
                 if not models:
                     raise ExtractionError(
-                        f"El modelo {model} no existe o fue retirado por NVIDIA ({status}). "
-                        "Cambia NVIDIA_MODEL en .env por uno de build.nvidia.com.") from exc
+                        f"The model {model} does not exist or was retired by NVIDIA ({status}). "
+                        "Set NVIDIA_MODEL in .env to one from build.nvidia.com.") from exc
                 continue
             if status is not None and status not in RETRYABLE_STATUS:
-                raise ExtractionError(f"NVIDIA rechazó la solicitud ({status}): {_short(exc)}") from exc
+                raise ExtractionError(f"NVIDIA rejected the request ({status}): {_short(exc)}") from exc
             index += 1
             reason = f"error {status}" if status else type(exc).__name__
             if index % len(models):
@@ -197,8 +197,8 @@ def _create_with_retry(client, models: list[str], **kwargs):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise ExtractionError(
-                    f"NVIDIA sigue saturado después de {budget:.0f} s y {attempt} intento(s): {_short(exc)}. "
-                    "Vuelve a intentarlo en unos minutos (o sube NVIDIA_RETRY_MAX_S).") from exc
+                    f"NVIDIA is still overloaded after {budget:.0f} s and {attempt} attempt(s): {_short(exc)}. "
+                    "Try again in a few minutes (or raise NVIDIA_RETRY_MAX_S).") from exc
             pause = min(pause, remaining)
             log.warning("NVIDIA no disponible con %s (%s); reintento en %.0f s", model, reason, pause)
             time.sleep(pause)

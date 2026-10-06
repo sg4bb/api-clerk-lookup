@@ -31,14 +31,14 @@ class RemoteBrowserError(Exception):
 def _client() -> httpx.Client:
     key = os.getenv("BROWSERBASE_API_KEY", "").strip()
     if not key:
-        raise RemoteBrowserError("Falta BROWSERBASE_API_KEY en el archivo .env")
+        raise RemoteBrowserError("BROWSERBASE_API_KEY is missing from the .env file")
     return httpx.Client(base_url=os.getenv("BROWSERBASE_API_URL", API), timeout=30,
                         headers={"x-bb-api-key": key, "Content-Type": "application/json"})
 
 
 def _check(response: httpx.Response, what: str) -> dict:
     if response.status_code >= 400:
-        raise RemoteBrowserError(f"Browserbase rechazó {what} ({response.status_code}): {response.text[:300]}")
+        raise RemoteBrowserError(f"Browserbase rejected the request ({what}, {response.status_code}): {response.text[:300]}")
     return response.json()
 
 

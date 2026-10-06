@@ -34,19 +34,19 @@ from core.pipeline import PipelineResult, run_article
 
 log = logging.getLogger("worker")
 
-# Texto que el dashboard puede mostrar tal cual en cada etapa.
+# Texto que el sitio muestra tal cual en cada etapa (en inglés: es el idioma del sitio).
 STATUS_TEXT = {
-    "fetching": "Leyendo el artículo…",
-    "extracting": "Extrayendo los datos del artículo…",
-    "searching": "Buscando el caso en el portal del condado…",
-    "downloading": "Descargando el documento…",
+    "fetching": "Reading the article…",
+    "extracting": "Extracting the details from the article…",
+    "searching": "Searching the county court portal…",
+    "downloading": "Downloading the document…",
 }
 FINAL_TEXT = {
-    "found": "Documento encontrado.",
-    "no_document": "Se encontró el caso, pero no tiene un documento descargable.",
-    "not_found": "No se encontró un caso que coincida con el artículo.",
-    "ambiguous": "Varios casos coinciden y no se pudo elegir uno.",
-    "captcha_timeout": "Nadie resolvió el CAPTCHA a tiempo.",
+    "found": "Document found.",
+    "no_document": "The case was found, but it has no downloadable document.",
+    "not_found": "No case matching the article was found.",
+    "ambiguous": "Several cases match and none stands out.",
+    "captcha_timeout": "The CAPTCHA was not solved in time.",
 }
 
 _stop = False
@@ -72,8 +72,8 @@ def handle(store: JobStore, job: dict[str, Any], base_output: Path) -> str:
         store.update(job_id, status=status, status_detail=STATUS_TEXT.get(status))
 
     def captcha_waiting(live_url, timeout_s: int) -> None:
-        detail = ("Resuelve el CAPTCHA para continuar." if live_url
-                  else "Resuelve el CAPTCHA en la ventana de Chrome del worker.")
+        detail = ("Solve the CAPTCHA to continue." if live_url
+                  else "Solve the CAPTCHA in the worker's Chrome window.")
         store.update(job_id, status="awaiting_captcha", status_detail=detail,
                      live_view_url=live_url, captcha_expires_at=now_iso(timeout_s))
         log.info("Esperando el CAPTCHA (%s)", "live view publicado en el job" if live_url else "ventana local")
@@ -109,7 +109,7 @@ def handle(store: JobStore, job: dict[str, Any], base_output: Path) -> str:
                 fields["pdf_path"] = store.upload_pdf(job_id, result.pdf_path)
             except JobsError as exc:
                 log.error("No pude subir el PDF: %s", exc)
-                fields.update(status="error", status_detail=f"El documento se descargó pero no se pudo guardar: {exc}")
+                fields.update(status="error", status_detail=f"The document was downloaded but could not be saved: {exc}")
     if fields["status"] == "found" and not fields.get("status_detail"):
         fields["status_detail"] = FINAL_TEXT["found"]
     store.update(job_id, **fields)
