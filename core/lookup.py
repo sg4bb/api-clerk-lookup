@@ -20,7 +20,7 @@ from .captcha import CaptchaHandler, CaptchaTimeout, LiveViewCaptcha, ManualLoca
 from .county import CountyConfig
 from .matcher import pick_best, prelim_score, related_cases, resolve_same_incident, score_case
 from .models import LookupQuery, LookupResult
-from .utils import last_name_variants, today
+from .utils import last_name_variants, portal_text, today
 
 log = logging.getLogger(__name__)
 
@@ -80,14 +80,19 @@ def run_lookup(
         adapter.remote = session.remote
         try:
             on_status("searching")
-            variants = last_name_variants(query.last_name)
+            # El formulario se llena sin acentos: los expedientes no los llevan.
+            # (Para comparar resultados se sigue usando `query`; el comparador ya ignora acentos.)
+            search_query = replace(query, first_name=portal_text(query.first_name),
+                                   middle_name=portal_text(query.middle_name) or None,
+                                   last_name=portal_text(query.last_name))
+            variants = last_name_variants(search_query.last_name)
             candidates = []
             for attempt, last_name in enumerate(variants, 1):
                 if attempt > 1:
                     log.info("Sin resultados; reintento con apellido %r (%d/%d, nuevo CAPTCHA)",
                              last_name, attempt, len(variants))
                     adapter.throttle()
-                candidates = adapter.search(replace(query, last_name=last_name), date_from, date_to)
+                candidates = adapter.search(replace(search_query, last_name=last_name), date_from, date_to)
                 log.info("%d candidato(s) en resultados", len(candidates))
                 if candidates:
                     break

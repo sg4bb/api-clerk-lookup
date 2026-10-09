@@ -123,6 +123,11 @@ class OutOfScopeTest(unittest.TestCase):
         self.assertIn("Ocala (Marion County, FL)", str(exc))
         self.assertIn("Orange County", str(exc))
 
+    def test_county_given_as_city_not_repeated(self):
+        exc = self.reason(county="Marion", city="Marion County", agency="Marion County Sheriff's Office")
+        self.assertIn("about Marion County, FL.", str(exc))
+        self.assertNotIn("(Marion County, FL)", str(exc))
+
     def test_florida_county_named(self):
         exc = self.reason(county="Seminole County", city="Sanford", agency="Sanford Police Department")
         self.assertEqual((exc.reason, exc.county), ("county", "Seminole"))

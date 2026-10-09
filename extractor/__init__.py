@@ -218,7 +218,9 @@ def resolve_county(extraction: Extraction) -> str:
                          state=state, county=extraction.county, city=city)
     if not is_supported(county, "FL"):
         name = florida.ALL_COUNTIES[county]
-        where = f"{city} ({name} County, FL)" if city else f"{name} County, FL"
+        # A veces la IA pone el condado como ciudad ("Marion County"): no repetirlo.
+        city_is_county = normalize(city) in (normalize(name), normalize(f"{name} County"))
+        where = f"{city} ({name} County, FL)" if city and not city_is_county else f"{name} County, FL"
         raise OutOfScope("county", f"The article is about {where}. That county is not covered yet "
                                    f"(covered: {supported}).", state="FL", county=name, city=city)
     return county

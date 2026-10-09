@@ -41,6 +41,22 @@ def normalize(text: Optional[str]) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def portal_text(text: Optional[str]) -> str:
+    """Nombre tal como lo guardan los portales: sin acentos ni eñes.
+
+    'José' -> 'Jose', 'González Delgado' -> 'Gonzalez Delgado', 'Muñoz' -> 'Munoz'.
+    Conserva mayúsculas, espacios, guiones y apóstrofos (O'Neil).
+    Visto en Orange: el expediente dice 'GONZALEZ DELGADO, JOSE ALBERTO' y la
+    búsqueda con 'González Delgado' no devuelve nada.
+    """
+    if not text:
+        return ""
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    text = re.sub(r"[^A-Za-z0-9 '\-.]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
 
 
