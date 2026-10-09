@@ -25,8 +25,13 @@ from .schema import Extraction, Person
 
 log = logging.getLogger(__name__)
 
-__all__ = ["Article", "Extraction", "ExtractionError", "OutOfScope", "FetchError", "ArticleQuery",
+__all__ = ["Article", "Extraction", "ExtractionError", "NoSuspect", "OutOfScope", "FetchError", "ArticleQuery",
            "fetch_article", "extract", "build_query", "query_from_url"]
+
+class NoSuspect(ExtractionError):
+    """La nota no nombra a ningún arrestado o acusado: el portal se busca por
+    nombre, así que no hay nada que buscar."""
+
 
 class OutOfScope(ExtractionError):
     """El artículo es de un lugar que todavía no se busca (otro estado u otro condado).
@@ -73,10 +78,11 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
         if _word_in(person.first_name, haystack) and _surname_in(person.last_name, haystack):
             people.append(person)
         else:
-            warnings.append(f"Dropped '{person.first_name} {person.last_name}': the name does not appear in the article")
+            warnings.append(f"Descarté '{person.first_name} {person.last_name}': el nombre no aparece en el artículo")
     if not people:
         detail = f" ({'; '.join(warnings)})" if warnings else ""
-        raise ExtractionError(f"The article does not name anyone arrested or charged{detail}")
+        raise NoSuspect("The article doesn't name the person who was arrested or charged. "
+                        f"The court portal can only be searched by name.{detail}")
 
     ranked = [p for p in people if p.role in ARRESTED_ROLES] + [p for p in people if p.role not in ARRESTED_ROLES]
     if suspect_index >= len(ranked):
@@ -206,8 +212,9 @@ def resolve_county(extraction: Extraction) -> str:
         if extraction.county and not state:
             raise OutOfScope("state", f"'{extraction.county}' County is not in Florida ({place}). "
                                       "For now, only Florida cases are searched.", county=extraction.county, city=city)
-        raise OutOfScope("unknown", f"Could not tell which county the article is about (city: {city or '-'}, "
-                                    f"county: {extraction.county or '-'}, agency: {extraction.agency or '-'}).",
+        log.info("Sin condado: ciudad=%r condado=%r agencia=%r", city, extraction.county, extraction.agency)
+        raise OutOfScope("unknown", "The article doesn't say which city or county the arrest was in, "
+                                    "so the right court portal can't be chosen.",
                          state=state, county=extraction.county, city=city)
     if not is_supported(county, "FL"):
         name = florida.ALL_COUNTIES[county]

@@ -102,7 +102,7 @@ def process(case: dict[str, Any], base_output: Path, dry_run: bool, suspect: int
             extraction = extract(article.text, article.title, published, article.url)
             _write(out / "extraction.json", extraction.model_dump())
         aq = build_query(extraction, article, suspect_index=case.get("suspect", suspect) - 1)
-    except OutOfScope as exc:
+    except OutOfScope as exc:  # incluye 'unknown_location'
         # Otro estado u otro condado: se avisa sin abrir el portal (no gasta CAPTCHA).
         return "NO_SOPORTADO", str(exc)
     except (FetchError, ExtractionError) as exc:

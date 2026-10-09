@@ -21,7 +21,8 @@ log = logging.getLogger(__name__)
 TABLE = "lookup_jobs"
 BUCKET = "incident-reports"
 WORKING = ("fetching", "extracting", "searching", "awaiting_captcha", "downloading")
-FINAL = ("found", "no_document", "not_found", "ambiguous", "unsupported", "captcha_timeout", "error", "cancelled")
+FINAL = ("found", "no_document", "not_found", "ambiguous", "unsupported", "unreadable", "no_suspect",
+         "unknown_location", "captcha_timeout", "error", "cancelled")
 
 
 class JobsError(Exception):

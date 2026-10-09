@@ -19,7 +19,11 @@ from .models import LookupResult
 log = logging.getLogger(__name__)
 
 # Estados finales posibles (además de los de LookupResult):
-#   unsupported = otro estado o condado sin soporte; error = no se pudo leer o extraer.
+#   unreadable       = no se pudo leer la nota (404, sitio inexistente, bloqueo, muro de pago)
+#   no_suspect       = la nota no nombra a nadie arrestado o acusado
+#   unknown_location = no se pudo saber de qué condado es la nota
+#   unsupported      = otro estado o condado sin soporte
+#   error            = falla técnica (IA caída, navegador, etc.): vale la pena reintentar
 
 
 @dataclass
@@ -59,8 +63,8 @@ def run_article(
     on_captcha_waiting=None,
     on_captcha_done=None,
 ) -> PipelineResult:
-    from extractor import (Article, ExtractionError, FetchError, OutOfScope, build_query, extract,
-                           fetch_article)
+    from extractor import (Article, ExtractionError, FetchError, NoSuspect, OutOfScope, build_query,
+                           extract, fetch_article)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     result = PipelineResult(status="error")
@@ -82,9 +86,16 @@ def run_article(
         aq = build_query(extraction, article, suspect_index=suspect_index)
         result.query, result.notes, result.warnings = _jsonable(asdict(aq.query)), aq.notes, aq.warnings
     except OutOfScope as exc:
-        result.status, result.message = "unsupported", str(exc)
+        result.status = "unknown_location" if exc.reason == "unknown" else "unsupported"
+        result.message = str(exc)
         return result
-    except (FetchError, ExtractionError) as exc:
+    except NoSuspect as exc:
+        result.status, result.message = "no_suspect", str(exc)
+        return result
+    except FetchError as exc:
+        result.status, result.message = "unreadable", str(exc)
+        return result
+    except ExtractionError as exc:
         result.message = str(exc)
         return result
     except Exception as exc:

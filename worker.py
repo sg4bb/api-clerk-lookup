@@ -47,6 +47,9 @@ FINAL_TEXT = {
     "not_found": "No case matching the article was found.",
     "ambiguous": "Several cases match and none stands out.",
     "captcha_timeout": "The CAPTCHA was not solved in time.",
+    "unreadable": "The article could not be read.",
+    "no_suspect": "The article doesn't name the person who was arrested or charged.",
+    "unknown_location": "Could not tell which county the article is about.",
 }
 
 _stop = False

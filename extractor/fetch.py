@@ -25,7 +25,31 @@ MAX_TEXT_CHARS = 15_000   # suficiente para cualquier nota local; acota el costo
 
 
 class FetchError(Exception):
-    pass
+    """No se pudo leer la nota. kind: missing (404), unreachable (el sitio no
+    existe o no responde), blocked (bloqueo por país o verificación) o unreadable."""
+
+    def __init__(self, message: str, kind: str = "unreadable"):
+        super().__init__(message)
+        self.kind = kind
+
+
+class _PageGone(Exception):
+    """La página respondió 404/410: no se lee su contenido (sería la página de
+    "no encontrado" del medio, a veces con nombres de otras noticias)."""
+
+    def __init__(self, status: int):
+        super().__init__(f"HTTP {status}")
+        self.status = status
+
+
+_UNREACHABLE = re.compile(r"ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|ERR_ADDRESS_UNREACHABLE|"
+                          r"ERR_CONNECTION_TIMED_OUT|ERR_SSL|ERR_CERT|Name or service not known|getaddrinfo", re.I)
+
+
+def _goto(page, url: str) -> None:
+    response = page.goto(url, wait_until="domcontentloaded", timeout=45_000)
+    if response is not None and response.status in (404, 410):
+        raise _PageGone(response.status)
 
 
 @dataclass
@@ -60,13 +84,20 @@ def fetch_article(url: str) -> Article:
     if os.getenv("BROWSER_PROVIDER", "local").strip().lower() != "local":
         attempts.append(("remote", lambda: _fetch_with_remote_browser(url)))
 
-    article, blocked = None, False
+    article, blocked, gone, unreachable = None, False, None, False
     for via, download in attempts:
         try:
             article = _parse(download(), url, via)
+        except _PageGone as exc:
+            log.info("La página no existe (%s): %s", via, exc)
+            gone, article = exc.status, None
+            break   # otra vía daría el mismo 404
         except Exception as exc:
             log.info("No pude leer el artículo (%s): %s", via, exc)
             article = None
+            if _UNREACHABLE.search(str(exc)):
+                unreachable = True
+                break   # el sitio no existe: el navegador remoto tampoco llegaría (y gastaría una sesión)
         if _usable(article):
             break
         if _blocked(article):
@@ -76,10 +107,17 @@ def fetch_article(url: str) -> Article:
             log.info("Lectura insuficiente (%s); pruebo otra vía", via)
 
     if not _usable(article):
+        if gone:
+            raise FetchError(f"The link leads to a page that doesn't exist (HTTP {gone}). "
+                             "Check that the link is complete.", kind="missing")
         if blocked:
             raise FetchError("The news site blocks visits from this location or requires a "
-                             "verification, so the article could not be read.")
-        raise FetchError("Could not read the article text (the page may be blocked or behind a paywall).")
+                             "verification, so the article could not be read.", kind="blocked")
+        if unreachable and article is None:
+            raise FetchError("The site could not be reached. Check that the link is spelled correctly.",
+                             kind="unreachable")
+        raise FetchError("Could not read an article at this link. The page may be behind a paywall, "
+                         "or it may not be a news story.")
     article.text = article.text[:MAX_TEXT_CHARS]
     log.info("Artículo: %r (%d caracteres, publicado %s, vía %s)",
              article.title, len(article.text), article.published, article.via)
@@ -92,7 +130,7 @@ def _fetch_with_remote_browser(url: str) -> Optional[str]:
 
     log.info("Abro el artículo en el navegador remoto")
     with open_browser() as session:
-        session.page.goto(url, wait_until="domcontentloaded", timeout=45_000)
+        _goto(session.page, url)
         session.page.wait_for_timeout(2_500)
         return session.page.content()
 
@@ -127,11 +165,13 @@ def _fetch_with_browser(url: str) -> Optional[str]:
             browser = p.chromium.launch(headless=True)
         try:
             page = browser.new_page(locale="en-US")
-            page.goto(url, wait_until="domcontentloaded", timeout=45_000)
+            _goto(page, url)
             page.wait_for_timeout(2_500)   # deja que cargue el cuerpo de la nota
             return page.content()
+        except _PageGone:
+            raise
         except Exception as exc:
             log.warning("El navegador tampoco pudo abrir el artículo: %s", exc)
-            return None
+            raise
         finally:
             browser.close()

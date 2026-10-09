@@ -39,6 +39,9 @@ create table if not exists public.lookup_jobs (
                        'not_found',          -- ningún caso coincide
                        'ambiguous',          -- varios casos empatan
                        'unsupported',        -- otro estado o condado sin soporte
+                       'unreadable',         -- no se pudo leer la nota (404, bloqueo, muro de pago)
+                       'no_suspect',         -- la nota no nombra a ningún arrestado
+                       'unknown_location',   -- no se pudo saber de qué condado es
                        'captcha_timeout',    -- nadie resolvió el CAPTCHA a tiempo
                        'error',
                        'cancelled')),
@@ -65,6 +68,13 @@ create table if not exists public.lookup_jobs (
   related_cases      text[] not null default '{}',
   pdf_path           text                               -- ruta dentro del bucket incident-reports
 );
+
+-- Si la tabla ya existía, se actualiza la lista de estados permitidos.
+alter table public.lookup_jobs drop constraint if exists lookup_jobs_status_check;
+alter table public.lookup_jobs add constraint lookup_jobs_status_check check (status in (
+  'pending', 'fetching', 'extracting', 'searching', 'awaiting_captcha', 'downloading',
+  'found', 'no_document', 'not_found', 'ambiguous', 'unsupported', 'unreadable', 'no_suspect',
+  'unknown_location', 'captcha_timeout', 'error', 'cancelled'));
 
 create index if not exists lookup_jobs_pending_idx on public.lookup_jobs (created_at) where status = 'pending';
 create index if not exists lookup_jobs_requested_by_idx on public.lookup_jobs (requested_by, created_at desc);

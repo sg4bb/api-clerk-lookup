@@ -158,3 +158,35 @@ Cada usuario solo ve sus propios pedidos y sus propios PDF (RLS). Si el worker s
 2. **Hecho:** `run_article.py`, del link del artículo al PDF (validado el 2026-09-30).
 3. **En prueba:** `worker.py` + tabla `lookup_jobs` (`enqueue.py` simula al dashboard).
 4. **Validado en prueba (2026-10-05):** navegador remoto con el CAPTCHA en un iframe. Falta: ventana flotante en el dashboard y despliegue del worker en un servidor.
+
+
+## Roles
+
+`sql/002_roles.sql` (se corre después del 001) crea la tabla `profiles`: cada
+cuenta nueva recibe ahí el rol `user`. Para hacer admin a alguien: Supabase >
+Table Editor > `profiles` > `role` = `admin`. Nadie puede cambiar su propio rol
+desde la web. Por ahora el rol solo se muestra; `public.is_admin()` queda lista
+para los permisos de administrador.
+
+## Revisar los permisos de Supabase
+
+    python security_check.py --email tu@correo.com
+
+Intenta lo que podría hacer cualquiera con la clave pública de la web (leer
+sin sesión, cambiar estados, llamar a las funciones del worker, ver PDF de
+otros) y confirma que todo se rechaza. Necesita `SUPABASE_ANON_KEY` en el
+`.env`. Si los permisos están bien, no crea ni cambia nada.
+
+## Resultados que ve el usuario
+
+| Estado | Cuándo |
+| --- | --- |
+| `found` | PDF listo |
+| `no_document` | El caso existe, pero sin reporte ni declaración de arresto |
+| `not_found` / `ambiguous` | Ningún caso coincide / varios empatan |
+| `unreadable` | No se pudo leer la nota: 404, sitio inexistente, bloqueo, muro de pago |
+| `no_suspect` | La nota no nombra a ningún arrestado (el portal se busca por nombre) |
+| `unknown_location` | La nota no dice ciudad ni condado |
+| `unsupported` | Otro estado o un condado sin soporte |
+| `captcha_timeout` | Nadie marcó la casilla a tiempo |
+| `error` | Falla técnica (IA, navegador, Supabase): vale la pena reintentar |
