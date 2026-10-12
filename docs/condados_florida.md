@@ -58,6 +58,17 @@ defecto: hay que elegir "ALL". Los documentos son enlaces directos a
 `docketimage.pdf` y se descargan sin cuenta. Imágenes con marca de agua;
 algunas pueden ser "View on Request".
 
+Qué documento se descarga: entre los válidos (arrest affidavit, probable
+cause affidavit, complaint affidavit, affidavit para orden de captura y
+"warrant served"), el de **Doc # más bajo**, es decir, el que abrió el
+expediente. Si lo arrestaron en el momento es el arrest affidavit; si fue con
+orden de captura es el "BENCH WARRANT SERVED", que trae la orden y el
+affidavit de la policía con la narración. Los arrest affidavits posteriores
+suelen ser violaciones de la fianza o cargos nuevos. No se ordena por fecha
+porque hay fechas mal cargadas (Leroy Parks III: un 20/04/2026 en agosto).
+Al sumar un condado, revisar en la consola la línea `Documentos en ...` por
+si usa otros nombres.
+
 | Condado | Población | Código | Documentos sin cuenta | Notas |
 | --- | ---: | --- | --- | --- |
 | Marion (Ocala) | 419.510 | 42 | Sí (arrest affidavit descargado) | Hecho. Archivo viejo aparte (FileBound) |

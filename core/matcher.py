@@ -288,6 +288,9 @@ def same_incident(a: CaseDetails, b: CaseDetails) -> bool:
 
     - Comparten el número de reporte de la agencia (Control Number): seguro.
     - Si no: misma fecha de arresto, mismas fechas de ofensa y misma agencia.
+    - Portales que no muestran número de reporte, fecha de arresto ni agencia
+      (Civitek): mismo acusado y fechas de ofensa a 1 día o menos. Una racha
+      de hechos (robo, tiroteo, huida) se abre como varios casos del mismo día.
     """
     controls_a = {c.control_number for c in a.charges if c.control_number}
     controls_b = {c.control_number for c in b.charges if c.control_number}
@@ -300,14 +303,23 @@ def same_incident(a: CaseDetails, b: CaseDetails) -> bool:
                 {normalize_agency(c.agency) for c in d.charges if c.agency})
 
     ka, kb = key(a), key(b)
-    return bool(ka[0]) and bool(ka[1]) and ka == kb
+    if bool(ka[0]) and bool(ka[1]) and ka == kb:
+        return True
+    if any(c.control_number or c.arrest_date or c.agency for c in a.charges + b.charges):
+        return False                     # el portal sí trae esos datos y no coinciden
+    if not (ka[0] and kb[0]):
+        return False
+    if normalize(a.candidate.defendant) != normalize(b.candidate.defendant):
+        return False
+    return min(abs((x - y).days) for x in ka[0] for y in kb[0]) <= 1
 
 
 def _preference(details: CaseDetails, has_document: Callable[[CaseDetails], bool]):
     match = _CASE_TYPE_RE.match(details.candidate.case_number)
     rank = _TYPE_RANK.get(match.group(1) if match else "", 9)
     filed = details.candidate.filed_date or date.max
-    return (0 if has_document(details) else 1, rank, filed)
+    # Con documento primero; después el caso principal (no el consolidado en otro).
+    return (0 if has_document(details) else 1, 1 if details.consolidated else 0, rank, filed)
 
 
 def resolve_same_incident(

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -120,6 +121,8 @@ _LOCAL_NUMBER_RE = re.compile(r"\[?\s*([0-9]{2}[A-Z]{2}[0-9]{4,}[A-Z0-9]*)\s*\]?
 _DATE = r"(\d{1,2}/\d{1,2}/\d{4})"
 # Detalle real (12/10/2026): "Date ActionStatute / TextOffense:09/19/2026Initial:09/19/2026Charged..."
 _OFFENSE_RE = re.compile(r"offen[cs]e(?:\s*date)?\s*:?\s*" + _DATE, re.I)
+# "...Prosecutor:09/03/2026Consolidated782.04.2 / ..." o "...Prosecutor:10/05/2026Filed..."
+_PROSECUTOR_RE = re.compile(r"prosecutor\s*:?\s*\d{1,2}/\d{1,2}/\d{4}\s*([a-z][a-z ]*?)(?=\d|$)", re.I)
 _ARREST_RE = re.compile(r"arrest\s*date\D{0,25}?" + _DATE, re.I)
 _AGENCY_RE = re.compile(r"(?:arresting\s+)?agency\s*:?\s*([A-Z][A-Z0-9 .'&/-]{3,60}?)(?=\s{2,}|\s+[A-Z][a-z]|$)", re.I)
 
@@ -183,17 +186,27 @@ def charges_from_case(data: dict) -> list[Charge]:
     return charges
 
 
+def is_consolidated(data: dict) -> bool:
+    """True si la fiscalía unió todos los cargos de este caso a otro ("Consolidated")."""
+    actions = [m.group(1).strip().lower() for row in data.get("charges", [])
+               for m in [_PROSECUTOR_RE.search(row.get("detail", ""))] if m]
+    return bool(actions) and all(a.startswith("consolidated") for a in actions)
+
+
 def docket_from_case(data: dict) -> list[DocketEntry]:
     heads = [h.lower() for h in data.get("docketHeads", [])]
     i_date = next((i for i, h in enumerate(heads) if "date" in h), 2)
     i_desc = next((i for i, h in enumerate(heads) if "description" in h), 3)
+    i_num = next((i for i, h in enumerate(heads) if h.startswith("doc")), None)
     entries = []
     for row in data.get("docket", []):
         cells = row.get("cells", [])
+        number = re.sub(r"\D", "", cells[i_num]) if i_num is not None and i_num < len(cells) else ""
         entries.append(DocketEntry(
             date=parse_us_date(cells[i_date]) if i_date < len(cells) else None,
             description=cells[i_desc] if i_desc < len(cells) else "",
             doc_ref=row.get("href"),
+            number=int(number) if number else None,
         ))
     return entries
 
@@ -205,6 +218,20 @@ _FORM_STATE_JS = """() => ({
   from: document.querySelector("[name='form:search_tab:fromDate']").value,
   to: document.querySelector("[name='form:search_tab:toDate']").value,
 })"""
+
+_PERSON_ROWS = 'tbody[id$="partySearchResultsTable_data"] > tr[data-ri]'
+
+_PERSON_EXPANDED_JS = """(i) => {
+  const rows = document.querySelectorAll('tbody[id$="partySearchResultsTable_data"] > tr[data-ri]');
+  const n = rows[i] && rows[i].nextElementSibling;
+  return !!(n && n.classList.contains('ui-expanded-row-content'));
+}"""
+
+# Todo el docket a la vista: el botón "Next Page" está desactivado (o no hay paginador).
+_DOCKET_COMPLETE_JS = """() => {
+  const next = document.querySelector('[id="form:docketDataTable1"] .ui-paginator-next');
+  return !next || next.classList.contains('ui-state-disabled');
+}"""
 
 LASTNAME = "input[name='form:search_tab:lastname']"
 PUBLIC_RE = re.compile(r"^\s*public\s*$", re.I)
@@ -260,10 +287,15 @@ class CivitekOcrsAdapter(ClerkAdapter):
             log.info("El portal no encontró coincidencias")
             return []
 
-        self._expand_people()
+        missing = self._expand_people()
         people = page.evaluate(_READ_RESULTS_JS) or []
         candidates = candidates_from_results(people)
         log.info("%d persona(s), %d caso(s) en resultados", len(people), len(candidates))
+        if missing and not candidates:
+            # No es "no encontrado": el portal no mostró los casos. Se corta con
+            # error (y queda el debug de la página) para poder reintentar.
+            raise SearchError("The court portal found matching people but didn't show their cases. "
+                              "Try again in a few minutes.")
         if len(people) > MAX_PEOPLE:
             log.warning("Hay %d personas en los resultados; solo se revisan las primeras %d",
                         len(people), MAX_PEOPLE)
@@ -329,23 +361,67 @@ class CivitekOcrsAdapter(ClerkAdapter):
         if not box.is_checked():
             raise SearchError(f"Couldn't select the case type {value} on the court portal")
 
-    def _expand_people(self) -> None:
-        """Despliega cada persona para que aparezcan sus casos."""
-        togglers = self.page.locator('tbody[id$="partySearchResultsTable_data"] .ui-row-toggler')
-        for i in range(min(togglers.count(), MAX_PEOPLE)):
-            toggler = togglers.nth(i)
-            if toggler.get_attribute("aria-expanded") == "true":
-                continue
-            toggler.click()
-            try:
-                self.page.wait_for_function(
-                    "(i) => { const rows = document.querySelectorAll("
-                    "'tbody[id$=\"partySearchResultsTable_data\"] > tr[data-ri]');"
-                    " const n = rows[i] && rows[i].nextElementSibling;"
-                    " return n && n.classList.contains('ui-expanded-row-content'); }",
-                    arg=i, timeout=15_000)
-            except PlaywrightTimeout:
-                log.warning("La persona %d no se desplegó", i + 1)
+    def _expand_people(self) -> list[int]:
+        """Despliega cada persona para que aparezcan sus casos.
+
+        Devuelve las personas (desde 0) que no se pudieron desplegar.
+        El portal dibuja la lista y responde a cada clic con una petición
+        aparte; a veces tarda o ignora el clic. Por eso: se espera a que la
+        lista deje de crecer, se despliega cada persona y las que fallaron se
+        revisan otra vez (pudo llegar tarde) antes de un único reintento.
+        """
+        rows = self.page.locator(_PERSON_ROWS)
+        total, stable_since = rows.count(), time.monotonic()
+        while time.monotonic() - stable_since < 1.5:
+            self.page.wait_for_timeout(300)
+            now = rows.count()
+            if now != total:
+                total, stable_since = now, time.monotonic()
+        total = min(total, MAX_PEOPLE)
+        log.info("Despliego %d persona(s)", total)
+
+        pending = [i for i in range(total) if not self._expand_person(i, 15_000, retry=False)]
+        if pending:
+            self.page.wait_for_timeout(2_000)
+            pending = [i for i in pending if not self.page.evaluate(_PERSON_EXPANDED_JS, i)]
+        if pending:
+            log.info("Reintento desplegar persona(s) %s", [i + 1 for i in pending])
+            pending = [i for i in pending if not self._expand_person(i, 15_000, retry=True)]
+        for i in pending:
+            log.warning("La persona %d no se desplegó: %s", i + 1, self._person_name(i))
+        return pending
+
+    def _expand_person(self, i: int, timeout_ms: int, retry: bool) -> bool:
+        if self.page.evaluate(_PERSON_EXPANDED_JS, i):
+            return True
+        toggler = self.page.locator(_PERSON_ROWS).nth(i).locator(".ui-row-toggler").first
+        if not toggler.count():
+            log.info("La persona %d no tiene casos para desplegar", i + 1)
+            return True
+        opening = "ui-icon-circle-triangle-s" in (toggler.get_attribute("class") or "")
+        try:
+            if opening and retry:
+                # El portal la marcó como abierta pero no llegó el contenido: un
+                # clic la cierra y otro la vuelve a pedir.
+                toggler.click(timeout=10_000)
+                self.page.wait_for_timeout(1_000)
+                toggler.click(timeout=10_000)
+            elif not opening:
+                toggler.click(timeout=10_000)
+            # opening y primer intento: ya la pidió; otro clic la cerraría, se espera.
+        except PlaywrightTimeout:
+            return False
+        try:
+            self.page.wait_for_function(_PERSON_EXPANDED_JS, arg=i, timeout=timeout_ms)
+            return True
+        except PlaywrightTimeout:
+            return False
+
+    def _person_name(self, i: int) -> str:
+        try:
+            return " ".join(self.page.locator(_PERSON_ROWS).nth(i).inner_text(timeout=2_000).split())[:80]
+        except Exception:
+            return "?"
 
     def _page_message(self) -> str:
         loc = self.page.locator(".ui-messages-error, .ui-growl-message, .ui-message-error")
@@ -365,9 +441,11 @@ class CivitekOcrsAdapter(ClerkAdapter):
             self._show_all_docket(tab)
             data = tab.evaluate(_READ_CASE_JS)
             details = CaseDetails(candidate=candidate, charges=charges_from_case(data),
-                                  docket=docket_from_case(data), source_url=tab.url)
-            log.info("%s: %d cargo(s), %d entrada(s) de docket", candidate.case_number,
-                     len(details.charges), len(details.docket))
+                                  docket=docket_from_case(data), source_url=tab.url,
+                                  consolidated=is_consolidated(data))
+            log.info("%s: %d cargo(s), %d entrada(s) de docket%s", candidate.case_number,
+                     len(details.charges), len(details.docket),
+                     " (consolidado en otro caso)" if details.consolidated else "")
             details_text = " | ".join(c.get("detail", "")[:300] for c in data.get("charges", []) if c.get("detail"))
             if details_text:
                 log.info("Detalle de cargos (%s): %s", candidate.case_number, details_text[:900])
@@ -393,26 +471,60 @@ class CivitekOcrsAdapter(ClerkAdapter):
 
     @staticmethod
     def _show_all_docket(tab: Page) -> None:
-        """El docket muestra 10 entradas por página: se elige "ALL"."""
+        """El docket muestra 10 entradas por página: se elige "ALL".
+
+        Se comprueba que de verdad cargó todo: mientras haya más páginas, el
+        botón "Next Page" está activo. Si sigue activo, se intenta otra vez.
+        """
         select = tab.locator('[id="form:docketDataTable1"] select').filter(
             has=tab.locator("option", has_text="ALL"))
         if not select.count():
             return
-        before = tab.locator('[id="form:docketDataTable1_data"] > tr').count()
-        try:
-            select.first.select_option(label="ALL", timeout=5_000)
-        except Exception:
-            # Si el portal lo esconde detrás de su menú dibujado, se cambia directo.
-            log.info("Elijo ALL en el docket por script")
-            select.first.evaluate(
-                "el => { const o = Array.from(el.options).find(o => o.text.trim() === 'ALL');"
-                " if (o) { el.value = o.value; el.dispatchEvent(new Event('change', {bubbles: true})); } }")
-        try:
-            tab.wait_for_function(
-                "(n) => document.querySelectorAll('[id=\"form:docketDataTable1_data\"] > tr').length !== n",
-                arg=before, timeout=10_000)
-        except PlaywrightTimeout:
-            pass   # el docket ya cabía en una página
+        for attempt, wait_ms in enumerate((10_000, 20_000), start=1):
+            if tab.evaluate(_DOCKET_COMPLETE_JS):
+                return
+            if attempt > 1:
+                log.info("El docket no mostró todo con ALL; reintento")
+            try:
+                select.first.select_option(label="ALL", timeout=5_000)
+            except Exception:
+                # Si el portal lo esconde detrás de su menú dibujado, se cambia directo.
+                log.info("Elijo ALL en el docket por script")
+                select.first.evaluate(
+                    "el => { const o = Array.from(el.options).find(o => o.text.trim() === 'ALL');"
+                    " if (o) { el.value = o.value; el.dispatchEvent(new Event('change', {bubbles: true})); } }")
+            try:
+                tab.wait_for_function(_DOCKET_COMPLETE_JS, timeout=wait_ms)
+                return
+            except PlaywrightTimeout:
+                pass
+        log.warning("El docket sigue con más páginas después de elegir ALL; puede faltar algún documento")
+
+    def find_documents(self, details: CaseDetails) -> list[DocketEntry]:
+        """Los documentos válidos, el primero que entró al expediente primero.
+
+        El expediente se abre con el documento del arresto: el arrest affidavit
+        si lo arrestaron en el momento (Amy Hogg), o la orden ejecutada ("BENCH
+        WARRANT SERVED") si fue con orden de captura (Leroy Parks III: la orden
+        y el affidavit de la policía con la narración, Doc #6). Lo que entra
+        después son violaciones de la fianza, cargos nuevos, etc.
+
+        Se ordena por "Doc #" (el número que el portal da al recibir cada
+        documento), no por fecha: hay fechas mal cargadas (un 20/04 en agosto).
+        Sin número, por tipo de documento y fecha.
+        """
+        ranked = super().find_documents(details)
+        patterns = [re.compile(p, re.I) for p in self.county.document_priority]
+
+        def kind(entry: DocketEntry) -> int:
+            return next((i for i, rx in enumerate(patterns) if rx.search(entry.description)), len(patterns))
+
+        def key(entry: DocketEntry):
+            if entry.number is not None:
+                return (0, entry.number, 0, date.min)
+            return (1, 0, kind(entry), entry.date or date.max)
+
+        return sorted(ranked, key=key)
 
     # --- 3. Descarga ----------------------------------------------------------
 

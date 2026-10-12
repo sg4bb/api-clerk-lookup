@@ -140,6 +140,10 @@ def run_lookup(
                 for e in details.docket
             ]
             documents = adapter.find_documents(details)
+            if documents:
+                log.info("Documentos en %s (el primero se descarga): %s", details.candidate.case_number,
+                         "; ".join((f"#{d.number} " if d.number is not None else "")
+                                   + f"{d.date or 'sin fecha'} {d.description}" for d in documents[:6]))
             if not documents:
                 downloadable = [e for e in docket if e["downloadable"]]
                 log.warning("Ningún documento coincide en %s. Descargables en el docket (%d de %d):",

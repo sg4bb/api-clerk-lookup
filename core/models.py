@@ -75,6 +75,7 @@ class DocketEntry:
     date: Optional[date]
     description: str
     doc_ref: Optional[str]            # link al documento; depende de la sesión
+    number: Optional[int] = None      # orden en que entró al expediente (Civitek: "Doc #")
 
 
 @dataclass
@@ -83,6 +84,8 @@ class CaseDetails:
     charges: list[Charge]
     docket: list[DocketEntry]
     source_url: Optional[str] = None  # URL del detalle (se usa como Referer)
+    # La fiscalía unió este caso a otro (Civitek: "Consolidated"); el principal es el otro.
+    consolidated: bool = False
 
 
 @dataclass

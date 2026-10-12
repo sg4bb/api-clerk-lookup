@@ -40,6 +40,9 @@ CIVITEK_DOCUMENTS = [
     r"complaint\s*/?\s*arrest affidavit",
     r"complaint affidavit",
     r"affidavit (?:for|to issue) (?:arrest )?warrant",
+    # Arresto con orden de captura: la orden ejecutada trae la orden y el
+    # affidavit de la policía con la narración (Marion, Leroy Parks III, Doc #6).
+    r"\bwarrant served\b",
 ]
 CIVITEK_EXCLUDE = [r"insolvency", r"indigen", r"\bmotion\b"]
 
