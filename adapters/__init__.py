@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from core.adapter import ClerkAdapter
 
+from .civitek_ocrs import CivitekOcrsAdapter
 from .orange_myeclerk import OrangeMyEClerkAdapter
 
 ADAPTERS: dict[str, type[ClerkAdapter]] = {
     "orange_myeclerk": OrangeMyEClerkAdapter,
+    "civitek_ocrs": CivitekOcrsAdapter,
 }
 
 

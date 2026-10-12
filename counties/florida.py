@@ -30,8 +30,40 @@ ORANGE = CountyConfig(
     throttle_s=2.0,
 )
 
+# Civitek OCRS: el mismo portal para 32 condados; cambia solo el código de la
+# URL (orden alfabético de los condados de Florida: Marion = 42).
+# Documentos vistos en Marion (26CF003891AX, 12/10/2026):
+#   "ARREST AFFIDAVIT AND NOTICE OF CONFIDENTIAL FILING".
+CIVITEK_DOCUMENTS = [
+    r"\barrest affidavit\b",
+    r"probable cause affidavit",
+    r"complaint\s*/?\s*arrest affidavit",
+    r"complaint affidavit",
+    r"affidavit (?:for|to issue) (?:arrest )?warrant",
+]
+CIVITEK_EXCLUDE = [r"insolvency", r"indigen", r"\bmotion\b"]
+
+
+def civitek(key: str, name: str, code: str) -> CountyConfig:
+    return CountyConfig(
+        key=key,
+        name=name,
+        state="FL",
+        platform="civitek_ocrs",
+        base_url=f"https://www.civitekflorida.com/ocrs/county/{code}/",
+        case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+        document_priority=CIVITEK_DOCUMENTS,
+        document_exclude=CIVITEK_EXCLUDE,
+        captcha="turnstile",
+        throttle_s=2.0,
+    )
+
+
+MARION = civitek("marion", "Marion County", "42")
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
+    MARION.key: MARION,
 }
 
 

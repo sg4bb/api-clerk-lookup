@@ -23,6 +23,8 @@ MIN_MARGIN = 15     # ventaja mínima (en puntos %) sobre el segundo mejor
 
 # Puntos máximos por criterio.
 W_NAME, W_MIDDLE, W_OFFENSE, W_ARREST, W_AGENCY, W_AGE, W_CHARGES = 30, 5, 25, 15, 20, 10, 15
+# Solo cuenta si los cargos no traen fechas de ofensa ni de arresto (Civitek).
+W_FILED = 15
 
 _AGENCY_ALIASES = {
     "police department": "pd",
@@ -131,6 +133,27 @@ def prelim_score(query: LookupQuery, candidate: CaseCandidate) -> int:
     return max(points, 1)
 
 
+def _filed_points(query: LookupQuery, details: CaseDetails) -> Optional[tuple[int, str]]:
+    """Fecha en que se abrió el caso contra la del arresto o el incidente.
+
+    Solo se usa cuando los cargos no traen fechas de ofensa ni de arresto
+    (Civitek no las muestra). El caso suele abrirse pocos días después del
+    arresto; mucho después no resta (pudo ser por una orden de arresto).
+    """
+    if any(c.offense_date or c.arrest_date for c in details.charges):
+        return None
+    anchor = query.arrest_date or query.incident_date
+    filed = details.candidate.filed_date
+    if not anchor or not filed:
+        return None
+    gap = (filed - anchor).days
+    if -3 <= gap <= 10:
+        return W_FILED, f"caso abierto {gap} día(s) después del hecho"
+    if -3 <= gap <= 60:
+        return W_FILED // 2, f"caso abierto {gap} días después del hecho"
+    return 0, f"caso abierto lejos del hecho ({gap} días)"
+
+
 def max_points(query: LookupQuery, details: CaseDetails) -> int:
     """Puntos alcanzables con lo que se sabe de la consulta y lo que trae el caso."""
     c = details.candidate
@@ -143,6 +166,7 @@ def max_points(query: LookupQuery, details: CaseDetails) -> int:
     anchor = query.age_as_of or query.incident_date or query.arrest_date
     total += W_AGE if query.age is not None and c.dob and anchor else 0
     total += W_CHARGES if categorize(query.charges) and categorize(x.description for x in details.charges) else 0
+    total += W_FILED if _filed_points(query, details) is not None else 0
     return total
 
 
@@ -181,6 +205,12 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
         elif gap > 10:
             score -= 10
             reasons.append(f"fecha de arresto lejana ({gap} días)")
+
+    # Sin fechas en los cargos: la fecha en que se abrió el caso.
+    filed = _filed_points(query, details)
+    if filed:
+        score += filed[0]
+        reasons.append(filed[1])
 
     # Agencia que arrestó.
     agencies = {normalize_agency(c.agency) for c in details.charges if c.agency}

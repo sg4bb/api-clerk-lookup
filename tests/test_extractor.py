@@ -117,16 +117,21 @@ class OutOfScopeTest(unittest.TestCase):
     def test_county_not_in_florida_without_state(self):
         self.assertEqual(self.reason(state=None, county="Fulton", city="Atlanta", agency="Atlanta PD").reason, "state")
 
-    def test_ocala(self):
-        exc = self.reason(county=None, city="Ocala", agency="Ocala Police Department")
-        self.assertEqual((exc.reason, exc.county), ("county", "Marion"))
-        self.assertIn("Ocala (Marion County, FL)", str(exc))
+    def test_city_of_uncovered_county(self):
+        exc = self.reason(county=None, city="Daytona Beach", agency="Daytona Beach Police Department")
+        self.assertEqual((exc.reason, exc.county), ("county", "Volusia"))
+        self.assertIn("Daytona Beach (Volusia County, FL)", str(exc))
         self.assertIn("Orange County", str(exc))
 
     def test_county_given_as_city_not_repeated(self):
-        exc = self.reason(county="Marion", city="Marion County", agency="Marion County Sheriff's Office")
-        self.assertIn("about Marion County, FL.", str(exc))
-        self.assertNotIn("(Marion County, FL)", str(exc))
+        exc = self.reason(county="Volusia", city="Volusia County", agency="Volusia Sheriff's Office")
+        self.assertIn("about Volusia County, FL.", str(exc))
+        self.assertNotIn("(Volusia County, FL)", str(exc))
+
+    def test_ocala_is_covered(self):
+        """Marion (Ocala) tiene cobertura desde el adaptador de Civitek."""
+        aq = build_query(extraction(county=None, city="Ocala", agency="Ocala Police Department"), ARTICLE)
+        self.assertEqual(aq.query.county, "marion")
 
     def test_florida_county_named(self):
         exc = self.reason(county="Seminole County", city="Sanford", agency="Sanford Police Department")

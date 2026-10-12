@@ -135,7 +135,17 @@ def extract(article_text: str, title: str, published: Optional[str], url: str) -
     raise ExtractionError(f"The AI model did not return valid data: {_short(last_error)}")
 
 
-RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
+RETRYABLE_STATUS = {408, 409, 429}   # además, cualquier 5xx (ver _retryable)
+
+
+def _retryable(status: Optional[int]) -> bool:
+    """Saturación o falla pasajera de NVIDIA: se reintenta y se prueban los respaldos.
+
+    Cualquier 5xx cuenta: NVIDIA ha respondido 500, 502, 503, 504 y también
+    529 "Service temporarily overloaded" (12/10/2026). Sin código (timeout o
+    conexión caída) también se reintenta.
+    """
+    return status is None or status in RETRYABLE_STATUS or 500 <= status <= 599
 
 
 GONE_STATUS = {404, 410}   # modelo inexistente o retirado ("end of life")
@@ -153,8 +163,8 @@ def _create_with_retry(client, models: list[str], **kwargs):
     """Llama al API esperando y reintentando cuando NVIDIA está saturado.
 
     El plan gratuito responde 503 "Worker local total request limit reached"
-    cuando el modelo tiene todas sus plazas ocupadas; suele liberarse en
-    segundos o minutos. Primero prueba los modelos de respaldo, sin esperar;
+    o 529 "Service temporarily overloaded" cuando el modelo tiene todas sus
+    plazas ocupadas; suele liberarse en segundos o minutos. Primero prueba los modelos de respaldo, sin esperar;
     si todos están saturados espera cada vez más (10 s, 20 s, 40 s, 60 s...)
     hasta NVIDIA_RETRY_MAX_S en total. Un modelo retirado (404/410) se saca
     de la lista con un aviso. Los errores 400 (parámetro no aceptado) suben tal cual.
@@ -183,7 +193,7 @@ def _create_with_retry(client, models: list[str], **kwargs):
                         f"The model {model} does not exist or was retired by NVIDIA ({status}). "
                         "Set NVIDIA_MODEL in .env to one from build.nvidia.com.") from exc
                 continue
-            if status is not None and status not in RETRYABLE_STATUS:
+            if not _retryable(status):
                 raise ExtractionError(f"NVIDIA rejected the request ({status}): {_short(exc)}") from exc
             index += 1
             reason = f"error {status}" if status else type(exc).__name__

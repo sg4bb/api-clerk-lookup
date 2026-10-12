@@ -15,6 +15,7 @@ from typing import Callable, Optional
 from adapters import get_adapter
 from counties import get_county
 
+from .adapter import DownloadError, SearchError
 from .browser import open_browser
 from .captcha import CaptchaHandler, CaptchaTimeout, LiveViewCaptcha, ManualLocalCaptcha
 from .county import CountyConfig
@@ -169,10 +170,18 @@ def run_lookup(
             )
         except CaptchaTimeout as exc:
             return LookupResult("captcha_timeout", message=str(exc))
-        except Exception as exc:
+        except (SearchError, DownloadError) as exc:
+            # Mensajes ya escritos para la persona (en inglés, se ven en la web).
             log.exception("Fallo en la consulta")
             _save_debug(page, output_dir)
-            return LookupResult("error", message=f"{type(exc).__name__}: {exc}")
+            return LookupResult("error", message=str(exc))
+        except Exception as exc:
+            # Detalle técnico (timeouts de Playwright, etc.): queda en el log y en debug/.
+            log.exception("Fallo en la consulta")
+            _save_debug(page, output_dir)
+            return LookupResult("error", message=(
+                f"The court portal didn't respond as expected ({type(exc).__name__}). "
+                "Try again in a few minutes."))
 
 
 def _save_debug(page, output_dir: Path) -> None:

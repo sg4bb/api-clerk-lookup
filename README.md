@@ -1,6 +1,6 @@
 # clerk-lookup
 
-Servicio que recibe los datos de un caso y devuelve **un único** Incident Report / Arrest Affidavit desde el portal del Clerk of Courts del condado. Empieza por Orange County, FL (myeClerk). El CAPTCHA lo resuelve una persona: hoy en una ventana de tu PC y, más adelante, dentro del dashboard con un iframe.
+Servicio que recibe los datos de un caso y devuelve **un único** Incident Report / Arrest Affidavit desde el portal del Clerk of Courts del condado. Cubre Orange County, FL (myeClerk) y Marion County, FL (Civitek OCRS); la lista completa y el orden de los próximos está en `docs/condados_florida.md`. El CAPTCHA lo resuelve una persona: hoy en una ventana de tu PC y, más adelante, dentro del dashboard con un iframe.
 
 ## Instalación (Windows)
 
@@ -47,9 +47,9 @@ python run_article.py mues --dry-run --reuse # repite la validación con la extr
 3. **Ajustes:** si el modelo deja campos a medias, se completan con reglas sobre el propio texto: "Friday" pasa a fecha contando desde la publicación, la edad sale de "23-year-old", la ciudad del encabezado "ORLANDO, Fla." y el condado de la agencia (OPD, OCSO, etc.). En pantalla salen como `AJUSTE`.
 4. **Validación:** se descarta cualquier nombre que no aparezca en el artículo y cualquier fecha posterior a la publicación. Si no hay fecha, se busca en el mes previo a la publicación. Los cargos sirven para distinguir casos del mismo día.
 
-Si NVIDIA está saturado (error 503 "Worker local total request limit reached", frecuente en el plan gratuito), el programa espera y reintenta (10 s, 20 s, 40 s, 60 s...) hasta `NVIDIA_RETRY_MAX_S` segundos (300 por defecto). Con `NVIDIA_FALLBACK_MODEL` (uno o varios, separados por coma) prueba primero esos modelos antes de esperar; un modelo retirado por NVIDIA se salta con un aviso. Para comparar un modelo antes de usarlo: `python run_article.py mues --dry-run --model <modelo>`. Si un artículo falla, los demás siguen.
+Si NVIDIA está saturado (errores 5xx como 503 "Worker local total request limit reached" o 529 "Service temporarily overloaded", frecuentes en el plan gratuito), el programa espera y reintenta (10 s, 20 s, 40 s, 60 s...) hasta `NVIDIA_RETRY_MAX_S` segundos (300 por defecto). Con `NVIDIA_FALLBACK_MODEL` (uno o varios, separados por coma) prueba primero esos modelos antes de esperar; un modelo retirado por NVIDIA se salta con un aviso. Para comparar un modelo antes de usarlo: `python run_article.py mues --dry-run --model <modelo>`. Si un artículo falla, los demás siguen.
 
-**Fuera de alcance:** si el artículo es de otro estado o de un condado de Florida sin soporte (Ocala → Marion, por ejemplo), el resultado es `NO_SOPORTADO` con el lugar detectado. Se decide después de la extracción y antes de abrir el portal, así que no gasta CAPTCHA. El condado se toma del modelo, de la agencia (`counties/florida.py`, `AGENCY_TO_COUNTY`) o de la ciudad (`CITY_TO_COUNTY`).
+**Fuera de alcance:** si el artículo es de otro estado o de un condado de Florida sin soporte (Daytona Beach → Volusia, por ejemplo), el resultado es `NO_SOPORTADO` con el lugar detectado. Se decide después de la extracción y antes de abrir el portal, así que no gasta CAPTCHA. El condado se toma del modelo, de la agencia (`counties/florida.py`, `AGENCY_TO_COUNTY`) o de la ciudad (`CITY_TO_COUNTY`).
 
 **Modo interactivo:** `python run_article.py -i` (o `-i --dry-run`) pide links por consola y procesa cada uno al pegarlo, como hará el worker con la tabla.
 
@@ -91,6 +91,7 @@ core/
   documents.py  convierte lo que entrega un visor (TIFF, páginas) en PDF
 adapters/
   orange_myeclerk.py   portal de Orange
+  civitek_ocrs.py      Civitek OCRS (Marion y, con solo agregar la ficha, otros 31 condados)
 counties/
   florida.py    configuración por condado (URL, códigos, documentos)
 extractor/
@@ -106,12 +107,12 @@ tests/          tests sin navegador
 
 ## Agregar un condado
 
-- **Misma plataforma que uno existente:** agregar su `CountyConfig` en `counties/florida.py`.
+- **Misma plataforma que uno existente:** agregar su `CountyConfig` en `counties/florida.py`. Para Civitek basta una línea: `civitek("sumter", "Sumter County", "60")` (el código de condado está en `docs/condados_florida.md`).
 - **Portal distinto:** crear `adapters/<plataforma>.py` heredando de `ClerkAdapter`, registrarlo en `adapters/__init__.py` y luego agregar el condado.
 
 ## Cómo decide el matcher
 
-Descarta los candidatos cuyo apellido o nombre no coincide (tolera apellidos compuestos y sufijos como Jr). Después suma puntos por fecha de ofensa y de arresto (graduadas: el mismo día vale más que 1-3 días de diferencia), agencia, segundo nombre, edad y tipo de cargos (si la consulta los trae), y los convierte en un % de confianza sobre los puntos posibles con la información disponible. Devuelve un caso si su confianza llega al 60% y le saca 15 puntos al segundo mejor.
+Descarta los candidatos cuyo apellido o nombre no coincide (tolera apellidos compuestos y sufijos como Jr). Después suma puntos por fecha de ofensa y de arresto (graduadas: el mismo día vale más que 1-3 días de diferencia), agencia, segundo nombre, edad y tipo de cargos (si la consulta los trae), Si los cargos no traen fechas (Civitek no las muestra), cuenta en su lugar cuántos días después del incidente se abrió el caso. Todo eso se convierte en un % de confianza sobre los puntos posibles con la información disponible. Devuelve un caso si su confianza llega al 60% y le saca 15 puntos al segundo mejor.
 
 Si los mejores candidatos empatan pero son **del mismo arresto** (comparten el número de reporte de la agencia, o tienen la misma fecha de arresto, las mismas fechas de ofensa y la misma agencia), elige uno: primero el que tiene el documento, luego CF antes que MM o CT. Los demás salen en `related_cases`. Si empatan casos de arrestos distintos, responde `ambiguous` en vez de adivinar. En `test_cases.json`, `expected_case` puede ser una lista cuando varios casos son igual de válidos. Los pesos están en `core/matcher.py`.
 

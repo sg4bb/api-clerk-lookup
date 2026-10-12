@@ -25,6 +25,25 @@ RECAPTCHA_SOLVED_JS = """
 }
 """
 
+# El campo que Cloudflare Turnstile llena al aprobar (sola o con el clic de una persona).
+TURNSTILE_SOLVED_JS = """
+() => {
+  const t = document.querySelector('[name="cf-turnstile-response"]');
+  return !!(t && t.value && t.value.length > 0);
+}
+"""
+
+SOLVED_JS = {"recaptcha": RECAPTCHA_SOLVED_JS, "turnstile": TURNSTILE_SOLVED_JS}
+
+# Con Turnstile no se tapa la página: solo se centra la casilla en la ventana.
+FOCUS_TURNSTILE_JS = """
+() => {
+  const w = document.querySelector('#cfWidget, .cf-turnstile, iframe[src*="challenges.cloudflare.com"]');
+  if (w) w.scrollIntoView({block: 'center', inline: 'center'});
+  return !!w;
+}
+"""
+
 
 # Mientras se espera el CAPTCHA en un navegador remoto:
 #  - lleva la casilla arriba (el cuadro de imágenes se despliega hacia abajo),
@@ -174,20 +193,32 @@ class CaptchaTimeout(Exception):
 
 
 class CaptchaHandler(Protocol):
-    def solve(self, page: Page, timeout_s: int) -> None:
-        """Bloquea hasta que el CAPTCHA esté resuelto o vence el tiempo."""
+    def solve(self, page: Page, timeout_s: int, kind: str = "recaptcha") -> None:
+        """Bloquea hasta que el CAPTCHA esté resuelto o vence el tiempo.
+
+        kind: "recaptcha" (Orange) o "turnstile" (Cloudflare, Civitek).
+        """
         ...
 
 
-def wait_until_solved(page: Page, timeout_s: int) -> None:
-    """Espera a que reCAPTCHA quede resuelto, tolerando recargas de la página."""
+def passes_on_its_own(page: Page, kind: str, wait_s: float) -> bool:
+    """True si el CAPTCHA se aprueba solo dentro de wait_s (Turnstile suele hacerlo)."""
+    try:
+        page.wait_for_function(SOLVED_JS[kind], timeout=wait_s * 1000, polling=500)
+        return True
+    except Exception:
+        return False
+
+
+def wait_until_solved(page: Page, timeout_s: int, solved_js: str = RECAPTCHA_SOLVED_JS) -> None:
+    """Espera a que el CAPTCHA quede resuelto, tolerando recargas de la página."""
     deadline = time.monotonic() + timeout_s
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise CaptchaTimeout("The CAPTCHA was not solved in time")
         try:
-            page.wait_for_function(RECAPTCHA_SOLVED_JS, timeout=min(remaining, 15) * 1000, polling=500)
+            page.wait_for_function(solved_js, timeout=min(remaining, 15) * 1000, polling=500)
             break
         except PlaywrightTimeout:
             continue
@@ -212,11 +243,17 @@ class ManualLocalCaptcha:
         self.on_waiting = on_waiting
         self.on_done = on_done
 
-    def solve(self, page: Page, timeout_s: int) -> None:
+    def solve(self, page: Page, timeout_s: int, kind: str = "recaptcha") -> None:
         timeout_s = int(os.getenv("CAPTCHA_TIMEOUT_S", timeout_s))
         if self.on_waiting:
             self.on_waiting(None, timeout_s)
         try:
+            if kind == "turnstile":
+                page.bring_to_front()
+                page.evaluate(FOCUS_TURNSTILE_JS)
+                print("\n  CAPTCHA: marca 'Verify you are human' en la ventana de Chrome que se abrió.\n")
+                wait_until_solved(page, timeout_s, TURNSTILE_SOLVED_JS)
+                return
             self._solve(page, timeout_s)
         finally:
             if self.on_done:
@@ -290,16 +327,16 @@ class LiveViewCaptcha:
         sep = "&" if "?" in self.live_view_url else "?"
         return f"{self.live_view_url}{sep}navbar=false"
 
-    def solve(self, page: Page, timeout_s: int) -> None:
+    def solve(self, page: Page, timeout_s: int, kind: str = "recaptcha") -> None:
         # La sesión gratuita dura 15 minutos en total: el CAPTCHA no puede ocuparlos todos.
         timeout_s = min(int(os.getenv("CAPTCHA_TIMEOUT_S", timeout_s)), int(os.getenv("REMOTE_CAPTCHA_TIMEOUT_S", "480")))
-        original = self._focus_on_captcha(page)
+        original = self._focus_on_turnstile(page) if kind == "turnstile" else self._focus_on_captcha(page)
         if self.on_waiting:
             self.on_waiting(self.embed_url, timeout_s)
         else:
             self._open_test_page(timeout_s)
         try:
-            wait_until_solved(page, timeout_s)
+            wait_until_solved(page, timeout_s, SOLVED_JS.get(kind, RECAPTCHA_SOLVED_JS))
         finally:
             # Orden: tapar todo -> avisar que ya no hace falta el recuadro ->
             # dar un momento para que desaparezca -> destapar y seguir.
@@ -319,6 +356,19 @@ class LiveViewCaptcha:
                     page.set_viewport_size(original)
                 except Exception as exc:
                     log.warning("No pude restaurar la ventana remota: %s", exc)
+
+    def _focus_on_turnstile(self, page: Page):
+        """Ventana del tamaño del recuadro de la web, con la casilla de Cloudflare al centro."""
+        original = page.viewport_size or {"width": 1280, "height": 900}
+        try:
+            page.set_viewport_size(FOCUS_VIEWPORT)
+            page.wait_for_timeout(800)
+            if not page.evaluate(FOCUS_TURNSTILE_JS):
+                log.warning("No encontré la casilla de Cloudflare; se muestra la página completa")
+            return original
+        except Exception as exc:
+            log.warning("No pude centrar la casilla de Cloudflare (sigo igual): %s", exc)
+            return original
 
     def _focus_on_captcha(self, page: Page):
         """Achica la ventana remota y deja a la vista solo el CAPTCHA mientras se espera.
