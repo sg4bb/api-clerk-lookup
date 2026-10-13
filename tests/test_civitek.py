@@ -60,6 +60,17 @@ class ResultsTest(unittest.TestCase):
         self.assertEqual(found[0].filed_date, date(2026, 3, 18))
         self.assertIsNone(found[0].dob)
 
+    def test_defendant_from_the_case_parties(self):
+        """Una persona con alias: los casos quedan bajo la primera fila, y el nombre
+        del acusado sale del propio caso (DEFENDANT), no de la fila (12/10/2026)."""
+        people = [{"name": "TESTER-SMITH, JANE", "alias_of": None, "expanded": True,
+                   "cases": [dict(RESULTS[0]["cases"][0], defendant="TESTER SMITH, JANE")]},
+                  {"name": "SMITH, JANE", "alias_of": "TESTER-SMITH, JANE", "expanded": False, "cases": []}]
+        found = candidates_from_results(people)
+        self.assertEqual([(c.case_number, c.defendant) for c in found], [("26CF001234AX", "TESTER SMITH, JANE")])
+        # Sin DEFENDANT en el caso, se usa el nombre de la fila.
+        self.assertEqual(candidates_from_results(RESULTS)[0].defendant, "TESTER, JANE MARIE")
+
     def test_local_number_or_ucn(self):
         self.assertEqual(case_number({"local": "[26CF001234AX]", "ucn": "x"}), "26CF001234AX")
         self.assertEqual(case_number({"local": "", "ucn": "422026CF001234CFAXMX"}), "422026CF001234CFAXMX")

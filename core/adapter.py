@@ -56,6 +56,8 @@ class ClerkAdapter(ABC):
         # Navegador remoto: las descargas se piden DENTRO de la página (fetch),
         # para que salgan del mismo navegador y la misma IP que la sesión.
         self.remote = False
+        # Carpeta para diagnósticos del portal (la pone run_lookup: <pedido>/debug).
+        self.debug_dir: Optional[Path] = None
 
     def fetch(self, page: Page, url: str, referer: Optional[str] = None) -> tuple[int, str, bytes]:
         """GET con las cookies de la sesión -> (status, content-type, cuerpo)."""

@@ -78,6 +78,7 @@ def run_lookup(
                                        output_dir=output_dir)
                        if session.remote else ManualLocalCaptcha(on_captcha_waiting, on_captcha_done))
         adapter = adapter_cls(page, county, captcha)
+        adapter.debug_dir = output_dir / "debug"
         adapter.remote = session.remote
         try:
             on_status("searching")

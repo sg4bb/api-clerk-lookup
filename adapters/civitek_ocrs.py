@@ -49,12 +49,15 @@ MAX_PEOPLE = 15            # personas a desplegar en los resultados
 _READ_RESULTS_JS = r"""
 () => {
   const text = e => (e ? (e.innerText || e.textContent || '') : '').replace(/\s+/g, ' ').trim();
-  const rows = [...document.querySelectorAll('tbody[id$="partySearchResultsTable_data"] > tr[data-ri]')];
-  return rows.map(tr => {
-    const bold = tr.querySelector('span[style*="bold"]');
-    const name = text(bold || tr.cells[2]);
-    const exp = tr.nextElementSibling;
-    if (!exp || !exp.classList.contains('ui-expanded-row-content')) return {name, expanded: false, cases: []};
+  const tbody = document.querySelector('tbody[id$="partySearchResultsTable_data"]');
+  if (!tbody) return [];
+  // Una misma persona aparece en varias filas, una por cada forma de su nombre
+  // (COTO-ROSALES / COTO ROSALES / COTO / ROSALES). Solo la primera tiene botón
+  // para desplegar, y el portal dibuja los casos DEBAJO DEL ÚLTIMO ALIAS.
+  // Por eso cada contenido desplegado se asigna a la última fila con botón.
+  const people = [];
+  let owner = null;
+  const parseCases = (exp) => {
     const cases = [];
     exp.querySelectorAll('a[href*="caseinformation"]').forEach(a => {
       const row = a.closest('tr');
@@ -62,18 +65,39 @@ _READ_RESULTS_JS = r"""
       const cells = row ? [...row.cells].map(text) : [];
       const local = a.parentElement.querySelector('span');
       const charges = [];
+      let defendant = '';
       if (grid) {
         grid.querySelectorAll('table').forEach(t => {
           const head = text(t.querySelector('thead'));
-          if (!/statute text/i.test(head)) return;
-          t.querySelectorAll('tbody tr').forEach(r => charges.push([...r.cells].map(text)));
+          if (/statute text/i.test(head)) {
+            t.querySelectorAll('tbody tr').forEach(r => charges.push([...r.cells].map(text)));
+          } else if (/name/i.test(head) && /type/i.test(head)) {
+            // Partes del caso: el acusado figura como DEFENDANT (los alias como ALSO KNOWN AS).
+            t.querySelectorAll('tbody tr').forEach(r => {
+              const c = [...r.cells].map(text);
+              if (!defendant && c.length >= 2 && /^defendant$/i.test(c[1])) defendant = c[0];
+            });
+          }
         });
       }
-      cases.push({ucn: text(a), local: text(local), href: a.getAttribute('href'),
+      cases.push({ucn: text(a), local: text(local), href: a.getAttribute('href'), defendant,
                   file_date: cells[1] || '', case_type: cells[2] || '', status: cells[3] || '', charges});
     });
-    return {name, expanded: true, cases};
-  });
+    return cases;
+  };
+  for (const el of tbody.children) {
+    if (el.matches('tr[data-ri]')) {
+      const bold = el.querySelector('span[style*="bold"]');
+      const person = {name: text(bold || el.cells[2]), expanded: false, cases: [], alias_of: null};
+      if (el.querySelector('.ui-row-toggler') || !owner) owner = person;
+      else person.alias_of = owner.name;
+      people.push(person);
+    } else if (el.classList.contains('ui-expanded-row-content') && owner) {
+      owner.expanded = true;
+      owner.cases.push(...parseCases(el));
+    }
+  }
+  return people;
 }
 """
 
@@ -144,7 +168,8 @@ def candidates_from_results(people: list[dict]) -> list[CaseCandidate]:
             seen.add(number)
             found.append(CaseCandidate(
                 case_number=number,
-                defendant=person.get("name", ""),
+                # El acusado según el propio caso; si no está, el nombre de la fila.
+                defendant=case.get("defendant") or person.get("name", ""),
                 case_type=case.get("case_type", ""),
                 status=case.get("status", ""),
                 dob=None,                       # Civitek no la muestra
@@ -221,10 +246,17 @@ _FORM_STATE_JS = """() => ({
 
 _PERSON_ROWS = 'tbody[id$="partySearchResultsTable_data"] > tr[data-ri]'
 
+# ¿La persona i ya muestra sus casos? Se mira debajo de su fila y de los alias
+# sin botón que la siguen: el portal dibuja el contenido bajo el último alias.
 _PERSON_EXPANDED_JS = """(i) => {
-  const rows = document.querySelectorAll('tbody[id$="partySearchResultsTable_data"] > tr[data-ri]');
-  const n = rows[i] && rows[i].nextElementSibling;
-  return !!(n && n.classList.contains('ui-expanded-row-content'));
+  const rows = [...document.querySelectorAll('tbody[id$="partySearchResultsTable_data"] > tr[data-ri]')];
+  if (!rows[i]) return false;
+  for (let j = i; j < rows.length; j++) {
+    if (j > i && rows[j].querySelector('.ui-row-toggler')) break;
+    const n = rows[j].nextElementSibling;
+    if (n && n.classList.contains('ui-expanded-row-content')) return true;
+  }
+  return false;
 }"""
 
 # Todo el docket a la vista: el botón "Next Page" está desactivado (o no hay paginador).
@@ -251,6 +283,95 @@ def _click_control(page, name: re.Pattern, timeout_ms: int) -> bool:
         return False
     target.click()
     return True
+
+
+# Estado de una fila de persona, para el diagnóstico (no cambia nada en la página).
+_PERSON_STATE_JS = """(i) => {
+  const rows = document.querySelectorAll('tbody[id$="partySearchResultsTable_data"] > tr[data-ri]');
+  const tr = rows[i];
+  if (!tr) return {missing: true, rows: rows.length};
+  const t = tr.querySelector('.ui-row-toggler');
+  const n = tr.nextElementSibling;
+  return {
+    rows: rows.length, ri: tr.getAttribute('data-ri'), rk: tr.getAttribute('data-rk'),
+    rowClass: tr.className, ariaSelected: tr.getAttribute('aria-selected'),
+    checkbox: !!tr.querySelector('input[type=checkbox]:checked'),
+    togglerClass: t ? t.className : null, togglerAria: t ? t.getAttribute('aria-expanded') : null,
+    nextClass: n ? n.className : null, nextHasData: n ? n.hasAttribute('data-ri') : null,
+    nextHtml: n ? n.outerHTML.slice(0, 1500) : null,
+    rowHtml: tr.outerHTML.slice(0, 3000),
+  };
+}"""
+
+
+class _PeopleTrace:
+    """Diagnóstico de "la persona N no se desplegó": qué se hizo, qué respondió
+    el portal y cómo quedaron las filas. Solo registra; nunca rompe la búsqueda."""
+
+    def __init__(self, page, total: int):
+        self.page, self.total, self.current = page, total, None
+        self.started = time.monotonic()
+        self.events: list[dict] = []
+        self.responses: list[tuple] = []
+        self.console: list[str] = []
+        self.before = [self._state(i) for i in range(total)]
+        self._on_response = lambda r: self.responses.append((self.current, round(time.monotonic() - self.started, 1), r)) \
+            if "partySearchResults" in r.url or "search.xhtml" in r.url else None
+        self._on_console = lambda m: self.console.append(f"{m.type}: {m.text[:300]}") \
+            if m.type in ("error", "warning") else None
+        try:
+            page.on("response", self._on_response)
+            page.on("console", self._on_console)
+        except Exception:
+            pass
+
+    def _state(self, i: int) -> dict:
+        try:
+            return self.page.evaluate(_PERSON_STATE_JS, i)
+        except Exception as exc:
+            return {"error": str(exc)[:200]}
+
+    def note(self, i: int, what: str) -> None:
+        self.events.append({"t": round(time.monotonic() - self.started, 1), "persona": i + 1, "accion": what})
+
+    def stop(self) -> None:
+        try:
+            self.page.remove_listener("response", self._on_response)
+            self.page.remove_listener("console", self._on_console)
+        except Exception:
+            pass
+
+    def save(self, debug_dir: Optional[Path], pending: list[int]) -> None:
+        if not debug_dir:
+            return
+        try:
+            import json
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            responses = []
+            for person, t, r in self.responses:
+                item = {"t": t, "persona": (person + 1) if person is not None else None,
+                        "url": r.url[:200], "metodo": r.request.method, "estado": r.status}
+                if person in pending and r.request.method == "POST":
+                    try:
+                        item["cuerpo"] = r.text()[:4000]
+                    except Exception as exc:
+                        item["cuerpo"] = f"(no se pudo leer: {str(exc)[:120]})"
+                responses.append(item)
+            data = {
+                "no_desplegadas": [i + 1 for i in pending],
+                "eventos": self.events,
+                "respuestas": responses,
+                "consola": self.console[:50],
+                "filas_antes": self.before,
+                "filas_despues": [self._state(i) for i in range(self.total)],
+            }
+            (debug_dir / "people_expand.json").write_text(json.dumps(data, indent=2, ensure_ascii=False),
+                                                          encoding="utf-8")
+            (debug_dir / "people_results.html").write_text(self.page.content(), encoding="utf-8")
+            self.page.screenshot(path=str(debug_dir / "people_results.png"), full_page=True)
+            log.info("Diagnóstico de las personas sin desplegar guardado en %s", debug_dir)
+        except Exception as exc:
+            log.warning("No pude guardar el diagnóstico de personas: %s", exc)
 
 
 class CivitekOcrsAdapter(ClerkAdapter):
@@ -396,6 +517,7 @@ class CivitekOcrsAdapter(ClerkAdapter):
         aparte; a veces tarda o ignora el clic. Por eso: se espera a que la
         lista deje de crecer, se despliega cada persona y las que fallaron se
         revisan otra vez (pudo llegar tarde) antes de un único reintento.
+        Si alguna no se despliega, se guarda un diagnóstico en debug/.
         """
         rows = self.page.locator(_PERSON_ROWS)
         total, stable_since = rows.count(), time.monotonic()
@@ -407,41 +529,60 @@ class CivitekOcrsAdapter(ClerkAdapter):
         total = min(total, MAX_PEOPLE)
         log.info("Despliego %d persona(s)", total)
 
-        pending = [i for i in range(total) if not self._expand_person(i, 15_000, retry=False)]
-        if pending:
-            self.page.wait_for_timeout(2_000)
-            pending = [i for i in pending if not self.page.evaluate(_PERSON_EXPANDED_JS, i)]
-        if pending:
-            log.info("Reintento desplegar persona(s) %s", [i + 1 for i in pending])
-            pending = [i for i in pending if not self._expand_person(i, 15_000, retry=True)]
+        trace = _PeopleTrace(self.page, total)
+        try:
+            pending = [i for i in range(total) if not self._expand_person(i, 15_000, retry=False, trace=trace)]
+            if pending:
+                self.page.wait_for_timeout(2_000)
+                pending = [i for i in pending if not self.page.evaluate(_PERSON_EXPANDED_JS, i)]
+            if pending:
+                log.info("Reintento desplegar persona(s) %s", [i + 1 for i in pending])
+                pending = [i for i in pending if not self._expand_person(i, 15_000, retry=True, trace=trace)]
+        finally:
+            trace.stop()
         for i in pending:
             log.warning("La persona %d no se desplegó: %s", i + 1, self._person_name(i))
+        if pending:
+            trace.save(self.debug_dir, pending)
         return pending
 
-    def _expand_person(self, i: int, timeout_ms: int, retry: bool) -> bool:
+    def _expand_person(self, i: int, timeout_ms: int, retry: bool, trace=None) -> bool:
+        note = trace.note if trace else (lambda *a: None)
+        if trace:
+            trace.current = i
         if self.page.evaluate(_PERSON_EXPANDED_JS, i):
+            note(i, "ya estaba desplegada")
             return True
         toggler = self.page.locator(_PERSON_ROWS).nth(i).locator(".ui-row-toggler").first
         if not toggler.count():
             log.info("La persona %d no tiene casos para desplegar", i + 1)
+            note(i, "sin botón para desplegar")
             return True
         opening = "ui-icon-circle-triangle-s" in (toggler.get_attribute("class") or "")
         try:
             if opening and retry:
                 # El portal la marcó como abierta pero no llegó el contenido: un
                 # clic la cierra y otro la vuelve a pedir.
+                note(i, "reintento: clic para cerrar")
                 toggler.click(timeout=10_000)
                 self.page.wait_for_timeout(1_000)
+                note(i, "reintento: clic para abrir")
                 toggler.click(timeout=10_000)
             elif not opening:
+                note(i, "clic" + (" (reintento)" if retry else ""))
                 toggler.click(timeout=10_000)
-            # opening y primer intento: ya la pidió; otro clic la cerraría, se espera.
+            else:
+                # opening y primer intento: ya la pidió; otro clic la cerraría, se espera.
+                note(i, "ya marcada como abierta; espero")
         except PlaywrightTimeout:
+            note(i, "el clic no se pudo hacer (timeout)")
             return False
         try:
             self.page.wait_for_function(_PERSON_EXPANDED_JS, arg=i, timeout=timeout_ms)
+            note(i, "desplegada")
             return True
         except PlaywrightTimeout:
+            note(i, f"no se desplegó en {timeout_ms // 1000} s")
             return False
 
     def _person_name(self, i: int) -> str:
