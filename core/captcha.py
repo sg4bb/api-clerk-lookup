@@ -35,7 +35,7 @@ TURNSTILE_SOLVED_JS = """
 
 SOLVED_JS = {"recaptcha": RECAPTCHA_SOLVED_JS, "turnstile": TURNSTILE_SOLVED_JS}
 
-# Con Turnstile no se tapa la página: solo se centra la casilla en la ventana.
+# Respaldo para Turnstile: si no se puede tapar la página, al menos se centra la casilla.
 FOCUS_TURNSTILE_JS = """
 () => {
   const w = document.querySelector('#cfWidget, .cf-turnstile, iframe[src*="challenges.cloudflare.com"]');
@@ -55,20 +55,32 @@ FOCUS_TURNSTILE_JS = """
 # en blanco. El cuadro de imágenes de reCAPTCHA (z-index 2000000000) queda por
 # encima de los paneles.
 FOCUS_CAPTCHA_JS = r"""
-(message) => {
+({message, kind}) => {
   const rectOf = (e) => { const r = e.getBoundingClientRect(); return {top: Math.round(r.top), left: Math.round(r.left), width: Math.round(r.width), height: Math.round(r.height)}; };
   const shown = (e) => { const c = getComputedStyle(e); return c.display !== 'none' && c.visibility !== 'hidden'; };
   const sized = (e) => { const r = e.getBoundingClientRect(); return r.width >= 200 && r.height >= 50 && r.height <= 200; };
-  const all = [...document.querySelectorAll('iframe[src*="recaptcha"], .g-recaptcha')];
-  const report = all.map(e => ({tag: e.tagName, kind: (e.src || '').match(/(anchor|bframe)/)?.[1] || e.className || '',
+  let all, el;
+  if (kind === 'turnstile') {
+    // Cloudflare: la casilla mide ~300x65 dentro de #cfWidget (Civitek) o .cf-turnstile.
+    const sels = ['iframe[src*="challenges.cloudflare.com"]', '#cfWidget > div', '.cf-turnstile > div', '#cfWidget', '.cf-turnstile'];
+    all = [...new Set(sels.flatMap(s => [...document.querySelectorAll(s)]))];
+    el = all.find(e => shown(e) && sized(e) && e.getBoundingClientRect().width <= 500);
+  } else {
+    all = [...document.querySelectorAll('iframe[src*="recaptcha"], .g-recaptcha')];
+    const ok = (e) => shown(e) && sized(e) && !e.closest('.grecaptcha-badge') && !(e.src || '').includes('bframe');
+    const frames = all.filter(e => e.tagName === 'IFRAME' && ok(e));
+    el = frames.find(f => f.src.includes('anchor')) || frames[0] || all.find(e => e.tagName !== 'IFRAME' && ok(e));
+  }
+  const report = all.map(e => ({tag: e.tagName, kind: (e.src || '').match(/(anchor|bframe)/)?.[1] || e.id || e.className || '',
                                 shown: shown(e), badge: !!e.closest('.grecaptcha-badge'), rect: rectOf(e)}));
-  const ok = (e) => shown(e) && sized(e) && !e.closest('.grecaptcha-badge') && !(e.src || '').includes('bframe');
-  const frames = all.filter(e => e.tagName === 'IFRAME' && ok(e));
-  const el = frames.find(f => f.src.includes('anchor')) || frames[0] || all.find(e => e.tagName !== 'IFRAME' && ok(e));
-  const info = {ok: false, candidates: report, viewport: [innerWidth, innerHeight], scrollY: Math.round(scrollY)};
+  const info = {ok: false, kind, candidates: report, viewport: [innerWidth, innerHeight], scrollY: Math.round(scrollY)};
   if (!el) return info;   // sin casilla visible no se tapa nada
 
   window.__clUnfocus?.();
+  // Cloudflare suele estar al final del formulario: un espacio temporal abajo
+  // deja subir la casilla hasta arriba, como en Orange. Se quita al terminar.
+  const padBefore = document.body.style.paddingBottom;
+  if (kind === 'turnstile') document.body.style.paddingBottom = innerHeight + 'px';
   el.style.scrollMarginTop = '70px';
   el.scrollIntoView({block: 'start', inline: 'nearest'});
 
@@ -80,7 +92,7 @@ FOCUS_CAPTCHA_JS = r"""
     if (c.position === 'fixed' && parseInt(c.zIndex, 10) >= 1000000) floating.push(node);
   }
   for (const node of new Set(floating)) {
-    if (node.querySelector?.('iframe[src*="recaptcha"]') || (node.src || '').includes('recaptcha')) continue;
+    if (node.contains(el) || node.querySelector?.('iframe[src*="recaptcha"]') || (node.src || '').includes('recaptcha')) continue;
     hidden.push([node, node.style.getPropertyValue('visibility'), node.style.getPropertyPriority('visibility')]);
     node.style.setProperty('visibility', 'hidden', 'important');
   }
@@ -162,6 +174,7 @@ FOCUS_CAPTCHA_JS = r"""
       if (value) node.style.setProperty('visibility', value, priority); else node.style.removeProperty('visibility');
     }
     el.style.scrollMarginTop = '';
+    document.body.style.paddingBottom = padBefore;
     delete window.__clUnfocus;
   };
   info.ok = place();
@@ -330,7 +343,7 @@ class LiveViewCaptcha:
     def solve(self, page: Page, timeout_s: int, kind: str = "recaptcha") -> None:
         # La sesión gratuita dura 15 minutos en total: el CAPTCHA no puede ocuparlos todos.
         timeout_s = min(int(os.getenv("CAPTCHA_TIMEOUT_S", timeout_s)), int(os.getenv("REMOTE_CAPTCHA_TIMEOUT_S", "480")))
-        original = self._focus_on_turnstile(page) if kind == "turnstile" else self._focus_on_captcha(page)
+        original = self._focus_on_captcha(page, kind)
         if self.on_waiting:
             self.on_waiting(self.embed_url, timeout_s)
         else:
@@ -341,7 +354,7 @@ class LiveViewCaptcha:
             # Orden: tapar todo -> avisar que ya no hace falta el recuadro ->
             # dar un momento para que desaparezca -> destapar y seguir.
             try:
-                page.evaluate("(t) => window.__clCover?.(t)", "Listo. Continuando…")
+                page.evaluate("(t) => window.__clCover?.(t)", "Done. Continuing…")
             except Exception:
                 pass
             if self.on_done:
@@ -357,24 +370,12 @@ class LiveViewCaptcha:
                 except Exception as exc:
                     log.warning("No pude restaurar la ventana remota: %s", exc)
 
-    def _focus_on_turnstile(self, page: Page):
-        """Ventana del tamaño del recuadro de la web, con la casilla de Cloudflare al centro."""
-        original = page.viewport_size or {"width": 1280, "height": 900}
-        try:
-            page.set_viewport_size(FOCUS_VIEWPORT)
-            page.wait_for_timeout(800)
-            if not page.evaluate(FOCUS_TURNSTILE_JS):
-                log.warning("No encontré la casilla de Cloudflare; se muestra la página completa")
-            return original
-        except Exception as exc:
-            log.warning("No pude centrar la casilla de Cloudflare (sigo igual): %s", exc)
-            return original
+    def _focus_on_captcha(self, page: Page, kind: str = "recaptcha"):
+        """Achica la ventana remota y deja a la vista solo la casilla mientras se espera.
 
-    def _focus_on_captcha(self, page: Page):
-        """Achica la ventana remota y deja a la vista solo el CAPTCHA mientras se espera.
-
-        Impide el desplazamiento y tapa el resto del portal, así el usuario no
-        puede moverse por el sitio ni pulsar nada más. Al resolverse se restaura todo.
+        Sirve para reCAPTCHA (Orange) y Cloudflare Turnstile (Civitek). Impide el
+        desplazamiento y tapa el resto del portal, así el usuario no puede moverse
+        por el sitio ni pulsar nada más. Al resolverse se restaura todo.
         Guarda un diagnóstico (captura y datos) en la carpeta debug.
         REMOTE_CAPTCHA_FOCUS=0 lo desactiva.
         """
@@ -384,13 +385,15 @@ class LiveViewCaptcha:
         try:
             page.set_viewport_size(FOCUS_VIEWPORT)
             page.wait_for_timeout(800)          # la página se reacomoda al cambiar de tamaño
-            info = page.evaluate(FOCUS_CAPTCHA_JS, "Marca la casilla para continuar:")
+            info = page.evaluate(FOCUS_CAPTCHA_JS, {"message": "Tick the box to continue:", "kind": kind})
             page.wait_for_timeout(700)
             info["after"] = page.evaluate(CHECK_FOCUS_JS)
             if info.get("ok") and info["after"].get("masked"):
                 log.info("CAPTCHA enfocado en la ventana remota: casilla en %s", info.get("box"))
             else:
                 log.warning("No pude dejar a la vista solo el CAPTCHA; se muestra la página completa")
+                if kind == "turnstile":
+                    page.evaluate(FOCUS_TURNSTILE_JS)       # al menos la casilla al centro
             self._save_focus_debug(page, info)
             return original
         except Exception as exc:
