@@ -122,7 +122,7 @@ El dashboard no llama al backend: inserta una fila en la tabla `lookup_jobs` de 
 
 **Preparación (una vez):**
 
-1. En Supabase (proyecto sandbox) > SQL Editor, pega y corre `sql/001_lookup_jobs.sql`. Crea la tabla, las funciones del worker, los permisos, Realtime y el bucket privado `incident-reports`.
+1. En Supabase (proyecto sandbox) > SQL Editor, pega y corre `sql/001_lookup_jobs.sql`. Crea la tabla, las funciones del worker, los permisos, Realtime y el bucket privado `incident-reports`. Después corre `sql/002_roles.sql` (roles) y `sql/003_support_document.sql` (columnas del documento de apoyo).
 2. En `.env`, pon `SUPABASE_SERVICE_ROLE_KEY` (Project Settings > API Keys). Esa clave solo vive en el `.env` del worker.
 
 **Probar sin dashboard** (dos consolas):

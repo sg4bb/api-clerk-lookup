@@ -40,10 +40,12 @@ CIVITEK_DOCUMENTS = [
     r"complaint\s*/?\s*arrest affidavit",
     r"complaint affidavit",
     r"affidavit (?:for|to issue) (?:arrest )?warrant",
-    # Arresto con orden de captura: la orden ejecutada trae la orden y el
-    # affidavit de la policía con la narración (Marion, Leroy Parks III, Doc #6).
-    r"\bwarrant served\b",
 ]
+# Documento de apoyo: la orden de captura ejecutada. Cuando el arresto fue con
+# orden, el arrest affidavit es solo el formulario de la captura y la orden trae
+# el número de reporte de la agencia que investigó el hecho, a veces con su
+# narración (Marion: Leroy Parks III Doc #6, Estiben García-Luis Doc #10).
+CIVITEK_SUPPORT = [r"\bwarrant served\b", r"\bcapias served\b"]
 CIVITEK_EXCLUDE = [r"insolvency", r"indigen", r"\bmotion\b"]
 
 
@@ -57,6 +59,7 @@ def civitek(key: str, name: str, code: str) -> CountyConfig:
         case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
         document_priority=CIVITEK_DOCUMENTS,
         document_exclude=CIVITEK_EXCLUDE,
+        support_documents=CIVITEK_SUPPORT,
         captcha="turnstile",
         throttle_s=2.0,
     )

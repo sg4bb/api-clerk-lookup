@@ -21,6 +21,10 @@ class CountyConfig:
     document_priority: list[str]
     # Regex de documentos que nunca sirven aunque coincidan con los de arriba.
     document_exclude: list[str] = field(default_factory=list)
+    # Documento de apoyo que se descarga además del principal, si existe: la
+    # orden de captura ejecutada (trae el número de reporte de la agencia que
+    # investigó el hecho). Mismas exclusiones que arriba.
+    support_documents: list[str] = field(default_factory=list)
     captcha: str = "none"             # "recaptcha_v2" | "turnstile" | "none"
     captcha_timeout_s: int = 600     # CAPTCHA_TIMEOUT_S en .env lo cambia
     throttle_s: float = 2.0           # pausa entre requests al portal

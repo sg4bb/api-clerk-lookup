@@ -94,19 +94,9 @@ class CasePageTest(unittest.TestCase):
         self.assertEqual([d.description for d in docs], ["ARREST AFFIDAVIT AND NOTICE OF CONFIDENTIAL FILING"])
 
 
-class DocumentChoiceTest(unittest.TestCase):
-    """Qué documento se descarga cuando el docket trae varios (docket real de Marion, 12/10/2026)."""
-
-    def docs(self, rows):
-        data = {**CASE, "docket": [{"cells": ["", str(n), d, desc, "1"], "href": f"docketimage.pdf?query={n}"}
-                                   for n, d, desc in rows]}
-        adapter = AdapterStub(None, get_county("marion", "FL"), None)
-        candidate = candidates_from_results(RESULTS)[0]
-        return adapter.find_documents(CaseDetails(candidate, charges_from_case(CASE), docket_from_case(data)))
-
-    def test_arrest_on_warrant_takes_warrant_served(self):
-        """Así viene el docket (del más nuevo al más viejo) y con una fecha mal cargada (Doc #64)."""
-        rows = [(165, "09/03/2026", "ANNOUNCEMENT OF NO INFORMATION FOR 26-CF-3428"),
+# Dockets reales de Marion (12/10/2026): número, fecha y título tal como los muestra el portal,
+# del más nuevo al más viejo. Sin datos personales.
+PARKS_DOCKET = [(165, "09/03/2026", "ANNOUNCEMENT OF NO INFORMATION FOR 26-CF-3428"),
                 (19, "09/03/2026", "INFORMATION EFILED BY STATE"),
                 (38, "08/26/2026", "ARREST AFFIDAVIT"),
                 (143, "08/20/2026", "DISAGREEMENT ON NOTICE OF CONFIDENTIAL"),
@@ -118,23 +108,51 @@ class DocumentChoiceTest(unittest.TestCase):
                 (115, "08/14/2026", "BENCH WARRANT SERVED AND NOTICE OF CONFIDENTIAL FILING"),
                 (93, "08/14/2026", "BENCH WARRANT SERVED AND NOTICE OF CONFIDENTIAL FILING"),
                 (6, "08/14/2026", "BENCH WARRANT SERVED AND NOTICE OF CONFIDENTIAL FILING"),
-                (64, "04/20/2026", "ARREST AFFIDAVIT")]
-        docs = self.docs(rows)
-        self.assertEqual(docs[0].number, 6)
-        self.assertEqual([d.number for d in docs], [6, 8, 38, 64, 93, 96, 115, 118, 132, 152])
+                (64, "04/20/2026", "ARREST AFFIDAVIT")]          # fecha mal cargada en el portal
+GARCIA_DOCKET = [(13, "06/19/2026", "FIRST APPEARANCE ORDER"),
+                 (12, "06/19/2026", "ARREST AFFIDAVIT"),
+                 (10, "06/18/2026", "CAPIAS SERVED-INFORMATION/INDICTMENT AND NOTICE OF CONFIDENTIAL FILING"),
+                 (7, "06/18/2026", "APPLICATION AND ORDER FOR BAIL"),
+                 (6, "06/18/2026", "INFORMATION FILED BY STATE")]
+HOGG_DOCKET = [(20, "10/01/2026", "MOTION TO COMPEL ARREST AFFIDAVIT"),
+               (9, "09/23/2026", "ORDER APPOINTING PUBLIC DEFENDER"),
+               (6, "09/22/2026", "ARREST AFFIDAVIT AND NOTICE OF CONFIDENTIAL FILING"),
+               (1, "09/22/2026", "Case Filed with Clerk")]
 
-    def test_arrest_on_the_spot_takes_arrest_affidavit(self):
-        """Sin orden de captura (como Amy Hogg): el arrest affidavit, aunque haya mociones que lo nombren."""
-        rows = [(20, "10/01/2026", "MOTION TO COMPEL ARREST AFFIDAVIT"),
-                (9, "09/23/2026", "ORDER APPOINTING PUBLIC DEFENDER"),
-                (6, "09/22/2026", "ARREST AFFIDAVIT AND NOTICE OF CONFIDENTIAL FILING"),
-                (1, "09/22/2026", "Case Filed with Clerk")]
-        self.assertEqual([d.number for d in self.docs(rows)], [6])
+
+def details_with_docket(rows) -> CaseDetails:
+    data = {**CASE, "docket": [{"cells": ["", str(n), d, desc, "1"], "href": f"docketimage.pdf?query={n}"}
+                               for n, d, desc in rows]}
+    return CaseDetails(candidates_from_results(RESULTS)[0], charges_from_case(CASE), docket_from_case(data))
+
+
+class DocumentChoiceTest(unittest.TestCase):
+    """Principal: el arrest affidavit que abrió el caso. Apoyo: la orden de captura ejecutada."""
+
+    def choose(self, rows):
+        adapter = AdapterStub(None, get_county("marion", "FL"), None)
+        details = details_with_docket(rows)
+        return ([d.number for d in adapter.find_documents(details)],
+                [d.number for d in adapter.find_support_documents(details)])
+
+    def test_arrest_on_warrant(self):
+        """Leroy Parks III: #8 es el formulario de la captura; #6 trae la orden y la narración."""
+        main, support = self.choose(PARKS_DOCKET)
+        self.assertEqual(main, [8, 38, 64, 96, 118, 132, 152])      # #64 en su lugar pese a la fecha
+        self.assertEqual(support, [6, 93, 115])
+
+    def test_arrest_on_capias(self):
+        """García-Luis: #12 la captura; #10 el capias con el número de la agencia del hecho."""
+        self.assertEqual(self.choose(GARCIA_DOCKET), ([12], [10]))
+
+    def test_arrest_on_the_spot(self):
+        """Amy Hogg: el arrest affidavit, sin documento de apoyo; la moción no cuenta."""
+        self.assertEqual(self.choose(HOGG_DOCKET), ([6], []))
 
     def test_warrant_not_served_is_not_a_document(self):
         rows = [(30, "11/02/2026", "BENCH WARRANT ISSUED FOR FAILURE TO APPEAR"),
                 (5, "09/01/2026", "ARREST AFFIDAVIT")]
-        self.assertEqual([d.number for d in self.docs(rows)], [5])
+        self.assertEqual(self.choose(rows), ([5], []))
 
     def test_without_numbers_falls_back_to_type_and_date(self):
         entries = [DocketEntry(date(2026, 8, 26), "ARREST AFFIDAVIT", "a"),
@@ -143,6 +161,9 @@ class DocumentChoiceTest(unittest.TestCase):
         candidate = candidates_from_results(RESULTS)[0]
         docs = adapter.find_documents(CaseDetails(candidate, [], entries))
         self.assertEqual([d.doc_ref for d in docs], ["b", "a"])
+
+    def test_orange_has_no_support_documents(self):
+        self.assertEqual(get_county("orange", "FL").support_documents, [])
 
 
 class ScoreWithoutChargeDatesTest(unittest.TestCase):

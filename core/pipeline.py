@@ -42,6 +42,10 @@ class PipelineResult:
     def pdf_path(self) -> Optional[Path]:
         return Path(self.lookup.pdf_path) if self.lookup and self.lookup.pdf_path else None
 
+    @property
+    def support_pdf_path(self) -> Optional[Path]:
+        return Path(self.lookup.support_pdf_path) if self.lookup and self.lookup.support_pdf_path else None
+
 
 def _jsonable(value: Any) -> Any:
     if isinstance(value, (date, Path)):

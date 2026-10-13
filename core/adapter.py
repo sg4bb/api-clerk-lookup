@@ -85,9 +85,16 @@ class ClerkAdapter(ABC):
         La implementación por defecto usa los patrones del condado; un
         adaptador la sobrescribe solo si su portal lo necesita.
         """
+        return self._matching(details, self.county.document_priority)
+
+    def find_support_documents(self, details: CaseDetails) -> list[DocketEntry]:
+        """Documentos de apoyo (orden de captura ejecutada), en el mismo orden."""
+        return self._matching(details, self.county.support_documents)
+
+    def _matching(self, details: CaseDetails, priority: list[str]) -> list[DocketEntry]:
         excluded = [re.compile(p, re.I) for p in self.county.document_exclude]
         ranked: list[DocketEntry] = []
-        for pattern in self.county.document_priority:
+        for pattern in priority:
             regex = re.compile(pattern, re.I)
             for entry in details.docket:
                 if entry in ranked or not entry.doc_ref:

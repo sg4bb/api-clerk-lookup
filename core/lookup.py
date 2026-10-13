@@ -140,10 +140,16 @@ def run_lookup(
                 for e in details.docket
             ]
             documents = adapter.find_documents(details)
+            support = adapter.find_support_documents(details)
             if documents:
                 log.info("Documentos en %s (el primero se descarga): %s", details.candidate.case_number,
-                         "; ".join((f"#{d.number} " if d.number is not None else "")
-                                   + f"{d.date or 'sin fecha'} {d.description}" for d in documents[:6]))
+                         _describe(documents))
+            if support:
+                log.info("Documento de apoyo en %s: %s", details.candidate.case_number, _describe(support[:3]))
+            if not documents and support:
+                # Sin arrest affidavit pero con la orden ejecutada: mejor la orden que nada.
+                log.info("No hay arrest affidavit; entrego la orden de captura como documento principal")
+                documents, support = support, []
             if not documents:
                 downloadable = [e for e in docket if e["downloadable"]]
                 log.warning("Ningún documento coincide en %s. Descargables en el docket (%d de %d):",
@@ -161,11 +167,22 @@ def run_lookup(
             on_status("downloading")
             adapter.throttle()
             pdf_path = adapter.download(details, documents[0], output_dir)
+            support_doc, support_path = None, None
+            if support:
+                try:
+                    adapter.throttle()
+                    support_path = adapter.download(details, support[0], output_dir)
+                    support_doc = support[0].description
+                except Exception as exc:
+                    # El principal ya está: el de apoyo no hace fallar la búsqueda.
+                    log.warning("No pude descargar el documento de apoyo (%s): %s", support[0].description, exc)
             return LookupResult(
                 "found",
                 case_number=details.candidate.case_number,
                 document=documents[0].description,
                 pdf_path=pdf_path,
+                support_document=support_doc,
+                support_pdf_path=support_path,
                 score=match.score,
                 reasons=match.reasons,
                 candidates=summary,
@@ -186,6 +203,11 @@ def run_lookup(
             return LookupResult("error", message=(
                 f"The court portal didn't respond as expected ({type(exc).__name__}). "
                 "Try again in a few minutes."))
+
+
+def _describe(entries) -> str:
+    return "; ".join((f"#{d.number} " if d.number is not None else "") + f"{d.date or 'sin fecha'} {d.description}"
+                     for d in entries[:6])
 
 
 def _save_debug(page, output_dir: Path) -> None:

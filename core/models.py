@@ -110,6 +110,9 @@ class LookupResult:
     related_cases: list[str] = field(default_factory=list)
     # Documentos del docket del caso elegido: fecha, nombre y si tiene link.
     docket: list[dict[str, Any]] = field(default_factory=list)
+    # Documento de apoyo (orden de captura ejecutada), si el caso lo tiene.
+    support_document: Optional[str] = None
+    support_pdf_path: Optional[Path] = None
 
     def to_dict(self) -> dict[str, Any]:
         def convert(value: Any) -> Any:

@@ -262,6 +262,7 @@ class CivitekOcrsAdapter(ClerkAdapter):
     ) -> list[CaseCandidate]:
         page = self.page
         self._open_search_form()
+        self._ensure_form()
         self._fill_form(query, date_from, date_to)
         log.info("Buscando %s %s entre %s y %s (tipos %s)",
                  query.first_name, query.last_name, date_from, date_to, query.case_types)
@@ -301,14 +302,25 @@ class CivitekOcrsAdapter(ClerkAdapter):
                         len(people), MAX_PEOPLE)
         return candidates
 
-    def _open_search_form(self) -> None:
+    def _open_search_form(self, from_start: bool = False) -> None:
         """Condado -> "Public" -> aviso legal ("I Agree") -> formulario.
 
         En el portal "Public" e "I Agree" son <button> de PrimeFaces (no
-        enlaces), y cada uno carga una página nueva.
+        enlaces), y cada uno carga una página nueva. En un reintento (otra
+        forma del apellido), el formulario ya está abierto tras "No matches
+        found": se reusa en vez de volver a entrar, porque con la sesión
+        abierta la página del condado recarga el formulario y, con el portal
+        lento, se perdía (12/10/2026, 23:10).
         """
         page = self.page
+        if not from_start and "/app/search" in page.url and page.locator(LASTNAME).count():
+            log.info("Uso el formulario que ya está abierto")
+            return
         page.goto(county_entry_url(self.county.base_url), wait_until="domcontentloaded")
+        try:
+            page.wait_for_load_state("load", timeout=30_000)
+        except PlaywrightTimeout:
+            pass
         if page.locator(LASTNAME).count():
             return                       # la sesión ya estaba dentro
         if not _click_control(page, PUBLIC_RE, 15_000):
@@ -320,8 +332,23 @@ class CivitekOcrsAdapter(ClerkAdapter):
             raise SearchError("The court portal didn't open after choosing Public access") from None
         if not page.locator(LASTNAME).count():
             _click_control(page, AGREE_RE, 5_000)
+        # Si el formulario tarda, _ensure_form le da más tiempo y, si hace falta,
+        # entra de nuevo una vez antes de rendirse.
+
+    def _ensure_form(self) -> None:
+        """El formulario tiene que estar a la vista antes de escribir.
+
+        Si el portal recargó la página en el último momento, se le da más
+        tiempo; si aun así no está, se entra de nuevo desde el principio, una vez.
+        """
         try:
-            page.wait_for_selector(LASTNAME, timeout=20_000)
+            self.page.wait_for_selector(LASTNAME, state="visible", timeout=45_000)
+            return
+        except PlaywrightTimeout:
+            log.info("El formulario no apareció; entro de nuevo al portal")
+        self._open_search_form(from_start=True)
+        try:
+            self.page.wait_for_selector(LASTNAME, state="visible", timeout=45_000)
         except PlaywrightTimeout:
             raise SearchError("The court portal didn't open its search form") from None
 
@@ -501,20 +528,24 @@ class CivitekOcrsAdapter(ClerkAdapter):
         log.warning("El docket sigue con más páginas después de elegir ALL; puede faltar algún documento")
 
     def find_documents(self, details: CaseDetails) -> list[DocketEntry]:
-        """Los documentos válidos, el primero que entró al expediente primero.
+        """Arrest affidavit y similares, el primero que entró al expediente primero.
 
-        El expediente se abre con el documento del arresto: el arrest affidavit
-        si lo arrestaron en el momento (Amy Hogg), o la orden ejecutada ("BENCH
-        WARRANT SERVED") si fue con orden de captura (Leroy Parks III: la orden
-        y el affidavit de la policía con la narración, Doc #6). Lo que entra
-        después son violaciones de la fianza, cargos nuevos, etc.
-
-        Se ordena por "Doc #" (el número que el portal da al recibir cada
-        documento), no por fecha: hay fechas mal cargadas (un 20/04 en agosto).
-        Sin número, por tipo de documento y fecha.
+        Un caso puede tener varios arrest affidavits: el primero es el del
+        arresto que abrió el caso; los siguientes suelen ser violaciones de la
+        fianza o cargos nuevos (Leroy Parks III: #8 la captura, #38 y #64 desde
+        la cárcel). La orden de captura ejecutada va aparte, como apoyo.
         """
-        ranked = super().find_documents(details)
-        patterns = [re.compile(p, re.I) for p in self.county.document_priority]
+        return self._in_filing_order(super().find_documents(details), self.county.document_priority)
+
+    def find_support_documents(self, details: CaseDetails) -> list[DocketEntry]:
+        return self._in_filing_order(super().find_support_documents(details), self.county.support_documents)
+
+    @staticmethod
+    def _in_filing_order(entries: list[DocketEntry], priority: list[str]) -> list[DocketEntry]:
+        """Por "Doc #" (el número que el portal da al recibir cada documento),
+        no por fecha: hay fechas mal cargadas (un 20/04 en agosto). Sin número,
+        por tipo de documento y fecha."""
+        patterns = [re.compile(p, re.I) for p in priority]
 
         def kind(entry: DocketEntry) -> int:
             return next((i for i, rx in enumerate(patterns) if rx.search(entry.description)), len(patterns))
@@ -524,7 +555,7 @@ class CivitekOcrsAdapter(ClerkAdapter):
                 return (0, entry.number, 0, date.min)
             return (1, 0, kind(entry), entry.date or date.max)
 
-        return sorted(ranked, key=key)
+        return sorted(entries, key=key)
 
     # --- 3. Descarga ----------------------------------------------------------
 

@@ -113,6 +113,13 @@ def handle(store: JobStore, job: dict[str, Any], base_output: Path) -> str:
             except JobsError as exc:
                 log.error("No pude subir el PDF: %s", exc)
                 fields.update(status="error", status_detail=f"The document was downloaded but could not be saved: {exc}")
+        if fields["status"] == "found" and result.support_pdf_path and result.support_pdf_path.exists():
+            try:
+                fields["support_pdf_path"] = store.upload_pdf(job_id, result.support_pdf_path)
+                fields["support_document_name"] = lookup.support_document
+            except JobsError as exc:
+                # El principal ya se subió: el de apoyo no cambia el resultado.
+                log.warning("No pude subir el documento de apoyo: %s", exc)
     if fields["status"] == "found" and not fields.get("status_detail"):
         fields["status_detail"] = FINAL_TEXT["found"]
     store.update(job_id, **fields)

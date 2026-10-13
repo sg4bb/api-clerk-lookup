@@ -58,16 +58,22 @@ defecto: hay que elegir "ALL". Los documentos son enlaces directos a
 `docketimage.pdf` y se descargan sin cuenta. Imágenes con marca de agua;
 algunas pueden ser "View on Request".
 
-Qué documento se descarga: entre los válidos (arrest affidavit, probable
-cause affidavit, complaint affidavit, affidavit para orden de captura y
-"warrant served"), el de **Doc # más bajo**, es decir, el que abrió el
-expediente. Si lo arrestaron en el momento es el arrest affidavit; si fue con
-orden de captura es el "BENCH WARRANT SERVED", que trae la orden y el
-affidavit de la policía con la narración. Los arrest affidavits posteriores
-suelen ser violaciones de la fianza o cargos nuevos. No se ordena por fecha
-porque hay fechas mal cargadas (Leroy Parks III: un 20/04/2026 en agosto).
-Al sumar un condado, revisar en la consola la línea `Documentos en ...` por
-si usa otros nombres.
+Qué documentos se descargan:
+
+- **Principal:** el arrest affidavit (o probable cause / complaint affidavit)
+  de **Doc # más bajo**, es decir, el que entró primero al expediente. Los
+  posteriores suelen ser violaciones de la fianza o cargos nuevos. Se ordena
+  por Doc # y no por fecha porque hay fechas mal cargadas (Leroy Parks III: un
+  20/04/2026 en agosto).
+- **De apoyo:** la orden de captura ejecutada ("WARRANT SERVED" o "CAPIAS
+  SERVED"), si existe. Cuando el arresto fue con orden, el arrest affidavit es
+  solo el formulario de la captura; la orden trae el número de reporte de la
+  agencia que investigó el hecho y, a veces, su narración (Parks: Doc #6 con el
+  affidavit de Ocala PD; García-Luis: Doc #10 con OCPD26-71998). Si no hay
+  arrest affidavit, la orden se entrega como principal.
+
+Al sumar un condado, revisar en la consola las líneas `Documentos en ...` y
+`Documento de apoyo en ...` por si usa otros nombres.
 
 | Condado | Población | Código | Documentos sin cuenta | Notas |
 | --- | ---: | --- | --- | --- |
