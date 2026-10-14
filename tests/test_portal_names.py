@@ -25,6 +25,11 @@ class PortalTextTest(unittest.TestCase):
             self.assertEqual(portal_text(name), name)
         self.assertEqual(portal_text(None), "")
 
+    def test_apostrophe_variants(self):
+        """Sumter (13/10/2026): con "O'Brien" el portal devuelve el formulario vacío."""
+        self.assertEqual(last_name_variants(portal_text("O'Brien")), ["O'Brien", "OBrien", "O Brien"])
+        self.assertEqual(last_name_variants("D'Angelo"), ["D'Angelo", "DAngelo", "D Angelo"])
+
     def test_variants_without_accents(self):
         self.assertEqual(last_name_variants(portal_text("González Delgado")),
                          ["Gonzalez Delgado", "GonzalezDelgado", "Gonzalez-Delgado"])
@@ -64,6 +69,35 @@ class SearchFormTest(unittest.TestCase):
         self.assertEqual([last for _, _, last in searched],
                          ["Gonzalez Delgado", "GonzalezDelgado", "Gonzalez-Delgado"])
         self.assertTrue(all(first == "Jose" and middle == "Alberto" for first, middle, _ in searched))
+
+
+class ApostropheSearchTest(unittest.TestCase):
+    def test_second_form_of_the_name_is_tried(self):
+        searched = []
+
+        class FakeAdapter:
+            def __init__(self, page, county, captcha):
+                self.remote = False
+
+            def throttle(self):
+                pass
+
+            def search(self, query, date_from, date_to):
+                searched.append(query.last_name)
+                return []          # el portal no acepta ninguna forma: se prueban las tres
+
+        @contextmanager
+        def fake_browser(headless=False):
+            yield SimpleNamespace(page=None, remote=False, live_view_url=None)
+
+        query = LookupQuery(first_name="David", last_name="O'Brien", county="sumter", state="FL",
+                            incident_date=date(2026, 7, 21))
+        with mock.patch.object(lookup, "open_browser", fake_browser), \
+             mock.patch.object(lookup, "get_adapter", return_value=FakeAdapter), \
+             tempfile.TemporaryDirectory() as tmp:
+            result = lookup.run_lookup(query, Path(tmp), captcha=object())
+        self.assertEqual(result.status, "not_found")
+        self.assertEqual(searched, ["O'Brien", "OBrien", "O Brien"])
 
 
 if __name__ == "__main__":

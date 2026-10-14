@@ -69,8 +69,17 @@ Qué documentos se descargan:
   SERVED"), si existe. Cuando el arresto fue con orden, el arrest affidavit es
   solo el formulario de la captura; la orden trae el número de reporte de la
   agencia que investigó el hecho y, a veces, su narración (Parks: Doc #6 con el
-  affidavit de Ocala PD; García-Luis: Doc #10 con OCPD26-71998). Si no hay
-  arrest affidavit, la orden se entrega como principal.
+  affidavit de Ocala PD; García-Luis: Doc #10 con OCPD26-71998). También el
+  "WARRANT AFFIDAVIT" (Sumter): la declaración del agente para pedir la orden,
+  con la narración y el número de reporte (Almany: Doc #3, SCSO26OFF004530).
+  Si no hay arrest affidavit, la orden se entrega como principal.
+
+Nombre del acusado: se compara con el DEFENDANT del caso y, si no coincide,
+con los ALSO KNOWN AS del propio caso. El clerk a veces escribe mal al acusado
+(Almany quedó como "ALAMANY THOMAS, BRANDY RAECHEL"). El nombre de la fila de
+resultados no cuenta como alias: la persona buscada puede salir en casos ajenos
+como agente (Almany era detective; esas filas no traen sexo ni dirección).
+Los casos descartados por nombre salen en la consola como `Descarto ...`.
 
 Al sumar un condado, revisar en la consola las líneas `Documentos en ...` y
 `Documento de apoyo en ...` por si usa otros nombres.
@@ -80,7 +89,7 @@ Al sumar un condado, revisar en la consola las líneas `Documentos en ...` y
 | Marion (Ocala) | 419.510 | 42 | Sí (arrest affidavit descargado) | Hecho. Archivo viejo aparte (FileBound) |
 | Hernando | 210.577 | 27 | Sin verificar | |
 | Santa Rosa | 207.983 | 57 | Solo pidiéndolas ("request images") | |
-| Sumter | 156.743 | 60 | Sin verificar | |
+| Sumter | 156.743 | 60 | Sí (sworn arrest complaint affidavit y warrant affidavit) | Hecho (14/10/2026). Probado: O'Brien, Almany, Harris, Turner, Vaughn. El servidor de documentos a veces cae por horas ("not available at this time") |
 | Highlands | 106.109 | 28 | Según el clerk, solo abogados registrados | |
 | Nassau | 103.990 | 45 | En parte | Filtros por fecha o tipo pueden pedir registro |
 | Walton | 87.728 | 66 | Sin verificar | Rango de fechas de máximo 7 días |

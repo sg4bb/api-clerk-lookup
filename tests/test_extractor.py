@@ -133,6 +133,14 @@ class OutOfScopeTest(unittest.TestCase):
         aq = build_query(extraction(county=None, city="Ocala", agency="Ocala Police Department"), ARTICLE)
         self.assertEqual(aq.query.county, "marion")
 
+    def test_sumter_is_covered(self):
+        """Sumter tiene cobertura (Civitek); The Villages y Wildwood resuelven a Sumter."""
+        for city, agency in (("The Villages", "Sumter County Sheriff's Office"), ("Wildwood", "Wildwood Police Department")):
+            aq = build_query(extraction(county=None, city=city, agency=agency), ARTICLE)
+            self.assertEqual(aq.query.county, "sumter")
+        aq = build_query(extraction(county=None, city=None, agency="Sumter County Sheriff's Office"), ARTICLE)
+        self.assertEqual(aq.query.county, "sumter")
+
     def test_florida_county_named(self):
         exc = self.reason(county="Seminole County", city="Sanford", agency="Sanford Police Department")
         self.assertEqual((exc.reason, exc.county), ("county", "Seminole"))
@@ -188,6 +196,22 @@ class RepairTest(unittest.TestCase):
         aq = build_query(extraction(incident_date="2023-10-21", incident_date_evidence="Friday"), ARTICLE)
         self.assertEqual(aq.query.incident_date, date(2023, 10, 20))
         self.assertTrue(aq.notes)
+
+    def test_agency_beats_dateline_county(self):
+        """Almany (14/10/2026): dateline "ORLANDO, Fla." y el modelo de respaldo dijo
+        Orange; la agencia es el Sheriff de Sumter, que solo actúa en Sumter."""
+        ex = extraction(county="Orange", city="Orlando", agency="Sumter County Sheriff's Office")
+        with self.assertLogs("extractor", level="WARNING"):
+            aq = build_query(ex, ARTICLE)
+        self.assertEqual(aq.query.county, "sumter")
+
+    def test_agreeing_county_untouched(self):
+        ex = extraction(county="Orange County", city="Orlando", agency="Orlando Police Department")
+        self.assertEqual(build_query(ex, ARTICLE).query.county, "orange")
+
+    def test_unknown_agency_keeps_model_county(self):
+        ex = extraction(county="Marion", city=None, agency="Florida Highway Patrol")
+        self.assertEqual(build_query(ex, ARTICLE).query.county, "marion")
 
     def test_county_from_agency(self):
         aq = build_query(extraction(county=None, city=None, agency="Orange County Sheriff's Office"), ARTICLE)

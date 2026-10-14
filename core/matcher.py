@@ -110,16 +110,46 @@ def _name_points(query: LookupQuery, defendant: str, reasons: list[str]) -> Opti
     return points
 
 
+def _candidate_name_points(query: LookupQuery, candidate: CaseCandidate, reasons: list[str]) -> Optional[int]:
+    """Como _name_points, con el nombre del acusado y, si no coincide, sus alias.
+
+    El nombre principal manda: un alias solo se usa cuando el principal no
+    coincide. Los portales que no traen alias (Orange) se comportan igual que antes.
+    """
+    main: list[str] = []
+    points = _name_points(query, candidate.defendant, main)
+    if points is not None:
+        reasons.extend(main)
+        return points
+    best, best_reasons = None, []
+    for alias in candidate.aliases:
+        if normalize(alias) == normalize(candidate.defendant):
+            continue
+        tried: list[str] = []
+        alias_points = _name_points(query, alias, tried)
+        if alias_points is not None and (best is None or alias_points > best):
+            best, best_reasons = alias_points, [f"coincide con un alias ({alias})"] + tried
+    reasons.extend(best_reasons if best is not None else main)
+    return best
+
+
 def _one_of_compound(simple: str, compound: str) -> bool:
     """True si 'simple' es uno de los apellidos de 'compound' ('rosado' en 'Rosado Martinez')."""
     parts = [surname_key(p) for p in re.split(r"[\s\-]+", normalize(compound)) if p]
     return len(parts) >= 2 and surname_key(simple) in parts
 
 
+def prelim_reasons(query: LookupQuery, candidate: CaseCandidate) -> str:
+    """Por qué el nombre de un candidato coincide o no (para el log)."""
+    reasons: list[str] = []
+    _candidate_name_points(query, candidate, reasons)
+    return ", ".join(reasons)
+
+
 def prelim_score(query: LookupQuery, candidate: CaseCandidate) -> int:
     """Puntaje rápido con la fila de resultados, para decidir qué casos abrir."""
     reasons: list[str] = []
-    points = _name_points(query, candidate.defendant, reasons)
+    points = _candidate_name_points(query, candidate, reasons)
     if points is None:
         return 0
     anchor = query.incident_date or query.arrest_date
@@ -172,7 +202,7 @@ def max_points(query: LookupQuery, details: CaseDetails) -> int:
 
 def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
     reasons: list[str] = []
-    name_points = _name_points(query, details.candidate.defendant, reasons)
+    name_points = _candidate_name_points(query, details.candidate, reasons)
     if name_points is None:
         return MatchScore(0, reasons, disqualified=True)
     score = name_points

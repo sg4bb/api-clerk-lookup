@@ -6,9 +6,9 @@ import unittest
 from datetime import date
 
 from adapters.civitek_ocrs import (candidates_from_results, case_number, charges_from_case,
-                                   docket_from_case, is_consolidated)
+                                   docket_from_case, is_consolidated, wrong_county)
 from adapters.civitek_ocrs import CivitekOcrsAdapter
-from core.matcher import pick_best, related_cases, resolve_same_incident, same_incident, score_case
+from core.matcher import pick_best, prelim_score, related_cases, resolve_same_incident, same_incident, score_case
 from core.models import CaseCandidate, CaseDetails, Charge, DocketEntry, LookupQuery
 from counties import get_county
 
@@ -52,6 +52,19 @@ class AdapterStub(CivitekOcrsAdapter):
         return None
 
 
+class CountyCheckTest(unittest.TestCase):
+    def test_title_names_the_county(self):
+        self.assertIsNone(wrong_county("Marion County OCRS", "Marion County"))
+        self.assertIsNone(wrong_county("Sumter County OCRS", "Sumter County"))
+        self.assertEqual(wrong_county("Suwannee County OCRS", "Sumter County"), "Suwannee")
+        self.assertIsNone(wrong_county("Online Court Records Search", "Sumter County"))   # no se sabe: se sigue
+
+    def test_sumter_config(self):
+        sumter = get_county("sumter", "FL")
+        self.assertEqual(sumter.base_url, "https://www.civitekflorida.com/ocrs/county/60/")
+        self.assertEqual(sumter.platform, "civitek_ocrs")
+
+
 class ResultsTest(unittest.TestCase):
     def test_one_candidate_per_case(self):
         found = candidates_from_results(RESULTS)
@@ -74,6 +87,8 @@ class ResultsTest(unittest.TestCase):
     def test_local_number_or_ucn(self):
         self.assertEqual(case_number({"local": "[26CF001234AX]", "ucn": "x"}), "26CF001234AX")
         self.assertEqual(case_number({"local": "", "ucn": "422026CF001234CFAXMX"}), "422026CF001234CFAXMX")
+        # Sumter usa el año con 4 dígitos: no se recorta.
+        self.assertEqual(case_number({"local": "[ 2026CF000808AXMX ]", "ucn": "x"}), "2026CF000808AXMX")
 
 
 class CasePageTest(unittest.TestCase):
@@ -253,6 +268,93 @@ class SameIncidentTest(unittest.TestCase):
         self.assertFalse(same_incident(orange("A", date(2026, 8, 13)), orange("B", date(2026, 8, 20))))
         self.assertTrue(same_incident(orange("A", date(2026, 8, 13)), orange("B", date(2026, 8, 13))))
 
+
+# Brandy Almany (Sumter, 2026CF000803AXMX): el DEFENDANT quedó escrito
+# "ALAMANY THOMAS"; "ALMANY" solo aparece como ALSO KNOWN AS y en la fila.
+ALMANY_PEOPLE = [{"name": "ALMANY, BRANDY", "alias_of": None, "expanded": True, "cases": [{
+    "ucn": "602026CF000803CFAXMX", "local": "[2026CF000803AXMX]", "href": "caseinformation.xhtml?query=x",
+    "defendant": "ALAMANY THOMAS, BRANDY RAECHEL",
+    "aka": ["ALMANY, BRANDY RAECHELLE", "ALMANY, BRANDY", "ALMANY THOMAS, BRANDY RAECHELL"],
+    "file_date": "07/23/2026", "case_type": "Felony 22-D", "status": "CASE OPEN", "charges": []}]}]
+
+ALMANY_DOCKET = [(17, "10/05/2026", "STATES DISCOVERY EXHIBIT"),
+                 (14, "08/13/2026", "INFORMATION FILED"),
+                 (8, "07/24/2026", "APPLICATION OF CRIMINAL INDIGENT STATUS"),
+                 (7, "07/24/2026", "SWORN ARREST COMPLAINT AFFIDAVIT FILED"),
+                 (6, "07/24/2026", "WARRANT TO ARREST RETURN EXECUTED"),
+                 (5, "07/24/2026", "SHERIFF WARRANT REMOVAL FORM"),
+                 (3, "07/23/2026", "WARRANT AFFIDAVIT")]
+
+
+class AliasNameTest(unittest.TestCase):
+    def query(self, last="Almany") -> LookupQuery:
+        return LookupQuery(first_name="Brandy", last_name=last, county="sumter", state="FL",
+                           incident_date=date(2026, 7, 23))
+
+    def test_aliases_are_kept(self):
+        candidate = candidates_from_results(ALMANY_PEOPLE)[0]
+        self.assertEqual(candidate.defendant, "ALAMANY THOMAS, BRANDY RAECHEL")
+        self.assertEqual(candidate.aliases, ["ALMANY, BRANDY RAECHELLE", "ALMANY, BRANDY",
+                                             "ALMANY THOMAS, BRANDY RAECHELL"])
+
+    def test_misspelled_defendant_matches_by_alias(self):
+        candidate = candidates_from_results(ALMANY_PEOPLE)[0]
+        self.assertGreater(prelim_score(self.query(), candidate), 0)
+        match = score_case(self.query(), CaseDetails(candidate, [], []))
+        self.assertFalse(match.disqualified)
+        self.assertTrue(any("alias" in r for r in match.reasons))
+
+    def test_case_where_she_is_the_officer_is_discarded(self):
+        """Las filas "ALMANY, BRANDY" sin sexo ni dirección: casos donde ella es la
+        agente. El acusado es otro y no hay alias suyos: no se abre."""
+        people = [{"name": "ALMANY, BRANDY", "alias_of": None, "expanded": True, "cases": [{
+            "ucn": "602026CT000111CTAXMX", "local": "[2026CT000111AXMX]", "href": "x",
+            "defendant": "DOE, JOHN", "aka": [], "file_date": "07/25/2026",
+            "case_type": "Criminal Traffic", "status": "CLOSED", "charges": []}]}]
+        candidate = candidates_from_results(people)[0]
+        self.assertEqual(candidate.aliases, [])
+        self.assertEqual(prelim_score(self.query(), candidate), 0)
+
+    def test_other_surname_still_discarded(self):
+        candidate = candidates_from_results(ALMANY_PEOPLE)[0]
+        self.assertEqual(prelim_score(self.query("Johnson"), candidate), 0)
+
+    def test_main_name_wins_over_alias(self):
+        """Si el DEFENDANT coincide, no se mira ningún alias."""
+        candidate = candidates_from_results(RESULTS)[0]
+        candidate.aliases = ["TESTER, JANE"]
+        q = LookupQuery(first_name="Jane", last_name="Tester", middle_name="Marie",
+                        county="marion", state="FL", incident_date=date(2026, 3, 15))
+        match = score_case(q, CaseDetails(candidate, [], []))
+        self.assertFalse(any("alias" in r for r in match.reasons))
+        self.assertIn("segundo nombre coincide", match.reasons)
+
+    def test_warrant_affidavit_is_support(self):
+        """Principal: #7 (sworn arrest complaint). Apoyo: #3 (warrant affidavit, con la narración)."""
+        adapter = AdapterStub(None, get_county("sumter", "FL"), None)
+        details = details_with_docket(ALMANY_DOCKET)
+        self.assertEqual([d.number for d in adapter.find_documents(details)], [7])
+        self.assertEqual([d.number for d in adapter.find_support_documents(details)], [3])
+
+
+
+class SearchDoneTest(unittest.TestCase):
+    def test_page_without_body_is_not_ready(self):
+        """Entre páginas document.body es null: no debe lanzar error."""
+        from adapters.civitek_ocrs import _SEARCH_DONE_JS
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright no instalado")
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.set_content("<p>loading</p>")
+            page.evaluate("document.documentElement.removeChild(document.body)")
+            self.assertFalse(page.evaluate(_SEARCH_DONE_JS))
+            page.set_content("<p>No matches found</p>")
+            self.assertTrue(page.evaluate(_SEARCH_DONE_JS))
+            browser.close()
 
 if __name__ == "__main__":
     unittest.main()

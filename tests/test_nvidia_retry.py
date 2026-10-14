@@ -20,12 +20,13 @@ class FakeClient:
     """Responde con los errores dados, en orden, y después con 'ok'."""
 
     def __init__(self, *errors):
-        self.errors, self.models = list(errors), []
+        self.errors, self.models, self.timeouts = list(errors), [], []
         self.chat = mock.Mock()
         self.chat.completions.create = self.create
 
     def create(self, model, **kwargs):
         self.models.append(model)
+        self.timeouts.append(kwargs.get("timeout"))
         if self.errors:
             raise self.errors.pop(0)
         return "ok"
@@ -52,6 +53,15 @@ class RetryTest(unittest.TestCase):
         result, used = _create_with_retry(client, ["gemma", "glm"], messages=[])
         self.assertEqual((result, used), ("ok", "gemma"))
         sleep.assert_called_once()
+
+    def test_main_model_has_shorter_timeout(self, _sleep):
+        """Gemma colgada: se pasa a glm a los 75 s, no a los 180 s (14/10/2026)."""
+        from openai import APITimeoutError
+        request = httpx.Request("POST", "https://integrate.api.nvidia.com/v1/chat/completions")
+        client = FakeClient(APITimeoutError(request))
+        result, used = _create_with_retry(client, ["gemma", "glm"], messages=[])
+        self.assertEqual(used, "glm")
+        self.assertEqual(client.timeouts, [75.0, None])   # glm usa el del cliente (NVIDIA_TIMEOUT_S)
 
     def test_real_rejection_stops(self, sleep):
         client = FakeClient(status_error(401, "Unauthorized"))

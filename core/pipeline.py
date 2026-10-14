@@ -67,8 +67,9 @@ def run_article(
     on_captcha_waiting=None,
     on_captcha_done=None,
 ) -> PipelineResult:
-    from extractor import (Article, ExtractionError, FetchError, NoSuspect, OutOfScope, build_query,
-                           extract, fetch_article)
+    from counties import florida
+    from extractor import (Article, ExtractionError, FetchError, NoSuspect, OutOfScope, _county_key,
+                           build_query, extract, fetch_article)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     result = PipelineResult(status="error")
@@ -88,6 +89,11 @@ def run_article(
         extraction = extract(article.text, article.title, published, article.url)
         result.extraction = extraction.model_dump()
         aq = build_query(extraction, article, suspect_index=suspect_index)
+        # La web muestra el condado de la extracción: que sea el que se usó
+        # (la agencia puede corregir al modelo, ver resolve_county).
+        searched = florida.ALL_COUNTIES.get(aq.query.county)
+        if searched and _county_key(extraction.county) != aq.query.county:
+            result.extraction["county"] = searched
         result.query, result.notes, result.warnings = _jsonable(asdict(aq.query)), aq.notes, aq.warnings
     except OutOfScope as exc:
         result.status = "unknown_location" if exc.reason == "unknown" else "unsupported"

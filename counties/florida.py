@@ -45,7 +45,9 @@ CIVITEK_DOCUMENTS = [
 # orden, el arrest affidavit es solo el formulario de la captura y la orden trae
 # el número de reporte de la agencia que investigó el hecho, a veces con su
 # narración (Marion: Leroy Parks III Doc #6, Estiben García-Luis Doc #10).
-CIVITEK_SUPPORT = [r"\bwarrant served\b", r"\bcapias served\b"]
+# "WARRANT AFFIDAVIT" (Sumter): la declaración del agente para pedir la orden,
+# con la narración y el número de reporte de la agencia (SCSO26OFF...).
+CIVITEK_SUPPORT = [r"\bwarrant served\b", r"\bcapias served\b", r"^\s*warrant affidavit\b"]
 CIVITEK_EXCLUDE = [r"insolvency", r"indigen", r"\bmotion\b"]
 
 
@@ -66,10 +68,12 @@ def civitek(key: str, name: str, code: str) -> CountyConfig:
 
 
 MARION = civitek("marion", "Marion County", "42")
+SUMTER = civitek("sumter", "Sumter County", "60")
 
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
+    SUMTER.key: SUMTER,
 }
 
 
@@ -98,7 +102,11 @@ CITY_TO_COUNTY: dict[str, str] = {
         "lake buena vista", "horizon west", "gotha", "christmas", "bithlo", "wedgefield", "zellwood",
         "lockhart", "tangerine", "taft", "oak ridge", "holden heights", "orlovista", "fairview shores",
         "lake nona", "avalon park", "waterford lakes", "alafaya", "goldenrod")},
-    "ocala": "marion", "belleview": "marion", "dunnellon": "marion",
+    "ocala": "marion", "belleview": "marion", "dunnellon": "marion", "silver springs shores": "marion",
+    "silver springs": "marion", "ocklawaha": "marion", "summerfield": "marion", "reddick": "marion",
+    "citra": "marion", "fort mccoy": "marion", "anthony": "marion", "weirsdale": "marion", "mcintosh": "marion",
+    "wildwood": "sumter", "bushnell": "sumter", "webster": "sumter", "center hill": "sumter",
+    "coleman": "sumter", "lake panasoffkee": "sumter", "oxford": "sumter", "sumterville": "sumter",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
     "kissimmee": "osceola", "st cloud": "osceola", "saint cloud": "osceola", "poinciana": "osceola",
@@ -124,7 +132,8 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "orlando pd": "orange", "orange county so": "orange", "winter park pd": "orange", "apopka pd": "orange",
     "ocoee pd": "orange", "winter garden pd": "orange", "maitland pd": "orange", "windermere pd": "orange",
     "edgewood pd": "orange", "belle isle pd": "orange", "eatonville pd": "orange", "ucf pd": "orange",
-    "ocala pd": "marion", "marion county so": "marion", "seminole county so": "seminole",
+    "ocala pd": "marion", "marion county so": "marion", "belleview pd": "marion", "dunnellon pd": "marion",
+    "sumter county so": "sumter", "wildwood pd": "sumter", "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",

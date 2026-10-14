@@ -172,6 +172,10 @@ def _create_with_retry(client, models: list[str], **kwargs):
     from openai import APIConnectionError, APIStatusError, APITimeoutError, BadRequestError
 
     models = [m for m in models if m not in _GONE] or list(models)
+    # El modelo principal (Gemma) responde en ~30 s cuando está bien; si se
+    # cuelga, esperar los 180 s generales hacía perder 3 min por artículo antes
+    # de pasar al respaldo (14/10/2026). Los respaldos conservan NVIDIA_TIMEOUT_S.
+    first, first_timeout = models[0], float(os.getenv("NVIDIA_FIRST_TIMEOUT_S", "75"))
     budget = float(os.getenv("NVIDIA_RETRY_MAX_S", "300"))
     deadline = time.monotonic() + budget
     wait, attempt, index = 10.0, 0, 0
@@ -179,7 +183,8 @@ def _create_with_retry(client, models: list[str], **kwargs):
         model = models[index % len(models)]
         attempt += 1
         try:
-            return client.chat.completions.create(model=model, **kwargs), model
+            extra = {"timeout": first_timeout} if model == first and first_timeout > 0 else {}
+            return client.chat.completions.create(model=model, **kwargs, **extra), model
         except BadRequestError:
             raise
         except (APITimeoutError, APIConnectionError, APIStatusError) as exc:

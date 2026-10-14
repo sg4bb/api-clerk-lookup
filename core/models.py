@@ -58,6 +58,9 @@ class CaseCandidate:
     dob: Optional[date]
     filed_date: Optional[date]
     detail_ref: str                   # link al detalle; depende de la sesión
+    # Otros nombres con los que el propio caso registra al acusado (ALSO KNOWN AS). El acusado a veces queda escrito
+    # distinto en el caso ("ALAMANY THOMAS" por "ALMANY"); con esto no se descarta.
+    aliases: list[str] = field(default_factory=list)
 
 
 @dataclass

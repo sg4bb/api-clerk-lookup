@@ -15,11 +15,11 @@ from typing import Callable, Optional
 from adapters import get_adapter
 from counties import get_county
 
-from .adapter import DownloadError, SearchError
+from .adapter import DocumentUnavailable, DownloadError, SearchError
 from .browser import open_browser
 from .captcha import CaptchaHandler, CaptchaTimeout, LiveViewCaptcha, ManualLocalCaptcha
 from .county import CountyConfig
-from .matcher import pick_best, prelim_score, related_cases, resolve_same_incident, score_case
+from .matcher import pick_best, prelim_reasons, prelim_score, related_cases, resolve_same_incident, score_case
 from .models import LookupQuery, LookupResult
 from .utils import last_name_variants, portal_text, today
 
@@ -103,6 +103,9 @@ def run_lookup(
                                     + (f" (last names tried: {', '.join(variants)})" if len(variants) > 1 else ""))
 
             ranked = sorted(candidates, key=lambda c: prelim_score(query, c), reverse=True)
+            for c in ranked:
+                if prelim_score(query, c) <= 0:
+                    log.info("Descarto %s (%s): %s", c.case_number, c.defendant, prelim_reasons(query, c))
             ranked = [c for c in ranked if prelim_score(query, c) > 0]
             # Sin día exacto (solo mes o año) hay más homónimos posibles: se abren más casos.
             limit = county.max_candidates_to_open * (1 if (query.incident_date or query.arrest_date) else 2)
@@ -166,21 +169,45 @@ def run_lookup(
                 )
 
             on_status("downloading")
-            adapter.throttle()
-            pdf_path = adapter.download(details, documents[0], output_dir)
+            # Si el portal no publica todavía un documento, se prueba el siguiente
+            # (otros affidavits y, al final, la orden ejecutada).
+            chosen, pdf_path, withheld = None, None, []
+            for doc in (documents + support)[:MAX_DOWNLOAD_TRIES]:
+                adapter.throttle()
+                try:
+                    pdf_path = adapter.download(details, doc, output_dir)
+                    chosen = doc
+                    break
+                except DocumentUnavailable as exc:
+                    log.info("El portal no entrega ahora '%s': %s", doc.description, exc)
+                    withheld.append(doc.description)
+            if chosen is None:
+                return LookupResult(
+                    "no_document", case_number=details.candidate.case_number,
+                    score=match.score, reasons=match.reasons, candidates=summary,
+                    # Sumter, 14/10/2026: el mismo documento se bajó a mano a la 1 PM y a las
+                    # 2:40 PM el portal decía "not available" también a mano: es una caída
+                    # temporal del servidor de documentos, no que falte publicarlo.
+                    message=("The case was found, but the court portal isn't handing over its documents "
+                             "right now (it answered \"not available at this time\"). This is usually a "
+                             "temporary outage on the portal's side. Try again in a few hours; if it keeps "
+                             "happening, request the document from the clerk with the case number."),
+                    related_cases=related, docket=docket,
+                )
             support_doc, support_path = None, None
-            if support:
+            pending_support = [] if chosen in support else support
+            if pending_support:
                 try:
                     adapter.throttle()
-                    support_path = adapter.download(details, support[0], output_dir)
-                    support_doc = support[0].description
+                    support_path = adapter.download(details, pending_support[0], output_dir)
+                    support_doc = pending_support[0].description
                 except Exception as exc:
                     # El principal ya está: el de apoyo no hace fallar la búsqueda.
-                    log.warning("No pude descargar el documento de apoyo (%s): %s", support[0].description, exc)
+                    log.warning("No pude descargar el documento de apoyo (%s): %s", pending_support[0].description, exc)
             return LookupResult(
                 "found",
                 case_number=details.candidate.case_number,
-                document=documents[0].description,
+                document=chosen.description,
                 pdf_path=pdf_path,
                 support_document=support_doc,
                 support_pdf_path=support_path,
@@ -204,6 +231,9 @@ def run_lookup(
             return LookupResult("error", message=(
                 f"The court portal didn't respond as expected ({type(exc).__name__}). "
                 "Try again in a few minutes."))
+
+
+MAX_DOWNLOAD_TRIES = 4   # documentos que se intentan si el portal no publica los primeros
 
 
 def _describe(entries) -> str:

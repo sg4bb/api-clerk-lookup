@@ -33,7 +33,7 @@ from urllib.parse import urljoin
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
-from core.adapter import ClerkAdapter, DownloadError, SearchError
+from core.adapter import ClerkAdapter, DocumentUnavailable, DownloadError, SearchError
 from core.captcha import passes_on_its_own
 from core.documents import is_pdf
 from core.models import CaseCandidate, CaseDetails, Charge, DocketEntry, LookupQuery
@@ -66,6 +66,7 @@ _READ_RESULTS_JS = r"""
       const local = a.parentElement.querySelector('span');
       const charges = [];
       let defendant = '';
+      const aka = [];
       if (grid) {
         grid.querySelectorAll('table').forEach(t => {
           const head = text(t.querySelector('thead'));
@@ -76,11 +77,12 @@ _READ_RESULTS_JS = r"""
             t.querySelectorAll('tbody tr').forEach(r => {
               const c = [...r.cells].map(text);
               if (!defendant && c.length >= 2 && /^defendant$/i.test(c[1])) defendant = c[0];
+              else if (c.length >= 2 && /^also known as$/i.test(c[1]) && c[0]) aka.push(c[0]);
             });
           }
         });
       }
-      cases.push({ucn: text(a), local: text(local), href: a.getAttribute('href'), defendant,
+      cases.push({ucn: text(a), local: text(local), href: a.getAttribute('href'), defendant, aka,
                   file_date: cells[1] || '', case_type: cells[2] || '', status: cells[3] || '', charges});
     });
     return cases;
@@ -141,7 +143,8 @@ _READ_CASE_JS = r"""
 }
 """
 
-_LOCAL_NUMBER_RE = re.compile(r"\[?\s*([0-9]{2}[A-Z]{2}[0-9]{4,}[A-Z0-9]*)\s*\]?")
+# Número local del caso: Marion lo da con año de 2 dígitos (26CF003891AX), Sumter con 4 (2026CF000808AXMX).
+_LOCAL_NUMBER_RE = re.compile(r"\[?\s*([0-9]{2}(?:[0-9]{2})?[A-Z]{2}[0-9]{4,}[A-Z0-9]*)\s*\]?")
 _DATE = r"(\d{1,2}/\d{1,2}/\d{4})"
 # Detalle real (12/10/2026): "Date ActionStatute / TextOffense:09/19/2026Initial:09/19/2026Charged..."
 _OFFENSE_RE = re.compile(r"offen[cs]e(?:\s*date)?\s*:?\s*" + _DATE, re.I)
@@ -149,6 +152,21 @@ _OFFENSE_RE = re.compile(r"offen[cs]e(?:\s*date)?\s*:?\s*" + _DATE, re.I)
 _PROSECUTOR_RE = re.compile(r"prosecutor\s*:?\s*\d{1,2}/\d{1,2}/\d{4}\s*([a-z][a-z ]*?)(?=\d|$)", re.I)
 _ARREST_RE = re.compile(r"arrest\s*date\D{0,25}?" + _DATE, re.I)
 _AGENCY_RE = re.compile(r"(?:arresting\s+)?agency\s*:?\s*([A-Z][A-Z0-9 .'&/-]{3,60}?)(?=\s{2,}|\s+[A-Z][a-z]|$)", re.I)
+
+
+def wrong_county(title: str, expected: str) -> Optional[str]:
+    """Nombre del condado que muestra el portal si NO es el esperado; si no, None.
+
+    El código de condado de la URL (42, 60...) es fácil de equivocar: el título
+    de la página lo delata ("Sumter County OCRS"). Si el título no nombra
+    ningún condado, no se puede saber y se sigue.
+    """
+    found = re.search(r"([A-Za-z.\- ]+?)\s+County\s+OCRS", title or "", re.I)
+    if not found:
+        return None
+    shown = re.sub(r"\s+", " ", found.group(1)).strip()
+    want = re.sub(r"\s+county$", "", expected.strip(), flags=re.I)
+    return None if shown.lower() == want.lower() else shown
 
 
 def county_entry_url(base_url: str) -> str:
@@ -175,8 +193,23 @@ def candidates_from_results(people: list[dict]) -> list[CaseCandidate]:
                 dob=None,                       # Civitek no la muestra
                 filed_date=parse_us_date(case.get("file_date")),
                 detail_ref=case["href"],
+                # Los ALSO KNOWN AS del propio caso: el DEFENDANT a veces está mal
+                # escrito ("ALAMANY THOMAS, BRANDY" por "ALMANY"). El nombre de la
+                # fila NO cuenta: la persona buscada puede figurar en casos ajenos
+                # como agente (Almany era detective: filas sin sexo ni dirección).
+                aliases=_unique(case.get("aka", [])),
             ))
     return found
+
+
+def _unique(names: list[str]) -> list[str]:
+    seen, out = set(), []
+    for name in names:
+        key = " ".join((name or "").upper().split())
+        if key and key not in seen:
+            seen.add(key)
+            out.append(name.strip())
+    return out
 
 
 def case_number(case: dict) -> str:
@@ -243,6 +276,19 @@ _FORM_STATE_JS = """() => ({
   from: document.querySelector("[name='form:search_tab:fromDate']").value,
   to: document.querySelector("[name='form:search_tab:toDate']").value,
 })"""
+
+# Después de "Search": resultados o "No matches found". El formulario vacío solo
+# cuenta si sigue así al terminar la espera (ver search()).
+_FORM_RESET_JS = """() => {
+  const last = document.querySelector("[name='form:search_tab:lastname']");
+  return /\\/app\\/search\\.xhtml/.test(location.pathname) && !/noresults=true/.test(location.href)
+         && !!last && !last.value.trim() && !document.querySelector('tbody[id$="partySearchResultsTable_data"]');
+}"""
+# Mientras el portal cambia de página tras Search, document.body es null por un
+# instante: eso es "todavía no", no un error (Almany, 14/10/2026).
+_SEARCH_DONE_JS = """() => !!document.querySelector('tbody[id$="partySearchResultsTable_data"]')
+  || /no matches found/i.test(document.body ? document.body.innerText : '')
+  || /noresults=true/.test(location.href)"""
 
 _PERSON_ROWS = 'tbody[id$="partySearchResultsTable_data"] > tr[data-ri]'
 
@@ -397,14 +443,18 @@ class CivitekOcrsAdapter(ClerkAdapter):
         page.locator("form#form").get_by_role("button", name="Search", exact=True).click()
         page.wait_for_load_state("domcontentloaded")
         try:
-            page.wait_for_function(
-                "() => document.querySelector('tbody[id$=\"partySearchResultsTable_data\"]')"
-                " || /no matches found/i.test(document.body.innerText)"
-                " || /noresults=true/.test(location.href)", timeout=30_000)
+            page.wait_for_function(_SEARCH_DONE_JS, timeout=30_000)
         except PlaywrightTimeout:
+            # OJO: al pulsar Search el portal vacía el formulario un instante
+            # mientras valida (13/10/2026). Solo si tras la espera completa sigue
+            # vacío y sin resultados se concluye que no aceptó esta forma del
+            # nombre (p. ej. "O'Brien") y se prueba la siguiente.
+            if page.evaluate(_FORM_RESET_JS):
+                log.warning("El portal devolvió el formulario vacío, sin resultados ni aviso; "
+                            "no aceptó el apellido %r", query.last_name)
+                return []
             message = self._page_message() or "no results table"
             raise SearchError(f"The portal returned no results: {message}") from None
-
         if "noresults=true" in page.url or not page.locator('tbody[id$="partySearchResultsTable_data"]').count():
             log.info("El portal no encontró coincidencias")
             return []
@@ -442,6 +492,10 @@ class CivitekOcrsAdapter(ClerkAdapter):
             page.wait_for_load_state("load", timeout=30_000)
         except PlaywrightTimeout:
             pass
+        shown = wrong_county(page.title(), self.county.name)
+        if shown:
+            raise SearchError(f"The court portal opened {shown} County instead of {self.county.name}. "
+                              "The county's portal code needs to be corrected.")
         if page.locator(LASTNAME).count():
             return                       # la sesión ya estaba dentro
         if not _click_control(page, PUBLIC_RE, 15_000):
@@ -700,15 +754,51 @@ class CivitekOcrsAdapter(ClerkAdapter):
 
     # --- 3. Descarga ----------------------------------------------------------
 
+    def _save_download_debug(self, entry: DocketEntry, status: int, content_type: str, body: bytes) -> None:
+        """Lo que respondió el portal en vez del PDF, para poder revisarlo."""
+        if not self.debug_dir:
+            return
+        try:
+            self.debug_dir.mkdir(parents=True, exist_ok=True)
+            (self.debug_dir / "download_response.bin").write_bytes(body)
+            (self.debug_dir / "download_response.txt").write_text(
+                f"documento: {entry.description} (Doc #{entry.number})\nenlace: {entry.doc_ref}\n"
+                f"HTTP {status}\ncontent-type: {content_type!r}\nbytes: {len(body)}\n\n"
+                + body[:4000].decode("utf-8", "replace"), encoding="utf-8")
+            log.info("Respuesta de la descarga guardada en %s", self.debug_dir)
+        except Exception as exc:
+            log.warning("No pude guardar la respuesta de la descarga: %s", exc)
+
     def download(self, details: CaseDetails, entry: DocketEntry, dest_dir: Path) -> Path:
         if not entry.doc_ref:
             raise DownloadError(f"'{entry.description}' has no document link")
         url = urljoin(details.source_url or self.page.url, entry.doc_ref)
         status, content_type, body = self.fetch(self.page, url, details.source_url)
+        if status < 400 and not is_pdf(body) and details.source_url:
+            # Algunos condados solo entregan el documento con la página del caso
+            # abierta (en Marion no hacía falta). Se reabre y se pide desde ahí.
+            log.info("La descarga no trajo un PDF (HTTP %s, tipo %r, %d bytes); reintento desde la página del caso",
+                     status, content_type, len(body))
+            tab = self.page.context.new_page()
+            try:
+                tab.goto(details.source_url, wait_until="domcontentloaded")
+                tab.wait_for_selector('[id="form:docketDataTable1"]', timeout=25_000)
+                status, content_type, body = self.fetch(tab, url, details.source_url)
+            except PlaywrightTimeout:
+                log.warning("No se pudo reabrir la página del caso para descargar")
+            finally:
+                tab.close()
         if status >= 400:
+            self._save_download_debug(entry, status, content_type, body)
             raise DownloadError(f"HTTP {status} while downloading '{entry.description}'")
         if not is_pdf(body):
-            raise DownloadError(f"The response is not a PDF ({content_type})")
+            self._save_download_debug(entry, status, content_type, body)
+            if b"not available at this time" in body.lower():
+                # Sumter, 14/10/2026: caída temporal del servidor de documentos (pasa
+                # también a mano); otras veces es un documento aún no publicado.
+                raise DocumentUnavailable(f"The court portal isn't handing over '{entry.description}' right now")
+            raise DownloadError(f"The court portal didn't hand over the document '{entry.description}' "
+                                f"(HTTP {status}, {content_type or 'no content type'}, {len(body)} bytes)")
         filename = safe_filename(f"{details.candidate.case_number} - {entry.description}.pdf")
         path = dest_dir / filename
         path.write_bytes(body)

@@ -48,6 +48,11 @@ class DownloadError(Exception):
     pass
 
 
+class DocumentUnavailable(DownloadError):
+    """El portal tiene el documento listado pero hoy no lo entrega al público
+    (Civitek: "The information you have requested is not available at this time")."""
+
+
 class ClerkAdapter(ABC):
     def __init__(self, page: Page, county: CountyConfig, captcha: CaptchaHandler):
         self.page = page

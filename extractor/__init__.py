@@ -202,10 +202,18 @@ def resolve_county(extraction: Extraction) -> str:
         raise OutOfScope("state", f"The article is about {place}. For now, only Florida cases are searched.",
                          state=state, city=city)
 
-    # 1) El condado que dio el modelo; 2) la agencia; 3) la ciudad.
-    candidates = [_county_key(extraction.county),
-                  florida.AGENCY_TO_COUNTY.get(normalize_agency(extraction.agency)),
-                  florida.CITY_TO_COUNTY.get(normalize(city))]
+    # 1) La agencia, si es de un solo condado (un Sheriff solo actúa en el suyo;
+    #    una policía municipal, en su ciudad); 2) el condado que dio el modelo;
+    #    3) la ciudad. La agencia va primero porque el modelo a veces toma el
+    #    dateline ("ORLANDO, Fla. -" = la redacción de FOX 35) como lugar del
+    #    hecho: Almany, detective de Sumter, salió como Orange (14/10/2026).
+    by_model = _county_key(extraction.county)
+    by_agency = florida.AGENCY_TO_COUNTY.get(normalize_agency(extraction.agency))
+    if by_agency and by_model in florida.ALL_COUNTIES and by_model != by_agency:
+        log.warning("La IA dijo condado %s, pero la agencia (%s) es de %s: uso %s",
+                    florida.ALL_COUNTIES[by_model], extraction.agency,
+                    florida.ALL_COUNTIES[by_agency], florida.ALL_COUNTIES[by_agency])
+    candidates = [by_agency, by_model, florida.CITY_TO_COUNTY.get(normalize(city))]
     county = next((c for c in candidates if c in florida.ALL_COUNTIES), None)
 
     if county is None:

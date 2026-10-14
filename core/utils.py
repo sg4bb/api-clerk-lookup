@@ -109,14 +109,20 @@ def last_name_variants(last_name: str) -> list[str]:
     """Formas de escribir un apellido compuesto, empezando por la original.
 
     "Cruz Peraza" -> ["Cruz Peraza", "CruzPeraza", "Cruz-Peraza"]
+    "O'Brien" -> ["O'Brien", "OBrien", "O Brien"]
     Un apellido simple devuelve solo [el original].
     Visto en Orange: guarda "CRUZPERAZA" y no encuentra "Cruz Peraza".
     """
     original = " ".join(last_name.split())
-    parts = [p for p in re.split(r"[\s\-]+", original) if p]
-    if len(parts) < 2:
-        return [original]
-    variants = [original, "".join(parts), "-".join(parts), " ".join(parts)]
+    if "'" in original:
+        # "O'Brien" -> ["O'Brien", "OBrien", "O Brien"]. Visto en Sumter (Civitek,
+        # 13/10/2026): con el apóstrofo el portal devuelve el formulario vacío.
+        variants = [original, original.replace("'", ""), " ".join(original.replace("'", " ").split())]
+    else:
+        parts = [p for p in re.split(r"[\s\-]+", original) if p]
+        if len(parts) < 2:
+            return [original]
+        variants = [original, "".join(parts), "-".join(parts), " ".join(parts)]
     unique: list[str] = []
     for v in variants:
         if v.lower() not in {u.lower() for u in unique}:
