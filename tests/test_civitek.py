@@ -94,6 +94,9 @@ class ResultsTest(unittest.TestCase):
         self.assertEqual(case_number({"local": "", "ucn": "422026CF001234CFAXMX"}), "422026CF001234CFAXMX")
         # Sumter usa el año con 4 dígitos: no se recorta.
         self.assertEqual(case_number({"local": "[ 2026CF000808AXMX ]", "ucn": "x"}), "2026CF000808AXMX")
+        # Hernando: año y número antes del tipo de caso.
+        self.assertEqual(case_number({"local": "[23000080CFAXMX]", "ucn": "x"}), "23000080CFAXMX")
+        self.assertEqual(case_number({"local": "[ 19000624CFAXMX ]", "ucn": "x"}), "19000624CFAXMX")
 
 
 class CasePageTest(unittest.TestCase):

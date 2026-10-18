@@ -34,3 +34,6 @@ class CountyConfig:
     window_days_before: int = 7
     window_days_after: int = 45
     max_candidates_to_open: int = 5
+    # Personas del artículo que se prueban, una tras otra, si la primera no da
+    # con el caso. Cada una es otra búsqueda (y en algunos portales otro CAPTCHA).
+    max_people: int = 3

@@ -106,7 +106,9 @@ def handle(store: JobStore, job: dict[str, Any], base_output: Path) -> str:
     lookup = result.lookup
     if lookup:
         fields.update(result=lookup.to_dict(), case_number=lookup.case_number, document_name=lookup.document,
-                      confidence=lookup.score, related_cases=lookup.related_cases or [])
+                      confidence=lookup.score, related_cases=lookup.related_cases or [],
+                      # Para la web: a quiénes se buscó y, si nada alcanzó, el caso más cercano.
+                      people_searched=lookup.people_searched or None, closest_case=lookup.closest)
         if result.pdf_path and result.pdf_path.exists():
             try:
                 fields["pdf_path"] = store.upload_pdf(job_id, result.pdf_path)
@@ -122,9 +124,19 @@ def handle(store: JobStore, job: dict[str, Any], base_output: Path) -> str:
                 log.warning("No pude subir el documento de apoyo: %s", exc)
     if fields["status"] == "found" and not fields.get("status_detail"):
         fields["status_detail"] = FINAL_TEXT["found"]
-    store.update(job_id, **fields)
+    try:
+        store.update(job_id, **fields)
+    except JobsError as exc:
+        # Base sin sql/004 todavía: se guarda el resultado sin esas dos columnas.
+        if not any(col in str(exc) for col in NEW_COLUMNS):
+            raise
+        log.warning("Faltan columnas en lookup_jobs (corre sql/004_people_and_closest.sql): %s", exc)
+        store.update(job_id, **{k: v for k, v in fields.items() if k not in NEW_COLUMNS})
     log.info("Pedido %s terminado: %s %s", job_id, fields["status"], fields.get("case_number") or "")
     return fields["status"]
+
+
+NEW_COLUMNS = ("people_searched", "closest_case")   # sql/004
 
 
 def main() -> int:

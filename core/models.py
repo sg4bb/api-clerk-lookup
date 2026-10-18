@@ -71,6 +71,9 @@ class Charge:
     arrest_date: Optional[date]
     agency: Optional[str]
     control_number: Optional[str]     # número de reporte de la agencia
+    # Civitek: fecha "Initial" del cargo (en la práctica, la del arresto; la
+    # fecha de ofensa a veces viene mal cargada). Solo suma en el puntaje.
+    initial_date: Optional[date] = None
 
 
 @dataclass
@@ -96,6 +99,11 @@ class MatchScore:
     score: int
     reasons: list[str]
     disqualified: bool = False
+    # Lo mismo en inglés y para la web: {"ok": bool, "text": "..."}. Solo se
+    # muestra cuando ningún caso alcanza el mínimo (el caso más cercano).
+    checks: list[dict[str, Any]] = field(default_factory=list)
+    # Días entre la ofensa más cercana y el incidente del artículo (None si no hay fechas).
+    offense_gap: Optional[int] = None
 
 
 @dataclass
@@ -116,6 +124,12 @@ class LookupResult:
     # Documento de apoyo (orden de captura ejecutada), si el caso lo tiene.
     support_document: Optional[str] = None
     support_pdf_path: Optional[Path] = None
+    # Personas del artículo que se buscaron, en orden: nombre, resultado y casos abiertos.
+    people_searched: list[dict[str, Any]] = field(default_factory=list)
+    # Posición (en la lista de consultas) de la persona que dio este resultado.
+    person_index: int = 0
+    # Sin coincidencia: el caso que más se acercó (si pasa CLOSEST_MIN), para revisarlo a mano.
+    closest: Optional[dict[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         def convert(value: Any) -> Any:

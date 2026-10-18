@@ -1,6 +1,6 @@
 # clerk-lookup
 
-Servicio que recibe los datos de un caso y devuelve **un único** Incident Report / Arrest Affidavit desde el portal del Clerk of Courts del condado. Cubre Orange County, FL (myeClerk), y Marion y Sumter, FL (Civitek OCRS, ambos probados con casos reales); la lista completa y el orden de los próximos está en `docs/condados_florida.md`. El CAPTCHA lo resuelve una persona: hoy en una ventana de tu PC y, más adelante, dentro del dashboard con un iframe.
+Servicio que recibe los datos de un caso y devuelve **un único** Incident Report / Arrest Affidavit desde el portal del Clerk of Courts del condado. Cubre Orange County, FL (myeClerk), y Marion, Sumter y Hernando, FL (Civitek OCRS, probados con casos reales); la lista completa y el orden de los próximos está en `docs/condados_florida.md`. El CAPTCHA lo resuelve una persona: hoy en una ventana de tu PC y, más adelante, dentro del dashboard con un iframe.
 
 ## Instalación (Windows)
 
@@ -91,7 +91,7 @@ core/
   documents.py  convierte lo que entrega un visor (TIFF, páginas) en PDF
 adapters/
   orange_myeclerk.py   portal de Orange
-  civitek_ocrs.py      Civitek OCRS (Marion, Sumter y, con solo agregar la ficha, otros 30 condados)
+  civitek_ocrs.py      Civitek OCRS (Marion, Sumter, Hernando y, con solo agregar la ficha, otros 29 condados)
 counties/
   florida.py    configuración por condado (URL, códigos, documentos)
 extractor/
@@ -116,13 +116,17 @@ Descarta los candidatos cuyo apellido o nombre no coincide (tolera apellidos com
 
 Si los mejores candidatos empatan pero son **del mismo arresto** (comparten el número de reporte de la agencia, o tienen la misma fecha de arresto, las mismas fechas de ofensa y la misma agencia), elige uno: primero el que tiene el documento, luego el caso principal antes que los que la fiscalía unió a él ("Consolidated" en Civitek), luego CF antes que MM o CT. En portales que no muestran número de reporte, fecha de arresto ni agencia (Civitek), cuentan como el mismo arresto los casos del mismo acusado con fechas de ofensa a un día o menos: una racha de hechos (robo, tiroteo, huida) suele abrirse como varios casos. Los demás salen en `related_cases`. Si empatan casos de arrestos distintos, responde `ambiguous` en vez de adivinar. En `test_cases.json`, `expected_case` puede ser una lista cuando varios casos son igual de válidos. Los pesos están en `core/matcher.py`.
 
+**Varias personas en el artículo.** Si la nota nombra a varios arrestados, el worker los busca uno tras otro en la misma sesión del navegador (primero los arrestados o acusados, luego los sospechosos) y se detiene en el primero que da con el caso; para pedir el footage cualquiera sirve, es el mismo hecho. Máximo por condado en `max_people` (3; Orange 2, porque cada búsqueda puede pedir otro reCAPTCHA). Si se eligió a una persona (`suspect_index`, o `--suspect` en `run_article.py`), solo se busca a esa. Cada persona pasa por el mismo puntaje mínimo: probar a más gente no relaja nada. La web dice a quiénes se buscó (`people_searched`).
+
+**Caso más cercano.** Si ningún caso alcanza el mínimo, el que más se acercó (desde `CLOSEST_MIN` = 30 %, en `core/lookup.py`) se guarda en `closest_case` con los motivos en inglés (`checks`): la web lo muestra para revisarlo a mano en el portal, sin descargar nada.
+
 ## Cola de pedidos (Fase 3)
 
 El dashboard no llama al backend: inserta una fila en la tabla `lookup_jobs` de Supabase y escucha sus cambios. El worker toma la fila, hace todo el proceso y va escribiendo el avance.
 
 **Preparación (una vez):**
 
-1. En Supabase (proyecto sandbox) > SQL Editor, pega y corre `sql/001_lookup_jobs.sql`. Crea la tabla, las funciones del worker, los permisos, Realtime y el bucket privado `incident-reports`. Después corre `sql/002_roles.sql` (roles) y `sql/003_support_document.sql` (columnas del documento de apoyo).
+1. En Supabase (proyecto sandbox) > SQL Editor, pega y corre `sql/001_lookup_jobs.sql`. Crea la tabla, las funciones del worker, los permisos, Realtime y el bucket privado `incident-reports`. Después corre `sql/002_roles.sql` (roles) `sql/003_support_document.sql` (columnas del documento de apoyo) y `sql/004_people_and_closest.sql` (personas buscadas y caso más cercano).
 2. En `.env`, pon `SUPABASE_SERVICE_ROLE_KEY` (Project Settings > API Keys). Esa clave solo vive en el `.env` del worker.
 
 **Probar sin dashboard** (dos consolas):

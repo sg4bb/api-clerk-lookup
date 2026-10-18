@@ -184,14 +184,50 @@ def _filed_points(query: LookupQuery, details: CaseDetails) -> Optional[tuple[in
     return 0, f"caso abierto lejos del hecho ({gap} días)"
 
 
+def _arrest_gap(query: LookupQuery, details: CaseDetails) -> tuple[Optional[int], bool]:
+    """(días entre el arresto del artículo y el del caso, si salió de la fecha "Initial").
+
+    La fecha "Initial" de Civitek solo cuenta si coincide (hasta 3 días): a veces
+    es la de un cargo agregado después (Vaughn, Sumter), así que lejos no resta.
+    """
+    if not query.arrest_date:
+        return None, False
+    real = [c.arrest_date for c in details.charges if c.arrest_date]
+    if real:
+        return min(abs((d - query.arrest_date).days) for d in real), False
+    initial = [c.initial_date for c in details.charges if c.initial_date]
+    if initial:
+        gap = min(abs((d - query.arrest_date).days) for d in initial)
+        return (gap if gap <= 3 else None), True
+    return None, False
+
+
+def _offense_ignored(query: LookupQuery, details: CaseDetails) -> bool:
+    """La fecha de ofensa no cuenta si está lejos del incidente pero el arresto coincide.
+
+    En arrestos por orden, registro de ofensores o casos viejos la ofensa puede
+    ser de años antes, y a veces viene mal cargada: Gordon (Hernando,
+    26001035CFAXMX) tiene ofensa 11/07/2007 en los tres cargos, incluido el
+    nombre falso que dio el día del arresto (17/07/2026).
+    """
+    offense_dates = [c.offense_date for c in details.charges if c.offense_date]
+    if not query.incident_date or not offense_dates:
+        return False
+    offense_gap = min(abs((d - query.incident_date).days) for d in offense_dates)
+    arrest_gap, _ = _arrest_gap(query, details)
+    return offense_gap > 10 and arrest_gap is not None and arrest_gap <= 1
+
+
 def max_points(query: LookupQuery, details: CaseDetails) -> int:
     """Puntos alcanzables con lo que se sabe de la consulta y lo que trae el caso."""
     c = details.candidate
     has_middle = bool(split_defendant(c.defendant)[2])
     total = W_NAME
     total += W_MIDDLE if query.middle_name and has_middle else 0
+    # La ofensa ignorada (ver _offense_ignored) no resta, pero sigue contando aquí: así un
+    # caso viejo servido el mismo día no empata con el del hecho, cuya ofensa sí coincide.
     total += W_OFFENSE if query.incident_date and any(x.offense_date for x in details.charges) else 0
-    total += W_ARREST if query.arrest_date and any(x.arrest_date for x in details.charges) else 0
+    total += W_ARREST if _arrest_gap(query, details)[0] is not None else 0
     total += W_AGENCY if query.agency and any(x.agency for x in details.charges) else 0
     anchor = query.age_as_of or query.incident_date or query.arrest_date
     total += W_AGE if query.age is not None and c.dob and anchor else 0
@@ -200,19 +236,71 @@ def max_points(query: LookupQuery, details: CaseDetails) -> int:
     return total
 
 
+def _day(d: date) -> str:
+    return f"{d:%b} {d.day}, {d.year}"
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
+def _how_long(days: int) -> str:
+    """'45 days', '7 months', 'more than 4 years'."""
+    if days < 60:
+        return _plural(days, "day")
+    if days < 730:
+        return _plural(round(days / 30.4), "month")
+    return f"more than {_plural(days // 365, 'year')}"
+
+
+def _name_checks(reasons: list[str]) -> list[dict]:
+    """Los motivos del nombre (en español, para la consola) en inglés para la web."""
+    checks = []
+    if any(r.startswith("coincide con un alias") for r in reasons):
+        checks.append({"ok": True, "text": "Same name (listed as an alias in the case)"})
+    elif "nombre exacto" in reasons:
+        checks.append({"ok": True, "text": "Same name"})
+    elif any(r.startswith("nombre parecido") for r in reasons):
+        checks.append({"ok": True, "text": "Similar name"})
+    if any(r.startswith("apellido parcial") for r in reasons):
+        checks.append({"ok": False, "text": "Only one of the last names matches"})
+    if "segundo nombre coincide" in reasons:
+        checks.append({"ok": True, "text": "Same middle initial"})
+    for r in reasons:
+        if r.startswith("segundo nombre distinto"):
+            checks.append({"ok": False, "text": "Different middle name" + r[len("segundo nombre distinto"):]})
+    return checks
+
+
 def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
     reasons: list[str] = []
     name_points = _candidate_name_points(query, details.candidate, reasons)
     if name_points is None:
         return MatchScore(0, reasons, disqualified=True)
     score = name_points
+    checks = _name_checks(reasons)
 
     # Fecha de la ofensa contra la fecha del incidente. Graduada: el mismo día
     # vale más que 1-3 días, para separar incidentes de la misma persona que
     # caen en días seguidos (visto en Orange: casos del 01/08 y 03/08/2023).
     offense_dates = [c.offense_date for c in details.charges if c.offense_date]
-    if query.incident_date and offense_dates:
+    offense_gap = None
+    if _offense_ignored(query, details):
         gap = min(abs((d - query.incident_date).days) for d in offense_dates)
+        nearest = min(offense_dates, key=lambda d: abs((d - query.incident_date).days))
+        reasons.append(f"fecha de ofensa ignorada ({gap} días): el arresto coincide")
+        checks.append({"ok": False, "text": f"Offense date in the record doesn't fit ({_day(nearest)}), "
+                                            "but the arrest date matches"})
+    elif query.incident_date and offense_dates:
+        gap = min(abs((d - query.incident_date).days) for d in offense_dates)
+        nearest = min(offense_dates, key=lambda d: abs((d - query.incident_date).days))
+        offense_gap = gap
+        if gap == 0:
+            checks.append({"ok": True, "text": "Offense date matches the incident"})
+        else:
+            side = "before" if nearest < query.incident_date else "after"
+            checks.append({"ok": gap <= 10, "text": f"Offense date {_plural(gap, 'day')} {side} the incident "
+                                                    f"({_day(nearest)})"})
         points = {0: W_OFFENSE, 1: 22, 2: 16, 3: 12}.get(gap)
         if points is not None:
             score += points
@@ -225,13 +313,19 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
             reasons.append(f"fecha de ofensa lejana ({gap} días)")
 
     # Fecha de arresto (también graduada).
-    arrest_dates = [c.arrest_date for c in details.charges if c.arrest_date]
-    if query.arrest_date and arrest_dates:
-        gap = min(abs((d - query.arrest_date).days) for d in arrest_dates)
+    arrest_gap, from_initial = _arrest_gap(query, details)
+    if arrest_gap is not None:
+        gap = arrest_gap
+        if gap <= 3:
+            checks.append({"ok": True, "text": "Arrest date matches" if gap == 0
+                           else f"Arrest date {_plural(gap, 'day')} from the story's"})
+        elif gap > 10:
+            checks.append({"ok": False, "text": f"Arrest date {_plural(gap, 'day')} from the story's"})
         points = {0: W_ARREST, 1: 12, 2: 7, 3: 4}.get(gap)
         if points is not None:
             score += points
-            reasons.append("fecha de arresto coincide" if gap == 0 else f"fecha de arresto a {gap} día(s)")
+            reasons.append(("fecha de arresto coincide" if gap == 0 else f"fecha de arresto a {gap} día(s)")
+                           + (" (Initial)" if from_initial else ""))
         elif gap > 10:
             score -= 10
             reasons.append(f"fecha de arresto lejana ({gap} días)")
@@ -241,6 +335,11 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
     if filed:
         score += filed[0]
         reasons.append(filed[1])
+    opened = _opened_after(query, details)
+    if opened is not None and (filed or opened > 60):
+        # Sin puntos propios cuando hay fechas de ofensa, pero a la persona que revisa le sirve.
+        checks.append({"ok": bool(filed and filed[0] > 0),
+                       "text": f"Case opened {_how_long(opened)} after the incident"})
 
     # Agencia que arrestó.
     agencies = {normalize_agency(c.agency) for c in details.charges if c.agency}
@@ -249,9 +348,11 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
         if any(q_agency == a or _similar(q_agency, a) >= 0.8 for a in agencies):
             score += W_AGENCY
             reasons.append("agencia coincide")
+            checks.append({"ok": True, "text": "Same arresting agency"})
         else:
             score -= 10
             reasons.append(f"agencia distinta ({', '.join(sorted(agencies))})")
+            checks.append({"ok": False, "text": "Different arresting agency"})
 
     # Edad reportada contra fecha de nacimiento.
     dob = details.candidate.dob
@@ -261,9 +362,11 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
         if abs(real_age - query.age) <= 1:
             score += W_AGE
             reasons.append(f"edad coincide ({real_age})")
+            checks.append({"ok": True, "text": f"Same age ({real_age})"})
         else:
             score -= 15
             reasons.append(f"edad distinta ({real_age} vs {query.age})")
+            checks.append({"ok": False, "text": f"Different age ({real_age} in the record, {query.age} in the story)"})
 
     # Cargos: categorías del artículo contra categorías del caso. Desempata
     # casos del mismo día (p. ej. un hurto y un burglary en el mismo arresto).
@@ -274,14 +377,39 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
         if shared:
             score += round(W_CHARGES * len(shared) / len(q_cats))
             reasons.append(f"cargos coinciden ({', '.join(sorted(shared))})")
+            checks.append({"ok": True, "text": f"Similar charges: {_charge_list(details, shared)}"})
         else:
             score -= 10
             reasons.append(f"cargos distintos ({', '.join(sorted(c_cats))})")
+            checks.append({"ok": False, "text": f"Different charges: {_charge_list(details)}"})
 
     possible = max_points(query, details)
     confidence = round(100 * max(score, 0) / possible)
     reasons.append(f"{max(score, 0)}/{possible} puntos posibles")
-    return MatchScore(min(confidence, 100), reasons)
+    # Lo que coincide primero, después lo que no (así se lee en la web).
+    checks = [c for c in checks if c["ok"]] + [c for c in checks if not c["ok"]]
+    return MatchScore(min(confidence, 100), reasons, checks=checks, offense_gap=offense_gap)
+
+
+def _charge_list(details: CaseDetails, only: Optional[set] = None, limit: int = 2) -> str:
+    """'home invasion robbery' o 'battery, grand theft and 2 more'. Con `only`, solo
+    los cargos de esas categorías (los que coinciden con el artículo)."""
+    names: list[str] = []
+    for c in details.charges:
+        if only and not (categorize([c.description or ""]) & only):
+            continue
+        name = re.sub(r"\s+", " ", c.description or "").strip().lower()
+        if name and name not in names:
+            names.append(name)
+    shown = ", ".join(names[:limit])
+    return shown + (f" and {len(names) - limit} more" if len(names) > limit else "")
+
+
+def _opened_after(query: LookupQuery, details: CaseDetails) -> Optional[int]:
+    """Días entre el hecho (o el arresto) y la apertura del caso."""
+    anchor = query.incident_date or query.arrest_date
+    filed = details.candidate.filed_date
+    return (filed - anchor).days if anchor and filed and filed >= anchor else None
 
 
 def pick_best(

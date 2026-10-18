@@ -144,10 +144,16 @@ _READ_CASE_JS = r"""
 """
 
 # Número local del caso: Marion lo da con año de 2 dígitos (26CF003891AX), Sumter con 4 (2026CF000808AXMX).
-_LOCAL_NUMBER_RE = re.compile(r"\[?\s*([0-9]{2}(?:[0-9]{2})?[A-Z]{2}[0-9]{4,}[A-Z0-9]*)\s*\]?")
+# Marion "26CF003891AX", Sumter "2026CF000808AXMX", Hernando "23000080CFAXMX"
+# (año y número antes del tipo de caso).
+_LOCAL_NUMBER_RE = re.compile(
+    r"\[?\s*([0-9]{2}(?:[0-9]{2})?[A-Z]{2}[0-9]{4,}[A-Z0-9]*|[0-9]{8}[A-Z]{2}[A-Z0-9]*)\s*\]?")
 _DATE = r"(\d{1,2}/\d{1,2}/\d{4})"
 # Detalle real (12/10/2026): "Date ActionStatute / TextOffense:09/19/2026Initial:09/19/2026Charged..."
 _OFFENSE_RE = re.compile(r"offen[cs]e(?:\s*date)?\s*:?\s*" + _DATE, re.I)
+# "Initial:07/17/2026": el estado inicial del cargo, que el portal pone al arrestar
+# (Colon: "Initial status updated to Arrest on 8/21/2023" en el docket).
+_INITIAL_RE = re.compile(r"initial\s*:\s*" + _DATE, re.I)
 # "...Prosecutor:09/03/2026Consolidated782.04.2 / ..." o "...Prosecutor:10/05/2026Filed..."
 _PROSECUTOR_RE = re.compile(r"prosecutor\s*:?\s*\d{1,2}/\d{1,2}/\d{4}\s*([a-z][a-z ]*?)(?=\d|$)", re.I)
 _ARREST_RE = re.compile(r"arrest\s*date\D{0,25}?" + _DATE, re.I)
@@ -233,6 +239,7 @@ def charges_from_case(data: dict) -> list[Charge]:
         offense = _OFFENSE_RE.search(detail)
         arrest = _ARREST_RE.search(detail)
         agency = _AGENCY_RE.search(detail)
+        initial = _INITIAL_RE.search(detail)
         charges.append(Charge(
             offense_date=parse_us_date(offense.group(1)) if offense else None,
             description=col(cells, "description"),
@@ -240,6 +247,7 @@ def charges_from_case(data: dict) -> list[Charge]:
             arrest_date=parse_us_date(arrest.group(1)) if arrest else None,
             agency=agency.group(1).strip() if agency else None,
             control_number=None,
+            initial_date=parse_us_date(initial.group(1)) if initial else None,
         ))
     return charges
 

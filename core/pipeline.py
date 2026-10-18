@@ -95,6 +95,9 @@ def run_article(
         if searched and _county_key(extraction.county) != aq.query.county:
             result.extraction["county"] = searched
         result.query, result.notes, result.warnings = _jsonable(asdict(aq.query)), aq.notes, aq.warnings
+        # Los demás arrestados del artículo, por si el primero no da con el caso
+        # (solo si nadie eligió a una persona en particular).
+        people = [aq] + (_other_people(build_query, extraction, article, aq) if suspect_index == 0 else [])
     except OutOfScope as exc:
         result.status = "unknown_location" if exc.reason == "unknown" else "unsupported"
         result.message = str(exc)
@@ -114,11 +117,32 @@ def run_article(
         return result
 
     try:
-        lookup = run_lookup(aq.query, output_dir, on_status=on_status,
+        lookup = run_lookup([p.query for p in people], output_dir, on_status=on_status,
                             on_captcha_waiting=on_captcha_waiting, on_captcha_done=on_captcha_done)
     except Exception as exc:   # p. ej. no se pudo abrir el navegador
         log.exception("No se pudo hacer la búsqueda en el portal")
         result.message = f"Could not open the browser or the court portal: {type(exc).__name__}: {exc}"
         return result
     result.lookup, result.status, result.message = lookup, lookup.status, lookup.message
+    if 0 < lookup.person_index < len(people):
+        # El resultado salió con otra persona del artículo: lo buscado fue eso.
+        used = people[lookup.person_index]
+        result.query, result.warnings = _jsonable(asdict(used.query)), used.warnings
     return result
+
+
+def _other_people(build_query, extraction, article, first) -> list:
+    """Consultas para los otros arrestados (hasta max_people del condado), en orden."""
+    from counties import get_county
+
+    limit = get_county(first.query.county, first.query.state).max_people
+    others = []
+    for index in range(1, min(1 + len(first.others), limit)):
+        try:
+            others.append(build_query(extraction, article, suspect_index=index))
+        except Exception as exc:   # una persona mal extraída no frena la búsqueda de las demás
+            log.warning("No pude armar la búsqueda de la persona %d: %s", index + 1, exc)
+    if others:
+        log.info("El artículo nombra a %d persona(s); se probarán en orden: %s", 1 + len(others),
+                 ", ".join(f"{p.query.first_name} {p.query.last_name}" for p in [first] + others))
+    return others

@@ -28,6 +28,7 @@ ORANGE = CountyConfig(
     document_exclude=[r"insolvency", r"indigen"],
     captcha="recaptcha_v2",
     throttle_s=2.0,
+    max_people=2,        # cada búsqueda nueva puede pedir otro reCAPTCHA
 )
 
 # Civitek OCRS: el mismo portal para 32 condados; cambia solo el código de la
