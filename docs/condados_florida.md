@@ -87,7 +87,7 @@ Al sumar un condado, revisar en la consola las líneas `Documentos en ...` y
 | Condado | Población | Código | Documentos sin cuenta | Notas |
 | --- | ---: | --- | --- | --- |
 | Marion (Ocala) | 419.510 | 42 | Sí (arrest affidavit descargado) | Hecho. Archivo viejo aparte (FileBound) |
-| Hernando | 210.577 | 27 | Sin verificar | |
+| Hernando | 210.577 | 27 | Sin verificar | Configurado (14/10/2026); en prueba con noticias reales |
 | Santa Rosa | 207.983 | 57 | Solo pidiéndolas ("request images") | |
 | Sumter | 156.743 | 60 | Sí (sworn arrest complaint affidavit y warrant affidavit) | Hecho (14/10/2026). Probado: O'Brien, Almany, Harris, Turner, Vaughn. El servidor de documentos a veces cae por horas ("not available at this time") |
 | Highlands | 106.109 | 28 | Según el clerk, solo abogados registrados | |

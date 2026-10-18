@@ -141,6 +141,30 @@ class OutOfScopeTest(unittest.TestCase):
         aq = build_query(extraction(county=None, city=None, agency="Sumter County Sheriff's Office"), ARTICLE)
         self.assertEqual(aq.query.county, "sumter")
 
+    def test_victim_age_not_given_to_suspect(self):
+        """Hernando (14/10/2026): el único "22-year-old" era la víctima, no Colon."""
+        text = ("Federal authorities have charged two men in connection with the 2018 fatal shooting and "
+                "severe beating of a 22-year-old father during an armed robbery in Spring Hill. "
+                "Arthur Williams, alongside Timothy Colon, were indicted on federal charges. "
+                "Colon was taken into custody on Wednesday.")
+        art = Article(url="u", title="t", text=text, published=date(2026, 10, 8), via="direct")
+        people = [dict(person("Arthur", "Williams"), age=None), dict(person("Timothy", "Colon"), age=None)]
+        aq = build_query(extraction(people=people, county="Hernando", city="Spring Hill"), art, suspect_index=1)
+        self.assertEqual(aq.query.last_name, "Colon")
+        self.assertIsNone(aq.query.age)
+
+    def test_lone_arrest_age_still_used(self):
+        """Mues: "A 23-year-old man has been arrested" sigue sirviendo con una sola persona."""
+        aq = build_query(extraction(people=[dict(person(), age=None)]), ARTICLE)
+        self.assertEqual(aq.query.age, 23)
+
+    def test_hernando_is_covered(self):
+        """Hernando (Civitek 27): Spring Hill, Brooksville y el Sheriff resuelven a Hernando."""
+        for city, agency in (("Spring Hill", None), ("Brooksville", "Brooksville Police Department"),
+                             (None, "Hernando County Sheriff's Office")):
+            aq = build_query(extraction(county=None, city=city, agency=agency), ARTICLE)
+            self.assertEqual(aq.query.county, "hernando")
+
     def test_florida_county_named(self):
         exc = self.reason(county="Seminole County", city="Sanford", agency="Sanford Police Department")
         self.assertEqual((exc.reason, exc.county), ("county", "Seminole"))

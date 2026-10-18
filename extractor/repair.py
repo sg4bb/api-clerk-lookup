@@ -70,16 +70,43 @@ def _sentences_with(surname: str, text: str) -> list[str]:
     return [s for s in re.split(r"(?<=[.!?])\s+", text) if re.search(rf"\b{re.escape(key)}\b", normalize(s))]
 
 
-def _fix_person(person: Person, text: str, notes: list[str]) -> Person:
+_VICTIM_WORDS = re.compile(r"\b(victims?|killed|killing|died|dead|death|injured|wounded|hurt)\b", re.I)
+_AGE = re.compile(r"\b(\d{1,2})-year-old\b")
+
+
+def _lone_age_is_theirs(person: Person, text: str, alone: bool) -> Optional[int]:
+    """La única "N-year-old" del texto, solo si es de esta persona.
+
+    Sirve si la oración la nombra, o si es la única persona del artículo y la
+    oración habla del arresto sin mencionar víctima. Ojo: en el caso de Alek
+    Smith (Hernando, 14/10/2026) el único "22-year-old" era la víctima, y se le
+    puso a Timothy Colon (41 años).
+    """
+    ages = set(_AGE.findall(text))
+    if len(ages) != 1:
+        return None
+    age = ages.pop()
+    key = normalize(person.last_name)
+    for sentence in re.split(r"(?<=[.!?])\s+", text):
+        if f"{age}-year-old" not in sentence:
+            continue
+        if re.search(rf"\b{re.escape(key)}\b", normalize(sentence)):
+            return int(age)
+        if alone and _ARREST_WORDS.search(sentence) and not _VICTIM_WORDS.search(sentence):
+            return int(age)
+    return None
+
+
+def _fix_person(person: Person, text: str, notes: list[str], alone: bool = True) -> Person:
     updates = {}
     sentences = _sentences_with(person.last_name, text)
     if person.age is None:
         near = re.search(rf"{re.escape(person.last_name)}\s*,\s*(\d{{1,2}})\s*,", text, re.I)
-        ages = set(re.findall(r"\b(\d{1,2})-year-old\b", text))
+        lone = _lone_age_is_theirs(person, text, alone)
         if near:
             updates["age"] = int(near.group(1))
-        elif len(ages) == 1:
-            updates["age"] = int(ages.pop())
+        elif lone is not None:
+            updates["age"] = lone
         if "age" in updates:
             notes.append(f"edad: la tomé del texto ({updates['age']})")
     if person.role == "suspect" and any(_ARREST_WORDS.search(s) for s in sentences):
@@ -93,7 +120,7 @@ def _fix_person(person: Person, text: str, notes: list[str]) -> Person:
 def repair(extraction: Extraction, text: str, published: Optional[date]) -> tuple[Extraction, list[str]]:
     notes: list[str] = []
     updates: dict = {
-        "people": [_fix_person(p, text, notes) for p in extraction.people],
+        "people": [_fix_person(p, text, notes, alone=len(extraction.people) == 1) for p in extraction.people],
         "incident_date": _fix_date("incident_date", extraction.incident_date,
                                    extraction.incident_date_evidence, published, notes),
         "arrest_date": _fix_date("arrest_date", extraction.arrest_date, None, published, notes),

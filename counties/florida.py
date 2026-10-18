@@ -69,11 +69,13 @@ def civitek(key: str, name: str, code: str) -> CountyConfig:
 
 MARION = civitek("marion", "Marion County", "42")
 SUMTER = civitek("sumter", "Sumter County", "60")
+HERNANDO = civitek("hernando", "Hernando County", "27")
 
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
     SUMTER.key: SUMTER,
+    HERNANDO.key: HERNANDO,
 }
 
 
@@ -107,6 +109,10 @@ CITY_TO_COUNTY: dict[str, str] = {
     "citra": "marion", "fort mccoy": "marion", "anthony": "marion", "weirsdale": "marion", "mcintosh": "marion",
     "wildwood": "sumter", "bushnell": "sumter", "webster": "sumter", "center hill": "sumter",
     "coleman": "sumter", "lake panasoffkee": "sumter", "oxford": "sumter", "sumterville": "sumter",
+    # Ojo: "Hernando" (el pueblo) está en Citrus, no en Hernando County.
+    "brooksville": "hernando", "weeki wachee": "hernando", "hernando beach": "hernando",
+    "ridge manor": "hernando", "masaryktown": "hernando", "nobleton": "hernando", "istachatta": "hernando",
+    "brookridge": "hernando", "timber pines": "hernando", "high point": "hernando",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
     "kissimmee": "osceola", "st cloud": "osceola", "saint cloud": "osceola", "poinciana": "osceola",
@@ -133,7 +139,8 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "ocoee pd": "orange", "winter garden pd": "orange", "maitland pd": "orange", "windermere pd": "orange",
     "edgewood pd": "orange", "belle isle pd": "orange", "eatonville pd": "orange", "ucf pd": "orange",
     "ocala pd": "marion", "marion county so": "marion", "belleview pd": "marion", "dunnellon pd": "marion",
-    "sumter county so": "sumter", "wildwood pd": "sumter", "seminole county so": "seminole",
+    "sumter county so": "sumter", "wildwood pd": "sumter",
+    "hernando county so": "hernando", "brooksville pd": "hernando", "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",

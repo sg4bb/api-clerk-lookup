@@ -59,6 +59,11 @@ class CountyCheckTest(unittest.TestCase):
         self.assertEqual(wrong_county("Suwannee County OCRS", "Sumter County"), "Suwannee")
         self.assertIsNone(wrong_county("Online Court Records Search", "Sumter County"))   # no se sabe: se sigue
 
+    def test_hernando_config(self):
+        hernando = get_county("hernando", "FL")
+        self.assertEqual(hernando.base_url, "https://www.civitekflorida.com/ocrs/county/27/")
+        self.assertEqual(hernando.name, "Hernando County")
+
     def test_sumter_config(self):
         sumter = get_county("sumter", "FL")
         self.assertEqual(sumter.base_url, "https://www.civitekflorida.com/ocrs/county/60/")
