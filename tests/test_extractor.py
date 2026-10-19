@@ -259,3 +259,37 @@ class RepairTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WrongPublishedDateTest(unittest.TestCase):
+    """Facebook dio 2001-01-01 como publicación de un comunicado del 05/10/2026 (Peterson, Jackson)."""
+
+    TEXT = ("FOR IMMEDIATE RELEASE Jackson County, Fla. - October 5, 2026 - While most of us were asleep "
+            "early Saturday morning, a deputy stopped a black Dodge Charger. Roosevelt Peterson was charged "
+            "with possession of a controlled substance and fleeing or attempting to elude.")
+
+    def query(self, published, text=TEXT, **kw):
+        article = Article(url="https://www.facebook.com/x", title="37K views", text=text, published=published,
+                          via="browser")
+        values = dict(people=[person("Roosevelt", "Peterson")], incident_date="2026-10-03",
+                      incident_date_evidence="early Saturday morning", city=None, county="Jackson",
+                      agency="Jackson County Sheriff's Office", charges=["possession of a controlled substance"])
+        values.update(kw)
+        return build_query(Extraction.model_validate(values), article)
+
+    def test_publication_year_missing_from_text_is_ignored(self):
+        aq = self.query(date(2001, 1, 1))
+        self.assertEqual(aq.query.incident_date, date(2026, 10, 3))   # ni descartada ni movida al año 2000
+        self.assertIsNone(aq.query.published_date)
+        self.assertTrue(any("publicación de la página" in w for w in aq.warnings))
+
+    def test_real_publication_date_is_kept(self):
+        aq = self.query(date(2026, 10, 5))
+        self.assertEqual(aq.query.incident_date, date(2026, 10, 3))
+        self.assertEqual(aq.query.published_date, date(2026, 10, 5))
+
+    def test_invented_year_is_still_dropped(self):
+        # Nota de 2019 sin años en el texto; el modelo inventa 2026: se sigue descartando.
+        aq = build_query(extraction(incident_date="2026-03-01"), ARTICLE)
+        self.assertIsNone(aq.query.incident_date)
+        self.assertEqual(aq.query.published_date, date(2023, 10, 23))

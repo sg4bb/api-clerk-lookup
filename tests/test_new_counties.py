@@ -41,6 +41,14 @@ COLUMBIA_ARREST_DOCKET = [(7, "08/08/2019", "ARREST REPORT"),
                           (5, "08/08/2019", "FIRST APPEARANCE ORDER"),
                           (3, "08/08/2019", "Agency Case Number: 19OFF003389")]
 
+# Kody Gilbert (Jackson, 26MM000440) y Roosevelt Peterson (Jackson, 26CF000546).
+JACKSON_COMPLAINT_DOCKET = [(26, "08/24/2026", "NOTICE OF APPEARANCE, PLEA OF NOT GUILTY, AND DEMAND FOR DISCOVERY"),
+                            (9, "08/21/2026", "FIRST APPEARANCE"),
+                            (7, "08/21/2026", "COMPLAINT")]
+JACKSON_AFFIDAVIT_DOCKET = [(13, "10/05/2026", "CITATION FILED"),
+                            (12, "10/05/2026", "AFFIDAVIT-COMPLAINT"),
+                            (3, "10/05/2026", "Agency Case Number: 26-032173")]
+
 # Frederick John Combs (Nassau, 26CF000280).
 NASSAU_DOCKET = [(3, "04/15/2026", "ARREST AND BOOKING SHEET:")]
 
@@ -317,3 +325,21 @@ class WarrantWindowTest(unittest.TestCase):
     def test_with_incident_date_window_is_unchanged(self):
         start, _ = self.window(incident_date=date(2024, 12, 5), arrest_date=date(2024, 12, 5))
         self.assertEqual(start, date(2024, 11, 28))
+
+
+class JacksonTest(unittest.TestCase):
+    def test_complaint_and_affidavit_complaint(self):
+        self.assertEqual(choose("jackson", JACKSON_COMPLAINT_DOCKET), ([7], []))
+        self.assertEqual(choose("jackson", JACKSON_AFFIDAVIT_DOCKET), ([12], []))
+
+    def test_other_complaints_are_not_taken(self):
+        rows = [(5, "09/09/2026", "COMPLAINT FOR INJUNCTION FOR PROTECTION"), (4, "09/09/2026", "AMENDED COMPLAINT")]
+        self.assertEqual(choose("jackson", rows), ([], []))
+
+    def test_names_stay_in_jackson(self):
+        self.assertEqual(choose("marion", JACKSON_COMPLAINT_DOCKET), ([], []))
+        self.assertEqual(choose("putnam", JACKSON_AFFIDAVIT_DOCKET), ([], []))
+
+    def test_agency_number_with_dash(self):
+        from core.lookup import agency_case_number
+        self.assertEqual(agency_case_number(details_with_docket(JACKSON_AFFIDAVIT_DOCKET)), "26-032173")

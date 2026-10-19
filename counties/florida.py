@@ -104,7 +104,13 @@ COLUMBIA = civitek(
     # La orden con el affidavit del detective, de cuando se abrió el caso (Shaffer, Doc #6).
     support=(r"^\s*arrest warrant and warrant affidavit\b",),
 )
-JACKSON = civitek("jackson", "Jackson County", "32")
+JACKSON = civitek(
+    "jackson", "Jackson County", "32",
+    # El formulario "AFFIDAVIT-COMPLAINT" del Sheriff (número de reporte, fecha y hora de la
+    # ofensa y del arresto). En el docket sale como "AFFIDAVIT-COMPLAINT" (Peterson,
+    # 26CF000546, Doc #12) o solo "COMPLAINT" (Gilbert, 26MM000440, Doc #7).
+    documents=(r"^\s*affidavit\s*-?\s*complaint\b", r"^\s*complaint\s*$"),
+)
 HENDRY = civitek("hendry", "Hendry County", "26")
 OKEECHOBEE = civitek("okeechobee", "Okeechobee County", "47")
 WAKULLA = civitek("wakulla", "Wakulla County", "65")

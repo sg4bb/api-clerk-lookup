@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Optional
 
@@ -69,6 +69,10 @@ def query_from_url(url: str, suspect_index: int = 0) -> tuple[Article, ArticleQu
 
 def build_query(extraction: Extraction, article: Article, suspect_index: int = 0) -> ArticleQuery:
     warnings: list[str] = []
+    if _published_is_wrong(extraction, article):
+        warnings.append(f"La fecha de publicación de la página ({article.published}) no aparece en el texto y "
+                        "la del artículo sí: no la uso")
+        article = replace(article, published=None)
     extraction, notes = repair(extraction, article.text, article.published)
     haystack = normalize(article.title + " " + article.text)
 
@@ -157,6 +161,31 @@ def _word_in(value: str, haystack: str) -> bool:
 def _surname_in(last_name: str, haystack: str) -> bool:
     # "Cruz Peraza" también vale si el artículo lo escribe "Cruz-Peraza" o "CruzPeraza".
     return _word_in(last_name, haystack) or _word_in(normalize(last_name).replace(" ", ""), haystack)
+
+
+def _published_is_wrong(extraction: Extraction, article: Article) -> bool:
+    """La fecha de publicación de la página es falsa: su año no está en el texto y el de la nota sí.
+
+    Facebook entregó 2001-01-01 para un comunicado del 05/10/2026 (Peterson, Jackson):
+    la fecha del arresto se descartaba por "posterior a la publicación" y "Saturday" se
+    resolvía en el año 2000. Si el modelo inventa un año que el texto no menciona, esto no
+    aplica y esa fecha se sigue descartando.
+    """
+    published = article.published
+    if not published:
+        return False
+    text = f"{article.title} {article.text}"
+    if str(published.year) in text:
+        return False
+    later = []
+    for value in (extraction.incident_date, extraction.arrest_date):
+        try:
+            parsed = date.fromisoformat((value or "")[:10])
+        except ValueError:
+            continue
+        if parsed > published + timedelta(days=1):
+            later.append(parsed)
+    return any(str(d.year) in text for d in later)
 
 
 def _valid_date(value: Optional[str], published: Optional[date], label: str, warnings: list[str]) -> Optional[date]:
