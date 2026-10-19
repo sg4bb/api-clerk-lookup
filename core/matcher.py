@@ -218,6 +218,24 @@ def _offense_ignored(query: LookupQuery, details: CaseDetails) -> bool:
     return offense_gap > 10 and arrest_gap is not None and arrest_gap <= 1
 
 
+def _offense_on_arrest_day(query: LookupQuery, details: CaseDetails) -> Optional[int]:
+    """Días entre la ofensa y el arresto de la nota, si la nota no da fecha del incidente (hasta 1 día).
+
+    En un arresto en flagrancia (resistencia, huida) la ofensa es del mismo día:
+    Rackley (Nassau, 26MM000504AXYX) era buscado por un robo de otro estado sin
+    fecha y el caso local es la resistencia del 17/09/2026, el día del arresto.
+    Solo suma: en arrestos por orden la ofensa puede ser de meses antes
+    (Rodriguez, Orange: ofensa de 2024, arresto en 2025), y entonces no cuenta.
+    """
+    if query.incident_date or not query.arrest_date:
+        return None
+    offense_dates = [c.offense_date for c in details.charges if c.offense_date]
+    if not offense_dates:
+        return None
+    gap = min(abs((d - query.arrest_date).days) for d in offense_dates)
+    return gap if gap <= 1 else None
+
+
 def max_points(query: LookupQuery, details: CaseDetails) -> int:
     """Puntos alcanzables con lo que se sabe de la consulta y lo que trae el caso."""
     c = details.candidate
@@ -227,6 +245,7 @@ def max_points(query: LookupQuery, details: CaseDetails) -> int:
     # La ofensa ignorada (ver _offense_ignored) no resta, pero sigue contando aquí: así un
     # caso viejo servido el mismo día no empata con el del hecho, cuya ofensa sí coincide.
     total += W_OFFENSE if query.incident_date and any(x.offense_date for x in details.charges) else 0
+    total += W_OFFENSE if _offense_on_arrest_day(query, details) is not None else 0
     total += W_ARREST if _arrest_gap(query, details)[0] is not None else 0
     total += W_AGENCY if query.agency and any(x.agency for x in details.charges) else 0
     anchor = query.age_as_of or query.incident_date or query.arrest_date
@@ -311,6 +330,14 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
         else:
             score -= 15
             reasons.append(f"fecha de ofensa lejana ({gap} días)")
+    else:
+        gap = _offense_on_arrest_day(query, details)
+        if gap is not None:
+            score += W_OFFENSE if gap == 0 else 22
+            reasons.append(f"fecha de ofensa a {gap} día(s) del arresto (la nota no da fecha del incidente)")
+            checks.append({"ok": True, "text": f"Offense date matches the arrest date ({_day(query.arrest_date)})"
+                                               if gap == 0 else
+                                               f"Offense date 1 day from the arrest date ({_day(query.arrest_date)})"})
 
     # Fecha de arresto (también graduada).
     arrest_gap, from_initial = _arrest_gap(query, details)
@@ -500,4 +527,17 @@ def resolve_same_incident(
 def related_cases(winner: CaseDetails, scored: list[tuple[MatchScore, CaseDetails]]) -> list[str]:
     """Otros casos del mismo arresto que el elegido (para informarlos)."""
     return [d.candidate.case_number for m, d in scored
-            if d is not winner and not m.disqualified and same_incident(winner, d)]
+            if d is not winner and not m.disqualified and (same_incident(winner, d) or same_filing(winner, d))]
+
+
+def same_filing(a: CaseDetails, b: CaseDetails) -> bool:
+    """Misma persona, casos abiertos el mismo día: salen del mismo arresto.
+
+    Solo se usa para MOSTRAR el otro caso ("Same arrest, separate case"); no
+    cambia cuál se elige. McQuiston (Levy, 07/10/2026): el 685 (agresión al
+    oficial) y el 686 (pornografía infantil, la nota) se abrieron el 08/10 con
+    números seguidos, cada uno con su mittimus del mismo arresto.
+    """
+    fa, fb = a.candidate.filed_date, b.candidate.filed_date
+    return bool(fa and fb and fa == fb
+                and normalize(a.candidate.defendant) == normalize(b.candidate.defendant))

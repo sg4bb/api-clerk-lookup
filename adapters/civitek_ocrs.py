@@ -144,10 +144,10 @@ _READ_CASE_JS = r"""
 """
 
 # Número local del caso: Marion lo da con año de 2 dígitos (26CF003891AX), Sumter con 4 (2026CF000808AXMX).
-# Marion "26CF003891AX", Sumter "2026CF000808AXMX", Hernando "23000080CFAXMX"
-# (año y número antes del tipo de caso).
+# Marion "26CF003891AX", Sumter "2026CF000808AXMX"; año y número antes del tipo:
+# Hernando "23000080CFAXMX", Putnam y Levy "2024001197CFAXMX" (año de 4 dígitos).
 _LOCAL_NUMBER_RE = re.compile(
-    r"\[?\s*([0-9]{2}(?:[0-9]{2})?[A-Z]{2}[0-9]{4,}[A-Z0-9]*|[0-9]{8}[A-Z]{2}[A-Z0-9]*)\s*\]?")
+    r"\[?\s*([0-9]{2}(?:[0-9]{2})?[A-Z]{2}[0-9]{4,}[A-Z0-9]*|[0-9]{8}(?:[0-9]{2})?[A-Z]{2}[A-Z0-9]*)\s*\]?")
 _DATE = r"(\d{1,2}/\d{1,2}/\d{4})"
 # Detalle real (12/10/2026): "Date ActionStatute / TextOffense:09/19/2026Initial:09/19/2026Charged..."
 _OFFENSE_RE = re.compile(r"offen[cs]e(?:\s*date)?\s*:?\s*" + _DATE, re.I)

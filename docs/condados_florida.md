@@ -82,7 +82,11 @@ como agente (Almany era detective; esas filas no traen sexo ni dirección).
 Los casos descartados por nombre salen en la consola como `Descarto ...`.
 
 Al sumar un condado, revisar en la consola las líneas `Documentos en ...` y
-`Documento de apoyo en ...` por si usa otros nombres.
+`Documento de apoyo en ...` por si usa otros nombres. Los nombres genéricos
+(arrest affidavit, probable cause affidavit, warrant served...) son comunes a
+todo Civitek; los propios de un condado ("ARREST REPORT" en Putnam, "ARREST
+MITTIMUS" en Levy, "ARREST AND BOOKING SHEET" en Nassau) van solo en su línea
+de `counties/florida.py`, para que no los tome otro condado.
 
 | Condado | Población | Código | Documentos sin cuenta | Notas |
 | --- | ---: | --- | --- | --- |
@@ -91,12 +95,12 @@ Al sumar un condado, revisar en la consola las líneas `Documentos en ...` y
 | Santa Rosa | 207.983 | 57 | Solo pidiéndolas ("request images") | |
 | Sumter | 156.743 | 60 | Sí (sworn arrest complaint affidavit y warrant affidavit) | Hecho (14/10/2026). Probado: O'Brien, Almany, Harris, Turner, Vaughn. El servidor de documentos a veces cae por horas ("not available at this time") |
 | Highlands | 106.109 | 28 | Según el clerk, solo abogados registrados | |
-| Nassau | 103.990 | 45 | En parte | Filtros por fecha o tipo pueden pedir registro |
+| Nassau | 103.990 | 45 | Sí (arrest and booking sheet) | Hecho (19/10/2026). Probado: Combs, Lee (dos padres: basta el primero), Rackley; Brown sin caso nuevo (violación de probation dentro de un caso de 2023). El booking sheet trae el número de reporte del NCSO y la hora del arresto |
 | Walton | 87.728 | 66 | Sin verificar | Rango de fechas de máximo 7 días |
-| Putnam | 76.138 | 54 | En parte | |
+| Putnam | 76.138 | 54 | Sí (arrest report; complaint = probable cause affidavit, de apoyo) | Hecho (18/10/2026). Probado: Deller, Lanigan, Carpenter, Gomez-Hernandez (cada uno con su probable cause affidavit de apoyo) |
 | Columbia | 72.155 | 12 | Sin verificar | |
 | Jackson | 49.345 | 32 | Sin verificar | Oculta casos con orden de arresto activa |
-| Levy | 45.845 | 38 | Sin verificar | |
+| Levy | 45.845 | 38 | Sí (sworn complaint o arrest mittimus: formulario de denuncia y arresto del Sheriff) | Hecho (18/10/2026). Probado: Vessels, McQuiston (arrest mittimus del 685; el 686, abierto el mismo día, sale como mismo arresto); Mitchell sin caso en el portal. levyso.com mandaba las notas comprimidas en zstd (ya no se ofrece zstd) |
 | Hendry | 45.413 | 26 | Sin verificar | |
 | Okeechobee | 40.230 | 47 | Sin verificar | |
 | Wakulla | 37.313 | 65 | Sin verificar | |

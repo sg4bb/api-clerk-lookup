@@ -172,9 +172,25 @@ def _display_name(defendant: str) -> str:
     return f"{first} {last}".strip().title()
 
 
+def _first_word_only(query: LookupQuery) -> LookupQuery:
+    """'Frederick John' -> nombre 'Frederick', segundo nombre 'John'.
+
+    El portal busca nombres que EMPIECEN con lo escrito: "Frederick John" no
+    encuentra a "COMBS, FREDERICK" (Nassau, 18/10/2026). Con la primera palabra
+    sale tanto "FREDERICK" como "FREDERICK JOHN", y el resto se compara como
+    segundo nombre. Una inicial ("J. Michael") se deja como está.
+    """
+    words = query.first_name.split()
+    if len(words) < 2 or len(words[0].strip(".")) < 2:
+        return query
+    log.info("Busco por el primer nombre %r (%r queda como segundo nombre)", words[0], " ".join(words[1:]))
+    return replace(query, first_name=words[0], middle_name=query.middle_name or " ".join(words[1:]))
+
+
 def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir: Path,
                    on_status: StatusCallback) -> tuple[list, LookupResult]:
     """La búsqueda de siempre para una persona: (casos puntuados, resultado)."""
+    query = _first_word_only(query)
     date_from, date_to = search_window(query, county)
     on_status("searching")
     # El formulario se llena sin acentos: los expedientes no los llevan.
@@ -247,7 +263,7 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
         log.info("Documento de apoyo en %s: %s", details.candidate.case_number, _describe(support[:3]))
     if not documents and support:
         # Sin arrest affidavit pero con la orden ejecutada: mejor la orden que nada.
-        log.info("No hay arrest affidavit; entrego la orden de captura como documento principal")
+        log.info("No hay arrest affidavit; entrego el documento de apoyo como principal")
         documents, support = support, []
     if not documents:
         downloadable = [e for e in docket if e["downloadable"]]

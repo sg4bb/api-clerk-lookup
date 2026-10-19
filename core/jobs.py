@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -95,9 +96,18 @@ class JobStore:
         """Sube el PDF al bucket privado y devuelve su ruta dentro del bucket."""
         # Nombres simples: Storage rechaza algunos caracteres en las rutas.
         safe = re.sub(r"[^A-Za-z0-9._-]+", "_", pdf.name).strip("_") or "document.pdf"
+        if len(safe) > 100:
+            safe = safe[:96].rstrip("_.-") + ".pdf"
         path = f"{job_id}/{safe}"
-        r = self._http.post(f"/storage/v1/object/{BUCKET}/{quote(path)}", content=pdf.read_bytes(),
-                            headers={"Content-Type": "application/pdf", "x-upsert": "true"}, timeout=120)
+        data = pdf.read_bytes()
+        for attempt in (1, 2):
+            r = self._http.post(f"/storage/v1/object/{BUCKET}/{quote(path)}", content=data,
+                                headers={"Content-Type": "application/pdf", "x-upsert": "true"}, timeout=120)
+            # 5xx (p. ej. 520 de Cloudflare, 18/10/2026): suele ser pasajero, un reintento.
+            if r.status_code < 500 or attempt == 2:
+                break
+            log.warning("Storage respondió %s al subir %s; reintento en 3 s", r.status_code, safe)
+            time.sleep(3)
         self._check(r, "upload the PDF")
         return path
 

@@ -42,6 +42,8 @@ CIVITEK_DOCUMENTS = [
     r"complaint affidavit",
     r"affidavit (?:for|to issue) (?:arrest )?warrant",
 ]
+# Los nombres propios de cada condado van en su línea (civitek(..., documents=...)),
+# no aquí: así un condado no toma documentos que solo existen en otro.
 # Documento de apoyo: la orden de captura ejecutada. Cuando el arresto fue con
 # orden, el arrest affidavit es solo el formulario de la captura y la orden trae
 # el número de reporte de la agencia que investigó el hecho, a veces con su
@@ -52,7 +54,8 @@ CIVITEK_SUPPORT = [r"\bwarrant served\b", r"\bcapias served\b", r"^\s*warrant af
 CIVITEK_EXCLUDE = [r"insolvency", r"indigen", r"\bmotion\b"]
 
 
-def civitek(key: str, name: str, code: str) -> CountyConfig:
+def civitek(key: str, name: str, code: str, documents: tuple = (), support: tuple = ()) -> CountyConfig:
+    """Un condado de Civitek. `documents` y `support`: nombres que solo usa ese condado."""
     return CountyConfig(
         key=key,
         name=name,
@@ -60,9 +63,9 @@ def civitek(key: str, name: str, code: str) -> CountyConfig:
         platform="civitek_ocrs",
         base_url=f"https://www.civitekflorida.com/ocrs/county/{code}/",
         case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
-        document_priority=CIVITEK_DOCUMENTS,
+        document_priority=CIVITEK_DOCUMENTS + list(documents),
         document_exclude=CIVITEK_EXCLUDE,
-        support_documents=CIVITEK_SUPPORT,
+        support_documents=CIVITEK_SUPPORT + list(support),
         captcha="turnstile",
         throttle_s=2.0,
     )
@@ -71,12 +74,34 @@ def civitek(key: str, name: str, code: str) -> CountyConfig:
 MARION = civitek("marion", "Marion County", "42")
 SUMTER = civitek("sumter", "Sumter County", "60")
 HERNANDO = civitek("hernando", "Hernando County", "27")
+PUTNAM = civitek(
+    "putnam", "Putnam County", "54",
+    # "ARREST REPORT: WARRANT - PCSO / 11-12-24" (Deller, 2024CF001197).
+    documents=(r"^\s*arrest report\b",),
+    # "COMPLAINT FILED: PCSO/...": el Probable Cause Affidavit escrito antes del
+    # arresto para pedir la orden, con la narración y el número PCSO..OFF...
+    support=(r"^\s*complaint filed\b",),
+)
+LEVY = civitek(
+    "levy", "Levy County", "38",
+    # El formulario de denuncia y arresto del Sheriff (número LCSO, fecha y lugar del
+    # arresto, narración): "SWORN COMPLAINT FILED" (Vessels, 2017CF000855) o, en los
+    # arrestos en el momento, "ARREST MITTIMUS" (McQuiston, 2026CF000685/686).
+    documents=(r"\bsworn complaint\b", r"^\s*arrest mittimus\b"),
+)
+NASSAU = civitek(
+    "nassau", "Nassau County", "45",
+    documents=(r"\barrest and booking sheet\b",),   # Combs, 26CF000280
+)
 
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
     SUMTER.key: SUMTER,
     HERNANDO.key: HERNANDO,
+    PUTNAM.key: PUTNAM,
+    LEVY.key: LEVY,
+    NASSAU.key: NASSAU,
 }
 
 
@@ -114,6 +139,14 @@ CITY_TO_COUNTY: dict[str, str] = {
     "brooksville": "hernando", "weeki wachee": "hernando", "hernando beach": "hernando",
     "ridge manor": "hernando", "masaryktown": "hernando", "nobleton": "hernando", "istachatta": "hernando",
     "brookridge": "hernando", "timber pines": "hernando", "high point": "hernando",
+    "palatka": "putnam", "east palatka": "putnam", "interlachen": "putnam", "crescent city": "putnam",
+    "welaka": "putnam", "pomona park": "putnam", "satsuma": "putnam", "hollister": "putnam",
+    "florahome": "putnam", "san mateo": "putnam", "bostwick": "putnam", "putnam hall": "putnam",
+    # Ojo: Trenton y Fanning Springs están (o se reparten) en Gilchrist.
+    "chiefland": "levy", "williston": "levy", "bronson": "levy", "cedar key": "levy", "inglis": "levy",
+    "yankeetown": "levy", "morriston": "levy", "otter creek": "levy",
+    "fernandina beach": "nassau", "fernandina": "nassau", "yulee": "nassau", "callahan": "nassau",
+    "hilliard": "nassau", "bryceville": "nassau", "amelia island": "nassau", "nassauville": "nassau",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
     "kissimmee": "osceola", "st cloud": "osceola", "saint cloud": "osceola", "poinciana": "osceola",
@@ -141,7 +174,10 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "edgewood pd": "orange", "belle isle pd": "orange", "eatonville pd": "orange", "ucf pd": "orange",
     "ocala pd": "marion", "marion county so": "marion", "belleview pd": "marion", "dunnellon pd": "marion",
     "sumter county so": "sumter", "wildwood pd": "sumter",
-    "hernando county so": "hernando", "brooksville pd": "hernando", "seminole county so": "seminole",
+    "hernando county so": "hernando", "brooksville pd": "hernando",
+    "putnam county so": "putnam", "palatka pd": "putnam", "crescent city pd": "putnam",
+    "levy county so": "levy", "williston pd": "levy", "chiefland pd": "levy",
+    "nassau county so": "nassau", "fernandina beach pd": "nassau", "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",

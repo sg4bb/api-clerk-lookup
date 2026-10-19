@@ -98,8 +98,17 @@ def today() -> date:
     return datetime.now().date()
 
 
-def safe_filename(name: str) -> str:
-    return re.sub(r'[<>:"/\\|?*]+', "_", name).strip()
+def safe_filename(name: str, max_length: int = 100) -> str:
+    """Nombre de archivo válido y corto. Putnam titula los documentos con todos los
+    cargos ("COMPLAINT FILED: PCSO / CORREA / ... IV - MOLEST VICT ..."): con la carpeta
+    del pedido pasaba los 260 caracteres de Windows (Errno 22, 18/10/2026)."""
+    name = re.sub(r'[<>:"/\\|?*]+', "_", name).strip()
+    if len(name) <= max_length:
+        return name
+    stem, dot, ext = name.rpartition(".")
+    if not dot or len(ext) > 5:
+        return name[:max_length].rstrip(" ._-")
+    return stem[:max_length - len(ext) - 1].rstrip(" ._-") + "." + ext
 
 
 MAX_SURNAME_VARIANTS = 3

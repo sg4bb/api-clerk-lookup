@@ -17,6 +17,13 @@ from datetime import date
 from typing import Optional
 
 import trafilatura
+from trafilatura import downloads as _trafilatura_downloads
+
+# Sin zstd: si el paquete zstandard está instalado, trafilatura lo ofrece, pero no
+# sabe descomprimir respuestas sin el tamaño en la cabecera y devuelve los bytes
+# comprimidos como si fueran la página (levyso.com, 18/10/2026). gzip y deflate
+# siempre se descomprimen bien. Igual en la PC que en el VPS.
+_trafilatura_downloads.DEFAULT_HEADERS["accept-encoding"] = "gzip,deflate"
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +79,19 @@ def _blocked(article: Optional[Article]) -> bool:
     return bool(article) and bool(_BLOCK_PATTERNS.search(f"{article.title}\n{article.text[:800]}"))
 
 
+def _looks_binary(text: str) -> bool:
+    """Bytes que no son texto (una respuesta comprimida leída como página, p. ej.)."""
+    sample = text[:4000]
+    if not sample:
+        return False
+    odd = sum(1 for ch in sample if ch == "\ufffd" or (ord(ch) < 32 and ch not in "\n\r\t"))
+    return odd / len(sample) > 0.02
+
+
 def _usable(article: Optional[Article]) -> bool:
+    if article and _looks_binary(article.text):
+        log.info("El texto descargado no es legible (%s): lo descarto", article.via)
+        return False
     return bool(article) and len(article.text) >= MIN_TEXT_CHARS and not _blocked(article)
 
 
