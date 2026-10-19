@@ -435,3 +435,53 @@ class WrittenDateTest(unittest.TestCase):
         self.assertTrue(written(date(2026, 9, 3), "Sept. 3, 2026"))
         self.assertFalse(written(date(2025, 4, 27), self.TEXT))    # otro año
         self.assertFalse(written(date(2026, 4, 2), "April 27"))    # otro día
+
+
+class WakullaTest(unittest.TestCase):
+    # Curtis Woodward (Wakulla, 22CF000323).
+    DOCKET = [(12, "09/12/2022", "BOND ORDER"),
+              (11, "09/12/2022", "ARREST REPORT PACKAGE"),
+              (2, "09/06/2022", "Agency Case Number: 22OFF001932")]
+
+    def test_arrest_report_package(self):
+        self.assertEqual(choose("wakulla", self.DOCKET), ([11], []))
+
+    def test_stays_in_wakulla(self):
+        self.assertEqual(choose("marion", self.DOCKET), ([], []))
+
+
+class SwappedPublishedDateTest(unittest.TestCase):
+    """wcso.org: "News Release Date 09-07-2022" se leía como el 9 de julio."""
+
+    TEXT = ("On September 7, 2022, Wakulla County Sheriff's Office detectives arrested Curtis Woodward "
+            "as part of Operation Death Dealer.")
+
+    def build(self, published, text=TEXT, incident="2022-09-07"):
+        from extractor import build_query
+        from extractor.fetch import Article
+        from extractor.schema import Extraction
+        article = Article(url="https://www.wcso.org/x", title="WCSO makes arrest", text=text, published=published,
+                          via="direct")
+        extraction = Extraction.model_validate(dict(
+            people=[dict(first_name="Curtis", last_name="Woodward", role="arrested", evidence="...")],
+            incident_date=incident, county="Wakulla", state="FL", agency="Wakulla County Sheriff's Office",
+            charges=["trafficking"]))
+        return build_query(extraction, article)
+
+    def test_swapped_publication_is_fixed(self):
+        aq = self.build(date(2022, 7, 9))
+        self.assertEqual(aq.query.published_date, date(2022, 9, 7))
+        self.assertEqual(aq.query.incident_date, date(2022, 9, 7))   # ya no se descarta
+
+    def test_right_publication_is_kept(self):
+        aq = self.build(date(2022, 9, 7))
+        self.assertEqual(aq.query.published_date, date(2022, 9, 7))
+
+    def test_not_swapped_when_the_text_does_not_say_it(self):
+        aq = self.build(date(2022, 7, 9), text="Detectives arrested Curtis Woodward on Wednesday.", incident=None)
+        self.assertEqual(aq.query.published_date, date(2022, 7, 9))
+
+    def test_day_over_12_cannot_be_swapped(self):
+        aq = self.build(date(2022, 9, 13), text="On September 13, 2022, detectives arrested Curtis Woodward.",
+                        incident="2022-09-13")
+        self.assertEqual(aq.query.published_date, date(2022, 9, 13))

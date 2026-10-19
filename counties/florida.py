@@ -118,7 +118,12 @@ HENDRY = civitek(
     documents=(r"^\s*booking report\b",),
 )
 OKEECHOBEE = civitek("okeechobee", "Okeechobee County", "47")
-WAKULLA = civitek("wakulla", "Wakulla County", "65")
+WAKULLA = civitek(
+    "wakulla", "Wakulla County", "65",
+    # "ARREST REPORT PACKAGE": el informe del Sheriff (WCSO..ARR, número WCSO..OFF), con la
+    # orden y su affidavit cuando el arresto fue con orden (Woodward, 22CF000323, Doc #11).
+    documents=(r"^\s*arrest report package\b",),
+)
 
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,

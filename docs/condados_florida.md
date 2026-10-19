@@ -103,7 +103,7 @@ de `counties/florida.py`, para que no los tome otro condado.
 | Levy | 45.845 | 38 | Sí (sworn complaint o arrest mittimus: formulario de denuncia y arresto del Sheriff) | Hecho (18/10/2026). Probado: Vessels, McQuiston (arrest mittimus del 685; el 686, abierto el mismo día, sale como mismo arresto); Mitchell sin caso en el portal. levyso.com mandaba las notas comprimidas en zstd (ya no se ofrece zstd) |
 | Hendry | 45.413 | 26 | Sí (booking report filed: el Arrest Report del Sheriff) | Hecho (19/10/2026). Probado: Gonzalez (booking report), Azcuy Alfonso (booking report + warrant affidavit), Thicklin (sin PDF descargable: sale el número de reporte). En arrestos con orden, el "Agency Case Number" del docket puede ser el de la orden (26WAR000632) y no el del hecho (26OFF002038, en el PDF). hendrysheriff.org carga la nota con JavaScript y da como publicación el día en que se abre. El formulario es ancho: el CAPTCHA se enfoca angostando su contenedor. Garcia-Zunun (caso de 2012) sin caso |
 | Okeechobee | 40.230 | 47 | Sí (arrest affidavit: "Individual Arrest Affidavit" del Sheriff) | Hecho (19/10/2026). Probado: McNeil, Adamo. Usa los nombres genéricos de Civitek |
-| Wakulla | 37.313 | 65 | Sin verificar | Configurado (19/10/2026); en prueba |
+| Wakulla | 37.313 | 65 | Sí (arrest report package: informe del Sheriff, con la orden si la hubo) | Configurado (19/10/2026); en prueba con Woodward/Mermer. wcso.org da la publicación como "09-07-2022" (mes-día) |
 | DeSoto | 35.487 | 14 | Requiere registro notarizado | |
 | Baker | 28.899 | 02 | Sin verificar | |
 | Bradford | 27.335 | 04 | En parte | |

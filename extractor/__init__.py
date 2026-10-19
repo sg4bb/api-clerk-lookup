@@ -20,7 +20,7 @@ from core.utils import normalize
 
 from .fetch import Article, FetchError, fetch_article
 from .llm import ExtractionError, extract
-from .repair import date_precision, repair
+from .repair import _written_in_text, date_precision, repair
 from .schema import Extraction, Person
 
 log = logging.getLogger(__name__)
@@ -69,6 +69,11 @@ def query_from_url(url: str, suspect_index: int = 0) -> tuple[Article, ArticleQu
 
 def build_query(extraction: Extraction, article: Article, suspect_index: int = 0) -> ArticleQuery:
     warnings: list[str] = []
+    swapped = _swapped_published(article)
+    if swapped:
+        warnings.append(f"La fecha de publicación de la página ({article.published}) tiene el día y el mes invertidos; "
+                        f"uso {swapped}")
+        article = replace(article, published=swapped)
     if _published_is_wrong(extraction, article):
         warnings.append(f"La fecha de publicación de la página ({article.published}) no aparece en el texto y "
                         "la del artículo sí: no la uso")
@@ -161,6 +166,26 @@ def _word_in(value: str, haystack: str) -> bool:
 def _surname_in(last_name: str, haystack: str) -> bool:
     # "Cruz Peraza" también vale si el artículo lo escribe "Cruz-Peraza" o "CruzPeraza".
     return _word_in(last_name, haystack) or _word_in(normalize(last_name).replace(" ", ""), haystack)
+
+
+def _swapped_published(article: Article) -> Optional[date]:
+    """La publicación leída con el día y el mes al revés, si la fecha correcta está escrita en el texto.
+
+    wcso.org muestra "News Release Date 09-07-2022" (7 de septiembre) y se leía como
+    9 de julio: la fecha del arresto ("On September 7, 2022") quedaba "posterior a la
+    publicación" y se descartaba (Woodward, Wakulla).
+    """
+    published = article.published
+    if not published or published.day > 12 or published.day == published.month:
+        return None
+    try:
+        swapped = published.replace(month=published.day, day=published.month)
+    except ValueError:
+        return None
+    text = f"{article.title} {article.text}"
+    if _written_in_text(swapped, text) and not _written_in_text(published, text):
+        return swapped
+    return None
 
 
 def _published_is_wrong(extraction: Extraction, article: Article) -> bool:
