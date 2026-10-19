@@ -382,3 +382,56 @@ class JavaScriptPageTest(unittest.TestCase):
             article = fetch.fetch_article("https://www.hendrysheriff.org/newsdigestlist/x")
         self.assertEqual(article.via, "browser")
         self.assertIn("John Example", article.text)
+
+
+class HendryTest(unittest.TestCase):
+    # Flora Norys Gonzalez (Hendry, 26CF000196).
+    DOCKET = [(13, "04/30/2026", "Motion for Pre-Trial Detention"),
+              (10, "04/30/2026", "BOOKING REPORT FILED"),
+              (9, "04/30/2026", "RECORD OF FIRST APPEARANCE FILED"),
+              (3, "04/30/2026", "Agency Case Number: 26OFF001275")]
+
+    def test_booking_report(self):
+        self.assertEqual(choose("hendry", self.DOCKET), ([10], []))
+
+    def test_booking_report_stays_in_hendry(self):
+        self.assertEqual(choose("marion", self.DOCKET), ([], []))
+
+    def test_agency_number(self):
+        from core.lookup import agency_case_number
+        self.assertEqual(agency_case_number(details_with_docket(self.DOCKET)), "26OFF001275")
+
+
+class WrittenDateTest(unittest.TestCase):
+    """hendrysheriff.org da como publicación el día en que se abre la página (19/10/2026)."""
+
+    TEXT = ("On Monday night, April 27, 2026, Hendry County Deputies responded to a home on East State Road 80. "
+            "On April 29, 2026, Hendry County Detectives arrested 64-year-old Flora Norys Gonzalez.")
+
+    def fix(self, value, evidence, text):
+        import importlib
+        repair = importlib.import_module("extractor.repair")
+        notes = []
+        return repair._fix_date("incident_date", value, evidence, date(2026, 10, 19), notes, text), notes
+
+    def test_date_written_in_the_text_is_kept(self):
+        self.assertEqual(self.fix("2026-04-27", "Monday night", self.TEXT), ("2026-04-27", []))
+
+    def test_date_not_in_the_text_is_still_counted_from_the_weekday(self):
+        # Sin la fecha escrita, la regla de siempre: "Monday" contado desde la publicación.
+        value, notes = self.fix("2026-04-27", "Monday night", "On Monday night deputies responded to a home.")
+        self.assertEqual(value, "2026-10-19")
+        self.assertTrue(notes)
+
+    def test_model_date_that_is_not_the_written_one_is_still_corrected(self):
+        value, _ = self.fix("2026-04-20", "Monday night", self.TEXT)
+        self.assertEqual(value, "2026-10-19")
+
+    def test_written_forms(self):
+        import importlib
+        written = importlib.import_module("extractor.repair")._written_in_text
+        self.assertTrue(written(date(2026, 4, 27), "apr. 27th"))
+        self.assertTrue(written(date(2026, 4, 27), "on 4/27/26 at night"))
+        self.assertTrue(written(date(2026, 9, 3), "Sept. 3, 2026"))
+        self.assertFalse(written(date(2025, 4, 27), self.TEXT))    # otro año
+        self.assertFalse(written(date(2026, 4, 2), "April 27"))    # otro día

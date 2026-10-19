@@ -111,7 +111,12 @@ JACKSON = civitek(
     # 26CF000546, Doc #12) o solo "COMPLAINT" (Gilbert, 26MM000440, Doc #7).
     documents=(r"^\s*affidavit\s*-?\s*complaint\b", r"^\s*complaint\s*$"),
 )
-HENDRY = civitek("hendry", "Hendry County", "26")
+HENDRY = civitek(
+    "hendry", "Hendry County", "26",
+    # "BOOKING REPORT FILED": el Arrest Report del Sheriff, con el número HCSO..OFF, la fecha
+    # y hora de la ocurrencia y del arresto y el lugar (Gonzalez, 26CF000196, Doc #10).
+    documents=(r"^\s*booking report\b",),
+)
 OKEECHOBEE = civitek("okeechobee", "Okeechobee County", "47")
 WAKULLA = civitek("wakulla", "Wakulla County", "65")
 

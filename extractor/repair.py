@@ -47,8 +47,32 @@ def _iso(value: Optional[str]) -> Optional[date]:
         return None
 
 
+_MONTH_NAMES = ["january", "february", "march", "april", "may", "june", "july", "august", "september",
+           "october", "november", "december"]
+
+
+def _written_in_text(day: date, text: str) -> bool:
+    """La fecha está escrita en el artículo: "April 27, 2026", "Apr. 27", "4/27/2026".
+
+    Si trae año, tiene que ser el mismo. Así una fecha del texto no se cambia por
+    un día de la semana contado desde una publicación que puede estar mal.
+    """
+    t = text.lower()
+    month = _MONTH_NAMES[day.month - 1]
+    names = {month, month[:3], "sept"} if day.month == 9 else {month, month[:3]}
+    for name in names:
+        for m in re.finditer(rf"\b{name}\.?\s+{day.day}(?:st|nd|rd|th)?\b(?:,?\s*(\d{{4}}))?", t):
+            if not m.group(1) or int(m.group(1)) == day.year:
+                return True
+    for m in re.finditer(rf"\b0?{day.month}/0?{day.day}(?:/(\d{{4}}|\d{{2}}))?\b", t):
+        year = m.group(1)
+        if not year or int(year) % 100 == day.year % 100:
+            return True
+    return False
+
+
 def _fix_date(label: str, value: Optional[str], evidence: Optional[str], published: Optional[date],
-              notes: list[str]) -> Optional[str]:
+              notes: list[str], text: str = "") -> Optional[str]:
     parsed = _iso(value)
     if parsed is None and value:
         resolved = resolve_relative_day(value, published) or resolve_relative_day(evidence, published)
@@ -58,6 +82,11 @@ def _fix_date(label: str, value: Optional[str], evidence: Optional[str], publish
         return value
     if parsed and evidence and published:
         # Si la cita dice "Friday" pero la fecha no cae en viernes, el modelo contó mal.
+        # Salvo que la fecha esté escrita en el texto ("On Monday night, April 27, 2026"):
+        # hendrysheriff.org da como publicación el día en que se abre la página, y
+        # contar "Monday" desde ahí movía el 27/04 al 19/10 (Gonzalez, Hendry).
+        if text and _written_in_text(parsed, text):
+            return value
         resolved = resolve_relative_day(evidence, published)
         if resolved and resolved != parsed:
             notes.append(f"{label}: {parsed} no coincide con {evidence!r}; uso {resolved}")
@@ -122,8 +151,8 @@ def repair(extraction: Extraction, text: str, published: Optional[date]) -> tupl
     updates: dict = {
         "people": [_fix_person(p, text, notes, alone=len(extraction.people) == 1) for p in extraction.people],
         "incident_date": _fix_date("incident_date", extraction.incident_date,
-                                   extraction.incident_date_evidence, published, notes),
-        "arrest_date": _fix_date("arrest_date", extraction.arrest_date, None, published, notes),
+                                   extraction.incident_date_evidence, published, notes, text),
+        "arrest_date": _fix_date("arrest_date", extraction.arrest_date, None, published, notes, text),
     }
     if not extraction.city:
         match = _DATELINE.search(text[:600])

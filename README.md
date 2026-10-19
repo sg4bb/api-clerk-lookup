@@ -1,6 +1,6 @@
 # clerk-lookup
 
-Servicio que recibe los datos de un caso y devuelve **un único** Incident Report / Arrest Affidavit desde el portal del Clerk of Courts del condado. Cubre Orange County, FL (myeClerk), y Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia y Jackson, FL (Civitek OCRS, probados con casos reales); la lista completa y el orden de los próximos está en `docs/condados_florida.md`. El CAPTCHA lo resuelve una persona: hoy en una ventana de tu PC y, más adelante, dentro del dashboard con un iframe.
+Servicio que recibe los datos de un caso y devuelve **un único** Incident Report / Arrest Affidavit desde el portal del Clerk of Courts del condado. Cubre Orange County, FL (myeClerk), y Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia, Jackson y Hendry, FL (Civitek OCRS, probados con casos reales); la lista completa y el orden de los próximos está en `docs/condados_florida.md`. El CAPTCHA lo resuelve una persona: hoy en una ventana de tu PC y, más adelante, dentro del dashboard con un iframe.
 
 ## Instalación (Windows)
 
@@ -45,7 +45,7 @@ python run_article.py mues --dry-run --reuse # repite la validación con la extr
 1. **Texto:** `trafilatura` descarga la nota y separa el cuerpo de menús y anuncios, junto con la fecha de publicación. Si el sitio bloquea la descarga, o si solo entrega el esqueleto de la página con el aviso "JavaScript is required" (el cuerpo lo carga el navegador, como en hendrysheriff.org), la abre en un Chrome oculto en la misma máquina del worker (en una VPS, el Chromium de Playwright: `playwright install --with-deps chromium`) y, si eso no alcanza, en el navegador remoto.
 2. **Datos:** el texto va a NVIDIA NIM (`NVIDIA_MODEL`, por defecto `google/gemma-4-31b-it`, con GLM y Nemotron de respaldo) con la librería `openai` como cliente. Se le pide un JSON con estructura fija (`guided_json`): arrestados, fecha del incidente (resolviendo "el viernes" con la fecha de publicación), agencia, condado y cargos.
 3. **Ajustes:** si el modelo deja campos a medias, se completan con reglas sobre el propio texto: "Friday" pasa a fecha contando desde la publicación, la edad sale de "23-year-old", la ciudad del encabezado "ORLANDO, Fla." y el condado de la agencia (OPD, OCSO, etc.). En pantalla salen como `AJUSTE`.
-4. **Validación:** se descarta cualquier nombre que no aparezca en el artículo y cualquier fecha posterior a la publicación. Excepción: si el año de la publicación que da la página no aparece en el texto y el de la fecha del modelo sí (Facebook dio 2001-01-01 para un comunicado de 2026), la fecha de publicación es la que no se usa. Si no hay fecha, se busca en el mes previo a la publicación. Los cargos sirven para distinguir casos del mismo día.
+4. **Validación:** se descarta cualquier nombre que no aparezca en el artículo y cualquier fecha posterior a la publicación. Excepción: si el año de la publicación que da la página no aparece en el texto y el de la fecha del modelo sí (Facebook dio 2001-01-01 para un comunicado de 2026), la fecha de publicación es la que no se usa. Un día de la semana ("Monday night") se cuenta desde la publicación solo si la fecha no está escrita en el texto: "On Monday night, April 27, 2026" se queda en el 27/04 aunque la página diga que se publicó hoy (hendrysheriff.org). Si no hay fecha, se busca en el mes previo a la publicación. Los cargos sirven para distinguir casos del mismo día.
 
 Si NVIDIA está saturado (errores 5xx como 503 "Worker local total request limit reached" o 529 "Service temporarily overloaded", frecuentes en el plan gratuito), el programa espera y reintenta (10 s, 20 s, 40 s, 60 s...) hasta `NVIDIA_RETRY_MAX_S` segundos (300 por defecto). Con `NVIDIA_FALLBACK_MODEL` (uno o varios, separados por coma) prueba primero esos modelos antes de esperar; un modelo retirado por NVIDIA se salta con un aviso. Si el modelo principal no contesta en `NVIDIA_FIRST_TIMEOUT_S` segundos (75 por defecto) se pasa al respaldo; los respaldos tienen `NVIDIA_TIMEOUT_S` (180). Para comparar un modelo antes de usarlo: `python run_article.py mues --dry-run --model <modelo>`. Si un artículo falla, los demás siguen.
 
@@ -91,7 +91,7 @@ core/
   documents.py  convierte lo que entrega un visor (TIFF, páginas) en PDF
 adapters/
   orange_myeclerk.py   portal de Orange
-  civitek_ocrs.py      Civitek OCRS (Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia, Jackson y, con solo agregar la ficha, otros condados)
+  civitek_ocrs.py      Civitek OCRS (Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia, Jackson, Hendry y, con solo agregar la ficha, otros condados)
 counties/
   florida.py    configuración por condado (URL, códigos, documentos)
 extractor/
