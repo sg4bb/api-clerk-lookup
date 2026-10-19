@@ -30,6 +30,17 @@ LEVY_DOCKET = [(14, "12/20/2017", "AFFIDAVIT OF INDIGENT STATUS-INDIGENT"),
                (4, "12/06/2017", "ARREST WARRANT ISSUED: WARRANT FOR ARREST"),
                (3, "12/06/2017", "SWORN COMPLAINT FILED")]
 
+# Steven Paul Shaffer (Columbia, 24000899CFAXMX): orden emitida el 19/11/2024, arresto el 05/12/2024.
+COLUMBIA_WARRANT_DOCKET = [(15, "12/12/2024", "WARRANT SERVED PAPERWORK"),
+                           (14, "12/06/2024", "CAPIAS/WARRANT RETURNED SERVED"),
+                           (11, "12/05/2024", "Initial status updated to Arrest on 12/5/2024"),
+                           (6, "11/19/2024", "ARREST WARRANT AND WARRANT AFFIDAVIT"),
+                           (3, "11/19/2024", "Agency Case Number: 23OFF003449")]
+# Elbert Gilliard (Columbia, 19000675CFAXMX).
+COLUMBIA_ARREST_DOCKET = [(7, "08/08/2019", "ARREST REPORT"),
+                          (5, "08/08/2019", "FIRST APPEARANCE ORDER"),
+                          (3, "08/08/2019", "Agency Case Number: 19OFF003389")]
+
 # Frederick John Combs (Nassau, 26CF000280).
 NASSAU_DOCKET = [(3, "04/15/2026", "ARREST AND BOOKING SHEET:")]
 
@@ -43,10 +54,21 @@ def choose(county: str, rows):
 
 class ConfigTest(unittest.TestCase):
     def test_codes(self):
-        for key, code in (("putnam", "54"), ("levy", "38"), ("nassau", "45")):
+        for key, code in (("putnam", "54"), ("levy", "38"), ("nassau", "45"), ("columbia", "12"),
+                          ("jackson", "32"), ("hendry", "26"), ("okeechobee", "47"), ("wakulla", "65")):
             county = get_county(key, "FL")
             self.assertEqual(county.base_url, f"https://www.civitekflorida.com/ocrs/county/{code}/")
             self.assertEqual(county.platform, "civitek_ocrs")
+
+    def test_batch_two_agencies_pick_the_county(self):
+        from counties import florida
+        from core.matcher import normalize_agency
+        for agency, key in (("Columbia County Sheriff's Office", "columbia"), ("Lake City Police Department", "columbia"),
+                            ("Jackson County Sheriff's Office", "jackson"), ("Marianna Police Department", "jackson"),
+                            ("Hendry County Sheriff's Office", "hendry"), ("Clewiston Police Department", "hendry"),
+                            ("Okeechobee County Sheriff's Office", "okeechobee"), ("Wakulla County Sheriff's Office", "wakulla"),
+                            ("Jacksonville Sheriff's Office", "duval")):
+            self.assertEqual(florida.AGENCY_TO_COUNTY.get(normalize_agency(agency)), key, agency)
 
     def test_local_case_numbers(self):
         self.assertEqual(case_number({"local": "[2024001197CFAXMX]", "ucn": "x"}), "2024001197CFAXMX")
@@ -258,3 +280,40 @@ class OffenseOnArrestDayTest(unittest.TestCase):
                        self.details(date(2026, 9, 17)))
         self.assertFalse(any("del arresto" in r for r in m.reasons))
         self.assertIn("fecha de ofensa a 0 día(s) del incidente", m.reasons)
+
+
+class ColumbiaTest(unittest.TestCase):
+    def test_arrest_report(self):
+        self.assertEqual(choose("columbia", COLUMBIA_ARREST_DOCKET), ([7], []))
+
+    def test_warrant_arrest_report_and_affidavit(self):
+        """Principal: el informe del arresto con la orden (#14). Apoyo: la orden y su affidavit (#6)."""
+        self.assertEqual(choose("columbia", COLUMBIA_WARRANT_DOCKET), ([14], [6, 15]))
+
+    def test_arrest_report_stays_out_of_other_counties(self):
+        self.assertEqual(choose("nassau", COLUMBIA_ARREST_DOCKET), ([], []))
+        self.assertEqual(choose("marion", COLUMBIA_ARREST_DOCKET), ([], []))
+
+    def test_agency_case_number_from_docket(self):
+        from core.lookup import agency_case_number
+        self.assertEqual(agency_case_number(details_with_docket(COLUMBIA_WARRANT_DOCKET)), "23OFF003449")
+        self.assertEqual(agency_case_number(details_with_docket(COLUMBIA_ARREST_DOCKET)), "19OFF003389")
+        self.assertIsNone(agency_case_number(details_with_docket(NASSAU_DOCKET)))
+
+
+class WarrantWindowTest(unittest.TestCase):
+    """Con fecha de arresto y sin fecha del delito, la búsqueda arranca 30 días antes."""
+
+    def window(self, **dates):
+        from core.lookup import search_window
+        q = LookupQuery(first_name="Steven", last_name="Shaffer", county="columbia", state="FL", **dates)
+        return search_window(q, get_county("columbia", "FL"))
+
+    def test_arrest_only_reaches_the_warrant(self):
+        start, _ = self.window(arrest_date=date(2024, 12, 5), published_date=date(2026, 7, 16))
+        self.assertEqual(start, date(2024, 11, 5))
+        self.assertLessEqual(start, date(2024, 11, 19))   # el caso se abrió con la orden
+
+    def test_with_incident_date_window_is_unchanged(self):
+        start, _ = self.window(incident_date=date(2024, 12, 5), arrest_date=date(2024, 12, 5))
+        self.assertEqual(start, date(2024, 11, 28))

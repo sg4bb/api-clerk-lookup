@@ -98,12 +98,12 @@ de `counties/florida.py`, para que no los tome otro condado.
 | Nassau | 103.990 | 45 | Sí (arrest and booking sheet) | Hecho (19/10/2026). Probado: Combs, Lee (dos padres: basta el primero), Rackley; Brown sin caso nuevo (violación de probation dentro de un caso de 2023). El booking sheet trae el número de reporte del NCSO y la hora del arresto |
 | Walton | 87.728 | 66 | Sin verificar | Rango de fechas de máximo 7 días |
 | Putnam | 76.138 | 54 | Sí (arrest report; complaint = probable cause affidavit, de apoyo) | Hecho (18/10/2026). Probado: Deller, Lanigan, Carpenter, Gomez-Hernandez (cada uno con su probable cause affidavit de apoyo) |
-| Columbia | 72.155 | 12 | Sin verificar | |
-| Jackson | 49.345 | 32 | Sin verificar | Oculta casos con orden de arresto activa |
+| Columbia | 72.155 | 12 | Sí (arrest report / arrest affidavit; en arrestos con orden, capias/warrant returned served, y la orden con su affidavit de apoyo) | Hecho (19/10/2026). Probado: Gilliard (arrest report), Shaffer (orden emitida 16 días antes del arresto); Colwell queda ambiguo (racha de robos: varios casos con "Initial" a 2 días). El docket anota "Agency Case Number" |
+| Jackson | 49.345 | 32 | Sin verificar | Configurado (19/10/2026); en prueba. Oculta casos con orden de arresto activa |
 | Levy | 45.845 | 38 | Sí (sworn complaint o arrest mittimus: formulario de denuncia y arresto del Sheriff) | Hecho (18/10/2026). Probado: Vessels, McQuiston (arrest mittimus del 685; el 686, abierto el mismo día, sale como mismo arresto); Mitchell sin caso en el portal. levyso.com mandaba las notas comprimidas en zstd (ya no se ofrece zstd) |
-| Hendry | 45.413 | 26 | Sin verificar | |
-| Okeechobee | 40.230 | 47 | Sin verificar | |
-| Wakulla | 37.313 | 65 | Sin verificar | |
+| Hendry | 45.413 | 26 | Sin verificar | Configurado (19/10/2026); en prueba |
+| Okeechobee | 40.230 | 47 | Sin verificar | Configurado (19/10/2026); en prueba |
+| Wakulla | 37.313 | 65 | Sin verificar | Configurado (19/10/2026); en prueba |
 | DeSoto | 35.487 | 14 | Requiere registro notarizado | |
 | Baker | 28.899 | 02 | Sin verificar | |
 | Bradford | 27.335 | 04 | En parte | |

@@ -93,6 +93,21 @@ NASSAU = civitek(
     "nassau", "Nassau County", "45",
     documents=(r"\barrest and booking sheet\b",),   # Combs, 26CF000280
 )
+# Lote 2 de Civitek (19/10/2026): configurados con los nombres genéricos; los propios
+# de cada condado se agregan al ver su docket.
+COLUMBIA = civitek(
+    "columbia", "Columbia County", "12",
+    # "ARREST REPORT" del Sheriff (Gilliard, 19000675CFAXMX: número CCSO19OFF003389) y, en
+    # los arrestos con orden, "CAPIAS/WARRANT RETURNED SERVED": el informe del arresto
+    # (Warrant Service) más la orden y su affidavit (Shaffer, 24000899CFAXMX, Doc #14).
+    documents=(r"^\s*arrest report\b", r"^\s*capias\s*/\s*warrant returned served\b"),
+    # La orden con el affidavit del detective, de cuando se abrió el caso (Shaffer, Doc #6).
+    support=(r"^\s*arrest warrant and warrant affidavit\b",),
+)
+JACKSON = civitek("jackson", "Jackson County", "32")
+HENDRY = civitek("hendry", "Hendry County", "26")
+OKEECHOBEE = civitek("okeechobee", "Okeechobee County", "47")
+WAKULLA = civitek("wakulla", "Wakulla County", "65")
 
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
@@ -102,6 +117,11 @@ COUNTIES: dict[str, CountyConfig] = {
     PUTNAM.key: PUTNAM,
     LEVY.key: LEVY,
     NASSAU.key: NASSAU,
+    COLUMBIA.key: COLUMBIA,
+    JACKSON.key: JACKSON,
+    HENDRY.key: HENDRY,
+    OKEECHOBEE.key: OKEECHOBEE,
+    WAKULLA.key: WAKULLA,
 }
 
 
@@ -147,6 +167,16 @@ CITY_TO_COUNTY: dict[str, str] = {
     "yankeetown": "levy", "morriston": "levy", "otter creek": "levy",
     "fernandina beach": "nassau", "fernandina": "nassau", "yulee": "nassau", "callahan": "nassau",
     "hilliard": "nassau", "bryceville": "nassau", "amelia island": "nassau", "nassauville": "nassau",
+    "lake city": "columbia", "fort white": "columbia", "five points": "columbia", "watertown": "columbia",
+    "ellisville": "columbia", "lulu": "columbia",
+    "marianna": "jackson", "graceville": "jackson", "sneads": "jackson", "cottondale": "jackson",
+    "grand ridge": "jackson", "malone": "jackson", "greenwood": "jackson", "alford": "jackson",
+    "bascom": "jackson", "campbellton": "jackson", "jacob city": "jackson",
+    "clewiston": "hendry", "labelle": "hendry", "la belle": "hendry", "port labelle": "hendry",
+    "felda": "hendry", "harlem": "hendry", "montura": "hendry",
+    "okeechobee": "okeechobee", "taylor creek": "okeechobee", "basinger": "okeechobee",
+    "crawfordville": "wakulla", "sopchoppy": "wakulla", "st marks": "wakulla", "saint marks": "wakulla",
+    "panacea": "wakulla", "medart": "wakulla", "shell point": "wakulla", "wakulla springs": "wakulla",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
     "kissimmee": "osceola", "st cloud": "osceola", "saint cloud": "osceola", "poinciana": "osceola",
@@ -177,7 +207,13 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "hernando county so": "hernando", "brooksville pd": "hernando",
     "putnam county so": "putnam", "palatka pd": "putnam", "crescent city pd": "putnam",
     "levy county so": "levy", "williston pd": "levy", "chiefland pd": "levy",
-    "nassau county so": "nassau", "fernandina beach pd": "nassau", "seminole county so": "seminole",
+    "nassau county so": "nassau", "fernandina beach pd": "nassau",
+    "columbia county so": "columbia", "lake city pd": "columbia",
+    "jackson county so": "jackson", "marianna pd": "jackson", "graceville pd": "jackson",
+    "sneads pd": "jackson", "cottondale pd": "jackson",
+    "hendry county so": "hendry", "clewiston pd": "hendry",
+    "okeechobee county so": "okeechobee", "okeechobee pd": "okeechobee", "okeechobee city pd": "okeechobee",
+    "wakulla county so": "wakulla", "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",

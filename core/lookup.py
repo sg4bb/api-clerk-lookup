@@ -21,12 +21,15 @@ from .browser import open_browser
 from .captcha import CaptchaHandler, CaptchaTimeout, LiveViewCaptcha, ManualLocalCaptcha
 from .county import CountyConfig
 from .matcher import pick_best, prelim_reasons, prelim_score, related_cases, resolve_same_incident, score_case
-from .models import LookupQuery, LookupResult
+from .models import CaseDetails, LookupQuery, LookupResult
 from .utils import last_name_variants, portal_text, today
 
 log = logging.getLogger(__name__)
 
 StatusCallback = Callable[[str], None]
+
+
+WARRANT_LEAD_DAYS = 30   # ver search_window
 
 
 def search_window(query: LookupQuery, county: CountyConfig) -> tuple[Optional[date], Optional[date]]:
@@ -51,7 +54,12 @@ def search_window(query: LookupQuery, county: CountyConfig) -> tuple[Optional[da
         # anterior a la nota, así que la ventana mira sobre todo hacia atrás.
         return query.approx_date - timedelta(days=30), min(query.approx_date + timedelta(days=7), today())
     end_anchor = max(d for d in (query.incident_date, query.arrest_date) if d)
-    date_from = start_anchor - timedelta(days=county.window_days_before)
+    days_before = county.window_days_before
+    if not query.incident_date:
+        # Solo se sabe el arresto: en los arrestos con orden el caso se abre al emitirla,
+        # antes de la captura (Shaffer, Columbia: orden 19/11/2024, arresto 05/12/2024).
+        days_before = max(days_before, WARRANT_LEAD_DAYS)
+    date_from = start_anchor - timedelta(days=days_before)
     date_to = end_anchor + timedelta(days=county.window_days_after)
     if not query.arrest_date and published_limit:
         date_to = max(date_to, published_limit)
@@ -250,6 +258,9 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
     related = related_cases(details, scored)
     if related:
         log.info("Casos del mismo arresto: %s", ", ".join(related))
+    agency_number = agency_case_number(details)
+    if agency_number:
+        log.info("Número de reporte de la agencia (docket): %s", agency_number)
     docket = [
         {"date": e.date, "description": e.description, "downloadable": bool(e.doc_ref)}
         for e in details.docket
@@ -277,6 +288,7 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
             message="The case exists, but its docket has no incident report or arrest affidavit to download",
             related_cases=related,
             docket=docket,
+            agency_case_number=agency_number,
         )
 
     on_status("downloading")
@@ -303,7 +315,7 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
                      "right now (it answered \"not available at this time\"). This is usually a "
                      "temporary outage on the portal's side. Try again in a few hours; if it keeps "
                      "happening, request the document from the clerk with the case number."),
-            related_cases=related, docket=docket,
+            related_cases=related, docket=docket, agency_case_number=agency_number,
         )
     support_doc, support_path = None, None
     pending_support = [] if chosen in support else support
@@ -327,7 +339,21 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
         candidates=summary,
         docket=docket,
         related_cases=related,
+        agency_case_number=agency_number,
     )
+
+
+_AGENCY_NUMBER_RE = re.compile(r"agency case number\s*:\s*([A-Z0-9][A-Z0-9\-/]*)", re.I)
+
+
+def agency_case_number(details: CaseDetails) -> Optional[str]:
+    """El número de reporte que el portal anota en el docket ("Agency Case Number: 13OFF005652").
+
+    Si hay varios, el de la entrada más antigua: la que se cargó al abrir el caso.
+    """
+    found = [(e.date or date.max, m.group(1).upper()) for e in details.docket
+             if (m := _AGENCY_NUMBER_RE.search(e.description or ""))]
+    return min(found)[1] if found else None
 
 
 MAX_DOWNLOAD_TRIES = 4   # documentos que se intentan si el portal no publica los primeros

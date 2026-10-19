@@ -130,6 +130,9 @@ class LookupResult:
     person_index: int = 0
     # Sin coincidencia: el caso que más se acercó (si pasa CLOSEST_MIN), para revisarlo a mano.
     closest: Optional[dict[str, Any]] = None
+    # Número de reporte de la agencia que el portal anota en el docket ("Agency Case
+    # Number: 19OFF003389" en Civitek). Sirve para pedir el footage aunque no haya PDF.
+    agency_case_number: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         def convert(value: Any) -> Any:
