@@ -343,3 +343,42 @@ class JacksonTest(unittest.TestCase):
     def test_agency_number_with_dash(self):
         from core.lookup import agency_case_number
         self.assertEqual(agency_case_number(details_with_docket(JACKSON_AFFIDAVIT_DOCKET)), "26-032173")
+
+
+class JavaScriptPageTest(unittest.TestCase):
+    """hendrysheriff.org: la descarga directa trae menú, título y "JavaScript is required"."""
+
+    MENU = " ".join(["About Us", "Mission & Core Values", "Meet the Sheriff", "Divisions", "Investigations",
+                     "Road Patrol", "K-9 Unit", "Civil Division", "Detention Facility", "Marine Unit"] * 12)
+    SKELETON = ("JavaScript is required. Enable JavaScript in your browser settings, then refresh this page. "
+                + MENU + " HENDRY COUNTY ICE OPERATION LEADS TO THE ARREST OF A 2012 SEXUAL BATTERY AND KIDNAPPING CASE")
+    BODY = ("Hendry County deputies arrested John Example, 41, on Friday during a joint operation. "
+            "He was wanted on a 2012 warrant for sexual battery and kidnapping. ") * 6
+
+    def article(self, text, via):
+        from extractor.fetch import Article
+        return Article(url="https://www.hendrysheriff.org/newsdigestlist/x", title="Hendry County Sheriff's Office FL",
+                       text=text, published=None, via=via)
+
+    def test_direct_skeleton_is_not_usable_nor_blocked(self):
+        from extractor.fetch import _blocked, _usable
+        page = self.article(self.SKELETON, "direct")
+        self.assertFalse(_usable(page))
+        self.assertFalse(_blocked(page))   # no es un bloqueo: el error no cambia
+
+    def test_browser_page_with_the_notice_is_accepted(self):
+        from extractor.fetch import _usable
+        self.assertTrue(_usable(self.article("JavaScript is required. " + self.BODY, "browser")))
+
+    def test_fetch_moves_on_to_the_browser(self):
+        from unittest import mock
+        from extractor import fetch
+        html = "<html><head><title>{t}</title></head><body><article><p>{b}</p></article></body></html>"
+        direct = html.format(t="Hendry County Sheriff's Office FL", b=self.SKELETON)
+        rendered = html.format(t="Hendry County Sheriff's Office FL", b=self.BODY)
+        with mock.patch.object(fetch.trafilatura, "fetch_url", return_value=direct), \
+             mock.patch.object(fetch, "_fetch_with_browser", return_value=rendered), \
+             mock.patch.dict("os.environ", {"BROWSER_PROVIDER": "local"}):
+            article = fetch.fetch_article("https://www.hendrysheriff.org/newsdigestlist/x")
+        self.assertEqual(article.via, "browser")
+        self.assertIn("John Example", article.text)

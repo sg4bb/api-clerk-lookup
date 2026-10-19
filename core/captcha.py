@@ -59,12 +59,30 @@ FOCUS_CAPTCHA_JS = r"""
   const rectOf = (e) => { const r = e.getBoundingClientRect(); return {top: Math.round(r.top), left: Math.round(r.left), width: Math.round(r.width), height: Math.round(r.height)}; };
   const shown = (e) => { const c = getComputedStyle(e); return c.display !== 'none' && c.visibility !== 'hidden'; };
   const sized = (e) => { const r = e.getBoundingClientRect(); return r.width >= 200 && r.height >= 50 && r.height <= 200; };
+  window.__clUnfocus?.();   // un enfoque anterior que haya quedado puesto
   let all, el;
+  const narrowed = [];   // [nodo, estilo original]: se devuelven al terminar
   if (kind === 'turnstile') {
     // Cloudflare: la casilla mide ~300x65 dentro de #cfWidget (Civitek) o .cf-turnstile.
     const sels = ['iframe[src*="challenges.cloudflare.com"]', '#cfWidget > div', '.cf-turnstile > div', '#cfWidget', '.cf-turnstile'];
     all = [...new Set(sels.flatMap(s => [...document.querySelectorAll(s)]))];
     el = all.find(e => shown(e) && sized(e) && e.getBoundingClientRect().width <= 500);
+    if (!el) {
+      // El contenedor ocupa todo el ancho del formulario (Hendry: 1094 px) y la casilla
+      // está adentro, en un shadow root que no se puede consultar. Se angosta el
+      // contenedor al tamaño de la casilla mientras dura el CAPTCHA.
+      const wide = all.find(e => e.tagName === 'DIV' && shown(e) && sized(e));
+      if (wide) {
+        for (const node of [wide, ...wide.querySelectorAll(':scope > div')]) {
+          narrowed.push([node, node.style.cssText]);
+          node.style.width = 'fit-content';
+          node.style.marginLeft = 'auto';
+          node.style.marginRight = 'auto';
+        }
+        const w = wide.getBoundingClientRect().width;
+        if (w >= 200 && w <= 500) el = wide;
+      }
+    }
   } else {
     all = [...document.querySelectorAll('iframe[src*="recaptcha"], .g-recaptcha')];
     const ok = (e) => shown(e) && sized(e) && !e.closest('.grecaptcha-badge') && !(e.src || '').includes('bframe');
@@ -73,16 +91,18 @@ FOCUS_CAPTCHA_JS = r"""
   }
   const report = all.map(e => ({tag: e.tagName, kind: (e.src || '').match(/(anchor|bframe)/)?.[1] || e.id || e.className || '',
                                 shown: shown(e), badge: !!e.closest('.grecaptcha-badge'), rect: rectOf(e)}));
-  const info = {ok: false, kind, candidates: report, viewport: [innerWidth, innerHeight], scrollY: Math.round(scrollY)};
-  if (!el) return info;   // sin casilla visible no se tapa nada
+  const info = {ok: false, kind, candidates: report, viewport: [innerWidth, innerHeight], scrollY: Math.round(scrollY),
+                narrowed: narrowed.length > 0};
+  const unnarrow = () => { for (const [node, css] of narrowed) node.style.cssText = css; };
+  if (!el) { unnarrow(); return info; }   // sin casilla visible no se tapa nada
 
-  window.__clUnfocus?.();
   // Cloudflare suele estar al final del formulario: un espacio temporal abajo
   // deja subir la casilla hasta arriba, como en Orange. Se quita al terminar.
   const padBefore = document.body.style.paddingBottom;
   if (kind === 'turnstile') document.body.style.paddingBottom = innerHeight + 'px';
   el.style.scrollMarginTop = '70px';
-  el.scrollIntoView({block: 'start', inline: 'nearest'});
+  // Si se angostó, la casilla queda al medio de un formulario más ancho que la ventana.
+  el.scrollIntoView({block: 'start', inline: narrowed.length ? 'center' : 'nearest'});
 
   // Botones flotantes del portal (accesibilidad, etc.) que quedarían por encima.
   const hidden = [];
@@ -130,7 +150,8 @@ FOCUS_CAPTCHA_JS = r"""
   const place = () => {
     hideFloating();
     if (covered) return true;
-    const r = el.getBoundingClientRect(), pad = 10;
+    // Turnstile: el hueco es la casilla justa, para que no asomen Search ni Reset debajo.
+    const r = el.getBoundingClientRect(), pad = kind === 'turnstile' ? 0 : 10;
     const visible = r.width >= 200 && r.height >= 50 && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0;
     mask.style.display = visible ? '' : 'none';   // si la casilla no se ve, no se tapa nada
     if (!visible) return false;
@@ -146,7 +167,9 @@ FOCUS_CAPTCHA_JS = r"""
 
   // El usuario no puede desplazar la página (los scripts de la página sí).
   const stop = (e) => e.preventDefault();
-  const keys = (e) => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) e.preventDefault(); };
+  // Tab y Enter tampoco: con el teclado se podría llegar a Search y pulsarlo. El worker lo
+  // pulsa solo cuando el CAPTCHA está resuelto. (La casilla está en su propio iframe: no se afecta.)
+  const keys = (e) => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Tab', 'Enter'].includes(e.key)) e.preventDefault(); };
   const opts = {capture: true, passive: false};
   window.addEventListener('wheel', stop, opts);
   window.addEventListener('touchmove', stop, opts);
@@ -174,6 +197,7 @@ FOCUS_CAPTCHA_JS = r"""
       if (value) node.style.setProperty('visibility', value, priority); else node.style.removeProperty('visibility');
     }
     el.style.scrollMarginTop = '';
+    unnarrow();
     document.body.style.paddingBottom = padBefore;
     delete window.__clUnfocus;
   };

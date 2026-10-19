@@ -79,6 +79,17 @@ def _blocked(article: Optional[Article]) -> bool:
     return bool(article) and bool(_BLOCK_PATTERNS.search(f"{article.title}\n{article.text[:800]}"))
 
 
+# La descarga directa trae solo el esqueleto de la página (menú y título) y el aviso de que
+# hace falta JavaScript: el cuerpo de la nota lo carga el navegador (hendrysheriff.org).
+_NEEDS_JS = re.compile(r"javascript is required|enable javascript|requires javascript|"
+                       r"turn on javascript|javascript (?:is )?disabled", re.I)
+
+
+def _needs_javascript(article: Optional[Article]) -> bool:
+    """Solo para la descarga directa: con navegador, el JavaScript ya corrió."""
+    return bool(article) and article.via == "direct" and bool(_NEEDS_JS.search(article.text[:1500]))
+
+
 def _looks_binary(text: str) -> bool:
     """Bytes que no son texto (una respuesta comprimida leída como página, p. ej.)."""
     sample = text[:4000]
@@ -91,6 +102,9 @@ def _looks_binary(text: str) -> bool:
 def _usable(article: Optional[Article]) -> bool:
     if article and _looks_binary(article.text):
         log.info("El texto descargado no es legible (%s): lo descarto", article.via)
+        return False
+    if _needs_javascript(article):
+        log.info("La página pide JavaScript (%s): la abro con el navegador", article.via)
         return False
     return bool(article) and len(article.text) >= MIN_TEXT_CHARS and not _blocked(article)
 
