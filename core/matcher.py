@@ -250,7 +250,9 @@ def max_points(query: LookupQuery, details: CaseDetails) -> int:
     total += W_AGENCY if query.agency and any(x.agency for x in details.charges) else 0
     anchor = query.age_as_of or query.incident_date or query.arrest_date
     total += W_AGE if query.age is not None and c.dob and anchor else 0
-    total += W_CHARGES if categorize(query.charges) and categorize(x.description for x in details.charges) else 0
+    # Si la nota trae cargos reconocibles y el caso tiene cargos, cuentan aunque el caso no
+    # tenga ninguno reconocible: así un caso de otra cosa (una multa) no gana solo por el nombre.
+    total += W_CHARGES if categorize(query.charges) and any(x.description for x in details.charges) else 0
     total += W_FILED if _filed_points(query, details) is not None else 0
     return total
 
@@ -409,6 +411,10 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
             score -= 10
             reasons.append(f"cargos distintos ({', '.join(sorted(c_cats))})")
             checks.append({"ok": False, "text": f"Different charges: {_charge_list(details)}"})
+    elif q_cats and any(c.description for c in details.charges):
+        # Sin puntos ni resta: no hay con qué comparar, pero tampoco cuenta como coincidencia.
+        reasons.append("cargos no comparables")
+        checks.append({"ok": False, "text": f"Charges couldn't be compared: {_charge_list(details)}"})
 
     possible = max_points(query, details)
     confidence = round(100 * max(score, 0) / possible)
@@ -519,15 +525,38 @@ def resolve_same_incident(
         return None
     top = valid[0]
     close = [s for s in valid if top[0].score - s[0].score < min_margin]
-    if len(close) < 2 or not all(same_incident(top[1], s[1]) for s in close[1:]):
+    if len(close) < 2:
         return None
+    if not all(same_incident(top[1], s[1]) for s in close[1:]):
+        close = _drop_consolidated(close)
+        if not close or not all(same_incident(close[0][1], s[1]) for s in close[1:]):
+            return None
     return min(close, key=lambda s: _preference(s[1], has_document))
 
 
 def related_cases(winner: CaseDetails, scored: list[tuple[MatchScore, CaseDetails]]) -> list[str]:
     """Otros casos del mismo arresto que el elegido (para informarlos)."""
+    top = max((m.score for m, d in scored if d is winner), default=0)
     return [d.candidate.case_number for m, d in scored
-            if d is not winner and not m.disqualified and (same_incident(winner, d) or same_filing(winner, d))]
+            if d is not winner and not m.disqualified
+            and (same_incident(winner, d) or same_filing(winner, d) or _merged_into(d, winner, m.score, top))]
+
+
+def _merged_into(case: CaseDetails, main: CaseDetails, score: int, top: int) -> bool:
+    """Caso del mismo acusado que la fiscalía unió al elegido y que empataba con él."""
+    return (case.consolidated and not main.consolidated and top - score < MIN_MARGIN
+            and normalize(case.candidate.defendant) == normalize(main.candidate.defendant))
+
+
+def _drop_consolidated(close: list[tuple[MatchScore, CaseDetails]]) -> list[tuple[MatchScore, CaseDetails]]:
+    """Sin los casos que la fiscalía unió a otro del mismo acusado que también está en el empate.
+
+    Hannah (Baker): 23000044 dice "CASE CONSOLIDATED INTO 02-2023-CF-067-B" y empataba
+    con 23000067 (el principal). Las ofensas difieren, así que no eran "mismo arresto".
+    """
+    mains = [s for s in close if not s[1].consolidated]
+    names = {normalize(s[1].candidate.defendant) for s in mains}
+    return [s for s in close if not s[1].consolidated or normalize(s[1].candidate.defendant) not in names]
 
 
 def same_filing(a: CaseDetails, b: CaseDetails) -> bool:

@@ -27,7 +27,12 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
               "marijuana", "oxycodone", "hydrocodone", "alprazolam", "controlled substance",
               "narcotic", "possession of new drug", "drug"),
     "weapon": ("firearm", "weapon", "armed", "gun", "knife"),
+    # "Obstruct" es resistencia solo frente a un agente ("obstruct or oppose an officer"):
+    # "obstructing justice" es alterar pruebas (ver _NOT_RESISTING y "tampering").
     "resisting": ("resist", "obstruct"),
+    "tampering": ("tamper", "obstructing justice", "obstruction of justice", "fabricat"),
+    # Encubrir a otro ("accessory after the fact"): no es el homicidio que encubre.
+    "accessory": ("accessory after", "accessory to", "accessory before"),
     "fleeing": ("flee", "elud"),
     "fraud": ("fraud", "forg", "counterfeit", "uttering", "identity"),
     "sexual": ("sexual", "lewd", "rape", "molest"),
@@ -36,10 +41,15 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     "arson": ("arson",),
     "mischief": ("criminal mischief", "vandal"),
     "license": ("driver s license", "drivers license", "no valid", "license suspended",
-                "suspended license", "dwls", "without a license"),
+                "suspended license", "dwls", "without a license", "lic susp", "license susp",
+                "susp or revoked", "suspended or revoked"),
 }
 
 _PATTERNS = {cat: [re.compile(r"\b" + re.escape(k)) for k in keys] for cat, keys in CATEGORIES.items()}
+
+
+# "Obstructing justice - tamper w/ evidence" (Trueblood, Baker) contaba como resistencia.
+_NOT_RESISTING = re.compile(r"\bobstruct\w*\s+(?:of\s+)?justice\b")
 
 
 def categorize(charges: Iterable[str]) -> set[str]:
@@ -47,6 +57,7 @@ def categorize(charges: Iterable[str]) -> set[str]:
     for charge in charges:
         text = normalize(charge)
         for cat, patterns in _PATTERNS.items():
-            if any(p.search(text) for p in patterns):
+            subject = _NOT_RESISTING.sub(" ", text) if cat == "resisting" else text
+            if any(p.search(subject) for p in patterns):
                 found.add(cat)
     return found

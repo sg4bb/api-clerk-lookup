@@ -63,7 +63,9 @@ def choose(county: str, rows):
 class ConfigTest(unittest.TestCase):
     def test_codes(self):
         for key, code in (("putnam", "54"), ("levy", "38"), ("nassau", "45"), ("columbia", "12"),
-                          ("jackson", "32"), ("hendry", "26"), ("okeechobee", "47"), ("wakulla", "65")):
+                          ("jackson", "32"), ("hendry", "26"), ("okeechobee", "47"), ("wakulla", "65"),
+                          ("baker", "02"), ("bradford", "04"), ("washington", "67"), ("hardee", "25"),
+                          ("holmes", "30")):
             county = get_county(key, "FL")
             self.assertEqual(county.base_url, f"https://www.civitekflorida.com/ocrs/county/{code}/")
             self.assertEqual(county.platform, "civitek_ocrs")
@@ -75,6 +77,10 @@ class ConfigTest(unittest.TestCase):
                             ("Jackson County Sheriff's Office", "jackson"), ("Marianna Police Department", "jackson"),
                             ("Hendry County Sheriff's Office", "hendry"), ("Clewiston Police Department", "hendry"),
                             ("Okeechobee County Sheriff's Office", "okeechobee"), ("Wakulla County Sheriff's Office", "wakulla"),
+                            ("Baker County Sheriff's Office", "baker"), ("Starke Police Department", "bradford"),
+                            ("Washington County Sheriff's Office", "washington"), ("Chipley Police Department", "washington"),
+                            ("Hardee County Sheriff's Office", "hardee"), ("Wauchula Police Department", "hardee"),
+                            ("Holmes County Sheriff's Office", "holmes"), ("Bonifay Police Department", "holmes"),
                             ("Jacksonville Sheriff's Office", "duval")):
             self.assertEqual(florida.AGENCY_TO_COUNTY.get(normalize_agency(agency)), key, agency)
 
@@ -268,8 +274,11 @@ class OffenseOnArrestDayTest(unittest.TestCase):
 
     def test_rackley_offense_on_arrest_day_counts(self):
         m = score_case(self.query(arrest_date=date(2026, 9, 17)), self.details(date(2026, 9, 17), date(2026, 9, 22)))
-        self.assertEqual(m.score, 100)
-        self.assertIn("55/55 puntos posibles", m.reasons)
+        # Los cargos (robbery contra "OBST OR OPP A POLICE OFFICER") no se pueden comparar: cuentan sin
+        # sumar. Sigue encontrándose por nombre y ofensa el día del arresto.
+        self.assertEqual(m.score, 79)
+        self.assertIn("55/70 puntos posibles", m.reasons)
+        self.assertIn("cargos no comparables", m.reasons)
         self.assertIn({"ok": True, "text": "Offense date matches the arrest date (Sep 17, 2026)"}, m.checks)
 
     def test_one_day_off_still_counts(self):
@@ -485,3 +494,92 @@ class SwappedPublishedDateTest(unittest.TestCase):
         aq = self.build(date(2022, 9, 13), text="On September 13, 2022, detectives arrested Curtis Woodward.",
                         incident="2022-09-13")
         self.assertEqual(aq.query.published_date, date(2022, 9, 13))
+
+
+class BakerTest(unittest.TestCase):
+    # Travis Roberts (Baker, 25000249CFMXBX).
+    DOCKET = [(30, "07/08/2025", "PLEA OF NOT GUILTY"),
+              (29, "07/08/2025", "BOOKING INFORMATION SHEET"),
+              (28, "07/08/2025", "ARREST REPORT - INITIATING CASE"),
+              (27, "07/08/2025", "FIRST APPEARANCE ORDER"),
+              (26, "07/07/2025", "WARRANTS")]
+
+    def test_arrest_report(self):
+        self.assertEqual(choose("baker", self.DOCKET)[0], [28])
+
+    def test_stays_in_baker(self):
+        self.assertEqual(choose("marion", self.DOCKET)[0], [])
+
+
+class BakerDoubleMurderTest(unittest.TestCase):
+    """Trueblood y Hannah (Baker): una multa ganaba por nombre y el caso principal empataba con el consolidado."""
+
+    QUERY = dict(county="baker", state="FL", date_from=date(2022, 6, 24), date_to=date(2024, 7, 12),
+                 charges=["accessory after the fact to first-degree murder", "tampering with evidence",
+                          "first-degree murder"])
+
+    def case(self, number, defendant, offense, charges, consolidated=False, filed=date(2023, 1, 30)):
+        from core.models import Charge
+        candidate = CaseCandidate(number, defendant, "Felony", "OPEN", None, filed, "x")
+        return CaseDetails(candidate, [Charge(offense, c, None, None, None, None) for c in charges], [],
+                           consolidated=consolidated)
+
+    def pick(self, first, last, cases):
+        from core.matcher import pick_best, related_cases, resolve_same_incident
+        q = LookupQuery(first_name=first, last_name=last, **self.QUERY)
+        scored = [(score_case(q, d), d) for d in cases]
+        winner, status = pick_best(scored)
+        if status == "ambiguous":
+            winner = resolve_same_incident(scored, lambda d: True)
+            status = "found" if winner else status
+        related = related_cases(winner[1], scored) if winner else []
+        return status, winner[1].candidate.case_number if winner else None, related, scored
+
+    def test_trueblood_traffic_ticket_no_longer_wins(self):
+        status, number, related, scored = self.pick("Robert", "Trueblood", [
+            self.case("23000043CFMXAX", "TRUEBLOOD, ROBERT", date(2023, 1, 27),
+                      ["PUBLIC ORDER CRIMES - ACCESSORY AFTER THE FACT OF CAPITAL FE",
+                       "OBSTRUCTING JUSTICE - TAMPER W/ EVIDENCE IN CRIMINAL PROCEED"], consolidated=True),
+            self.case("23000067CFMXCX", "TRUEBLOOD, ROBERT", date(2022, 8, 1),
+                      ["PUBLIC ORDER CRIMES - ACCESSORY AFTER THE FACT OF CAPITAL FE",
+                       "OBSTRUCTING JUSTICE - TAMPER W/ EVIDENCE IN CRIMINAL PROCEED", "DEALING STOLEN PROPERTY"],
+                      filed=date(2023, 2, 16)),
+            self.case("23000010CTMXAX", "TRUEBLOOD, ROBERT", date(2022, 12, 28), ["DRIVING WHILE LIC SUSP OR REVOKED"],
+                      filed=date(2023, 1, 5)),
+        ])
+        scores = {d.candidate.case_number: m.score for m, d in scored}
+        self.assertLess(scores["23000010CTMXAX"], 60)                       # antes: 100
+        self.assertIn("cargos coinciden (accessory, tampering)", [r for m, d in scored for r in m.reasons])
+        self.assertEqual((status, number), ("found", "23000067CFMXCX"))    # el principal, no el consolidado
+        self.assertEqual(related, ["23000043CFMXAX"])
+
+    def test_hannah_main_case_over_consolidated(self):
+        status, number, related, _ = self.pick("Waylon", "Hannah", [
+            self.case("23000044CFMXAX", "HANNAH, WAYLON JOSEPH", date(2023, 1, 27),
+                      ["PREMEDITATED MURDER", "GRAND THEFT OF FIREARM"], consolidated=True),
+            self.case("23000067CFMXBX", "HANNAH, WAYLON JOSEPH", date(2022, 8, 1),
+                      ["PREMEDITATED MURDER", "GRAND THEFT OF FIREARM", "CONSPIRACY"], filed=date(2023, 2, 16)),
+        ])
+        self.assertEqual((status, number, related), ("found", "23000067CFMXBX", ["23000044CFMXAX"]))
+
+    def test_two_unrelated_cases_still_ambiguous(self):
+        # Sin caso consolidado de por medio, dos casos distintos de la misma persona siguen siendo ambiguos.
+        status, number, _, _ = self.pick("Waylon", "Hannah", [
+            self.case("A", "HANNAH, WAYLON JOSEPH", date(2023, 1, 27), ["PREMEDITATED MURDER"]),
+            self.case("B", "HANNAH, WAYLON JOSEPH", date(2022, 8, 1), ["PREMEDITATED MURDER"]),
+        ])
+        self.assertEqual((status, number), ("ambiguous", None))
+
+
+class ChargeCategoryTest(unittest.TestCase):
+    def test_obstructing_justice_is_tampering_not_resisting(self):
+        from core.charges import categorize
+        self.assertEqual(categorize(["OBSTRUCTING JUSTICE - TAMPER W/ EVIDENCE IN CRIMINAL PROCEED"]), {"tampering"})
+        self.assertEqual(categorize(["tampering with evidence"]), {"tampering"})
+        self.assertEqual(categorize(["RESIST OR OBSTRUCT WITHOUT VIOLENCE"]), {"resisting"})
+        self.assertEqual(categorize(["obstructing an officer"]), {"resisting"})
+
+    def test_accessory_and_suspended_license(self):
+        from core.charges import categorize
+        self.assertEqual(categorize(["ACCESSORY AFTER THE FACT OF CAPITAL FE"]), {"accessory"})
+        self.assertEqual(categorize(["DRIVING WHILE LIC SUSP OR REVOKED"]), {"license"})

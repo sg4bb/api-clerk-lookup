@@ -366,3 +366,75 @@ class SearchDoneTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LateResultsTest(unittest.TestCase):
+    """Baker, 20/10/2026: los resultados llegaron a los 45 s y la página navegó mientras se revisaba."""
+
+    class Page:
+        def __init__(self, late_ok=True):
+            self.waits = 0
+            self.late_ok = late_ok
+            self.url = "https://www.civitekflorida.com/ocrs/app/partySearchResults.xhtml"
+
+        def locator(self, *a, **k):
+            page = self
+
+            class L:
+                def get_by_role(self, *a, **k):
+                    return self
+
+                def click(self):
+                    pass
+
+                def count(self):
+                    return 1   # la tabla de resultados ya está
+
+            return L()
+
+        def wait_for_load_state(self, *a, **k):
+            pass
+
+        def wait_for_function(self, *a, **k):
+            from playwright.sync_api import TimeoutError as PlaywrightTimeout
+            self.waits += 1
+            if self.waits == 1 or not self.late_ok:
+                raise PlaywrightTimeout("30 s")
+
+        def evaluate(self, script, *a):
+            from playwright.sync_api import Error as PlaywrightError
+            if "partySearchResultsTable" in script and "rows" in script:
+                return []
+            raise PlaywrightError("Page.evaluate: Execution context was destroyed, most likely because of a navigation")
+
+    def adapter(self, page):
+        from unittest import mock
+        from counties import get_county
+        a = CivitekOcrsAdapter(page, get_county("baker", "FL"), None)
+        for name in ("_open_search_form", "_ensure_form", "_fill_form"):
+            setattr(a, name, mock.Mock())
+        a._expand_people = mock.Mock(return_value=[])
+        return a
+
+    def query(self):
+        from datetime import date
+        from core.models import LookupQuery
+        return LookupQuery(first_name="Rhonda", last_name="Jewell", county="baker", state="FL",
+                           incident_date=date(2023, 7, 1))
+
+    def test_late_results_are_waited_for(self):
+        from unittest import mock
+        from adapters import civitek_ocrs
+        page = self.Page()
+        with mock.patch.object(civitek_ocrs, "passes_on_its_own", return_value=True), \
+             mock.patch.object(civitek_ocrs, "_READ_RESULTS_JS", "partySearchResultsTable rows"):
+            self.assertEqual(self.adapter(page).search(self.query(), None, None), [])
+        self.assertEqual(page.waits, 2)   # la segunda espera es la de los resultados tardíos
+
+    def test_still_nothing_after_the_second_wait(self):
+        from unittest import mock
+        from adapters import civitek_ocrs
+        from core.adapter import SearchError
+        with mock.patch.object(civitek_ocrs, "passes_on_its_own", return_value=True):
+            with self.assertRaises(SearchError):
+                self.adapter(self.Page(late_ok=False)).search(self.query(), None, None)

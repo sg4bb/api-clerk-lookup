@@ -125,6 +125,19 @@ WAKULLA = civitek(
     documents=(r"^\s*arrest report package\b",),
 )
 
+# Lote 3 de Civitek (20/10/2026): configurados con los nombres genéricos; los propios
+# de cada condado se agregan al ver su docket. Bradford y Hardee: según la investigación,
+# el público ve solo parte de los documentos.
+BAKER = civitek(
+    "baker", "Baker County", "02",
+    # "ARREST REPORT - INITIATING CASE" del Sheriff (Roberts, 25000249CFMXBX, 08/07/2025).
+    documents=(r"^\s*arrest report\b",),
+)
+BRADFORD = civitek("bradford", "Bradford County", "04")
+WASHINGTON = civitek("washington", "Washington County", "67")
+HARDEE = civitek("hardee", "Hardee County", "25")
+HOLMES = civitek("holmes", "Holmes County", "30")
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -138,6 +151,11 @@ COUNTIES: dict[str, CountyConfig] = {
     HENDRY.key: HENDRY,
     OKEECHOBEE.key: OKEECHOBEE,
     WAKULLA.key: WAKULLA,
+    BAKER.key: BAKER,
+    BRADFORD.key: BRADFORD,
+    WASHINGTON.key: WASHINGTON,
+    HARDEE.key: HARDEE,
+    HOLMES.key: HOLMES,
 }
 
 
@@ -193,6 +211,13 @@ CITY_TO_COUNTY: dict[str, str] = {
     "okeechobee": "okeechobee", "taylor creek": "okeechobee", "basinger": "okeechobee",
     "crawfordville": "wakulla", "sopchoppy": "wakulla", "st marks": "wakulla", "saint marks": "wakulla",
     "panacea": "wakulla", "medart": "wakulla", "shell point": "wakulla", "wakulla springs": "wakulla",
+    "macclenny": "baker", "glen st mary": "baker", "glen saint mary": "baker", "sanderson": "baker",
+    "olustee": "baker",
+    "starke": "bradford", "lawtey": "bradford", "hampton": "bradford", "brooker": "bradford",
+    "chipley": "washington", "vernon": "washington", "wausau": "washington", "caryville": "washington",
+    "ebro": "washington", "sunny hills": "washington",
+    "wauchula": "hardee", "bowling green": "hardee", "zolfo springs": "hardee",
+    "bonifay": "holmes", "ponce de leon": "holmes", "esto": "holmes", "noma": "holmes", "westville": "holmes",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
     "kissimmee": "osceola", "st cloud": "osceola", "saint cloud": "osceola", "poinciana": "osceola",
@@ -229,7 +254,12 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "sneads pd": "jackson", "cottondale pd": "jackson",
     "hendry county so": "hendry", "clewiston pd": "hendry",
     "okeechobee county so": "okeechobee", "okeechobee pd": "okeechobee", "okeechobee city pd": "okeechobee",
-    "wakulla county so": "wakulla", "seminole county so": "seminole",
+    "wakulla county so": "wakulla",
+    "baker county so": "baker", "macclenny pd": "baker",
+    "bradford county so": "bradford", "starke pd": "bradford", "lawtey pd": "bradford",
+    "washington county so": "washington", "chipley pd": "washington",
+    "hardee county so": "hardee", "wauchula pd": "hardee", "bowling green pd": "hardee",
+    "holmes county so": "holmes", "bonifay pd": "holmes", "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",

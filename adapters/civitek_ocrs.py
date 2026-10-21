@@ -31,6 +31,7 @@ from typing import Optional
 from urllib.parse import urljoin
 
 from playwright.sync_api import Page
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from core.adapter import ClerkAdapter, DocumentUnavailable, DownloadError, SearchError
@@ -457,12 +458,22 @@ class CivitekOcrsAdapter(ClerkAdapter):
             # mientras valida (13/10/2026). Solo si tras la espera completa sigue
             # vacío y sin resultados se concluye que no aceptó esta forma del
             # nombre (p. ej. "O'Brien") y se prueba la siguiente.
-            if page.evaluate(_FORM_RESET_JS):
-                log.warning("El portal devolvió el formulario vacío, sin resultados ni aviso; "
-                            "no aceptó el apellido %r", query.last_name)
-                return []
-            message = self._page_message() or "no results table"
-            raise SearchError(f"The portal returned no results: {message}") from None
+            try:
+                form_reset = page.evaluate(_FORM_RESET_JS)
+            except PlaywrightError as exc:
+                # Con el portal lento los resultados llegan justo después de los 30 s:
+                # la página está cargándolos (Baker, 20/10/2026: 45 s, Jewell).
+                if "context was destroyed" not in str(exc) and "navigat" not in str(exc).lower():
+                    raise
+                log.info("El portal respondió después de 30 s; espero los resultados")
+                self._wait_late_results()
+            else:
+                if form_reset:
+                    log.warning("El portal devolvió el formulario vacío, sin resultados ni aviso; "
+                                "no aceptó el apellido %r", query.last_name)
+                    return []
+                message = self._page_message() or "no results table"
+                raise SearchError(f"The portal returned no results: {message}") from None
         if "noresults=true" in page.url or not page.locator('tbody[id$="partySearchResultsTable_data"]').count():
             log.info("El portal no encontró coincidencias")
             return []
@@ -480,6 +491,16 @@ class CivitekOcrsAdapter(ClerkAdapter):
             log.warning("Hay %d personas en los resultados; solo se revisan las primeras %d",
                         len(people), MAX_PEOPLE)
         return candidates
+
+    def _wait_late_results(self) -> None:
+        """Otra espera para los resultados que llegaron tarde (la página ya está navegando)."""
+        page = self.page
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=30_000)
+            page.wait_for_function(_SEARCH_DONE_JS, timeout=30_000)
+        except PlaywrightTimeout:
+            raise SearchError("The court portal took too long to answer the search. "
+                              "Try again in a few minutes.") from None
 
     def _open_search_form(self, from_start: bool = False) -> None:
         """Condado -> "Public" -> aviso legal ("I Agree") -> formulario.
