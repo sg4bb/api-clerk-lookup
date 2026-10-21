@@ -133,7 +133,12 @@ BAKER = civitek(
     # "ARREST REPORT - INITIATING CASE" del Sheriff (Roberts, 25000249CFMXBX, 08/07/2025).
     documents=(r"^\s*arrest report\b",),
 )
-BRADFORD = civitek("bradford", "Bradford County", "04")
+BRADFORD = civitek(
+    "bradford", "Bradford County", "04",
+    # "ARREST REPORT" del Sheriff, junto a la First Appearance Order (Drerup, 19CF000612;
+    # Jordan, 18CF000593).
+    documents=(r"^\s*arrest report\b",),
+)
 WASHINGTON = civitek("washington", "Washington County", "67")
 HARDEE = civitek("hardee", "Hardee County", "25")
 HOLMES = civitek("holmes", "Holmes County", "30")

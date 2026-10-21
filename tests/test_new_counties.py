@@ -583,3 +583,18 @@ class ChargeCategoryTest(unittest.TestCase):
         from core.charges import categorize
         self.assertEqual(categorize(["ACCESSORY AFTER THE FACT OF CAPITAL FE"]), {"accessory"})
         self.assertEqual(categorize(["DRIVING WHILE LIC SUSP OR REVOKED"]), {"license"})
+
+
+class BradfordTest(unittest.TestCase):
+    # Katelin Drerup (Bradford, 19CF000612): el ARREST REPORT del día del arresto, no la orden por
+    # violación de probation de 2022 que hay en otros casos.
+    DOCKET = [(110, "01/20/2022", "VIOLATION OF PROBATION WARRANT SERVED"),
+              (5, "09/19/2019", "CERTIFICATE OF ADDRESS"),
+              (4, "09/19/2019", "ARREST REPORT"),
+              (3, "09/19/2019", "FIRST APPEARANCE ORDER")]
+
+    def test_arrest_report(self):
+        self.assertEqual(choose("bradford", self.DOCKET)[0], [4])
+
+    def test_stays_in_bradford(self):
+        self.assertEqual(choose("marion", self.DOCKET)[0], [])
