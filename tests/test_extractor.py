@@ -216,6 +216,15 @@ class RepairTest(unittest.TestCase):
         self.assertIsNone(r("Friday or Saturday", self.PUB))
         self.assertIsNone(r("last month", self.PUB))
 
+    def test_missing_evidence_filled_from_text(self):
+        from extractor.repair import repair
+        from extractor.schema import Extraction
+        ex = Extraction.model_validate({"people": [{"first_name": "Alex", "last_name": "Bonilla",
+                                                    "role": "charged", "evidence": None}]})
+        text = "Deputies said Alex Bonilla, 51, broke into the home."
+        fixed, _ = repair(ex, text, self.PUB)
+        self.assertIn("Bonilla", fixed.people[0].evidence)
+
     def test_wrong_iso_corrected_by_evidence(self):
         aq = build_query(extraction(incident_date="2023-10-21", incident_date_evidence="Friday"), ARTICLE)
         self.assertEqual(aq.query.incident_date, date(2023, 10, 20))

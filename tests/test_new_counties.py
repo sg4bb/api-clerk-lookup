@@ -652,3 +652,22 @@ class HardeeTest(unittest.TestCase):
 
     def test_stays_in_hardee(self):
         self.assertEqual(choose("marion", self.GRAY), ([], []))
+
+
+class GilchristTest(unittest.TestCase):
+    # Bonilla (19CF000125) y Bartges (26CF000143 con arresto; 26CF000139, solo la orden).
+    BONILLA = [(16, "07/17/2019", "COPY OF REQUEST FROM THE SMOKING GUN FOR COPY OF ARREST REPORT"),
+               (10, "07/15/2019", "FIRST APPEARANCE ORDER"), (9, "07/15/2019", "ARREST REPORT")]
+    BARTGES_ARREST = [(17, "08/18/2026", "CITATION - FLEE/ELUDE"), (10, "08/13/2026", "FIRST APPEARANCE ORDER"),
+                      (9, "08/13/2026", "ARREST REPORT")]
+    BARTGES_WARRANT = [(8, "08/06/2026", "SWORN COMPLAINT")]
+
+    def test_arrest_report(self):
+        self.assertEqual(choose("gilchrist", self.BONILLA), ([9], []))
+        self.assertEqual(choose("gilchrist", self.BARTGES_ARREST), ([9], []))
+
+    def test_sworn_complaint_is_support(self):
+        self.assertEqual(choose("gilchrist", self.BARTGES_WARRANT), ([], [8]))
+
+    def test_stays_in_gilchrist(self):
+        self.assertEqual(choose("marion", self.BONILLA), ([], []))

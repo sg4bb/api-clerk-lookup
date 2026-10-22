@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Person(BaseModel):
@@ -17,6 +17,13 @@ class Person(BaseModel):
         description="arrested = taken into custody; charged = formally charged; "
                     "suspect = identified by police but not arrested yet")
     evidence: str = Field(description="Short verbatim quote from the article naming this person and their role")
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _evidence_may_be_missing(cls, value):
+        # Un modelo local sin formato obligado puede mandar null; la frase solo es
+        # referencia y repair la completa desde el texto (Bonilla, 22/10/2026).
+        return "" if value is None else value
 
 
 class Extraction(BaseModel):

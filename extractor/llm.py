@@ -107,6 +107,10 @@ def extract(article_text: str, title: str, published: Optional[str], url: str) -
     variants = [
         ("guided_json", {"extra_body": {"guided_json": schema}}),
         ("nvext.guided_json", {"extra_body": {"nvext": {"guided_json": schema}}}),
+        # Ollama (modelo local) obliga el formato con esto; con json_object solo pide JSON
+        # y un modelo chico puede dejar en null un campo obligatorio (Bonilla, 22/10/2026).
+        ("json_schema", {"response_format": {"type": "json_schema",
+                                             "json_schema": {"name": "extraction", "schema": schema}}}),
         ("json_object", {"response_format": {"type": "json_object"}}),
         ("texto libre", {}),
     ]

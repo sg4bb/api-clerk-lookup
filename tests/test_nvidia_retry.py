@@ -73,3 +73,35 @@ class RetryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocalModelTest(unittest.TestCase):
+    """Bonilla (22/10/2026): qwen2.5:7b en Ollama mandó "evidence": null con json_object."""
+
+    ANSWER = ('{"people": [{"first_name": "Alex", "last_name": "Bonilla", "age": 51, "role": "charged", '
+              '"evidence": null}], "incident_date": "2019-07-14", "county": "Gilchrist", "state": "FL"}')
+
+    def run_extract(self, mode):
+        from extractor.llm import extract
+        sent = []
+
+        def create(model, **kwargs):
+            sent.append(kwargs)
+            message = mock.Mock(content=self.ANSWER)
+            return mock.Mock(choices=[mock.Mock(message=message)])
+
+        client = mock.Mock()
+        client.chat.completions.create = create
+        env = {"NVIDIA_API_KEY": "ollama", "NVIDIA_JSON_MODE": mode, "NVIDIA_FALLBACK_MODEL": ""}
+        with mock.patch.dict(os.environ, env), mock.patch("openai.OpenAI", return_value=client):
+            return extract("text", "title", "2021-03-03", "https://example.com"), sent
+
+    def test_null_evidence_is_accepted(self):
+        result, _ = self.run_extract("json_object")
+        self.assertEqual(result.people[0].evidence, "")
+
+    def test_json_schema_mode_sends_the_schema(self):
+        _, sent = self.run_extract("json_schema")
+        fmt = sent[0]["response_format"]
+        self.assertEqual(fmt["type"], "json_schema")
+        self.assertIn("people", fmt["json_schema"]["schema"]["properties"])

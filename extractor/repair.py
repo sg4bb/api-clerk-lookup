@@ -141,7 +141,8 @@ def _fix_person(person: Person, text: str, notes: list[str], alone: bool = True)
     if person.role == "suspect" and any(_ARREST_WORDS.search(s) for s in sentences):
         updates["role"] = "arrested"
         notes.append("rol: el artículo dice que fue arrestado; lo cambié de 'suspect' a 'arrested'")
-    if sentences and normalize(person.evidence) == normalize(f"{person.first_name} {person.last_name}"):
+    if sentences and (not person.evidence.strip()
+                      or normalize(person.evidence) == normalize(f"{person.first_name} {person.last_name}")):
         updates["evidence"] = sentences[0].strip()
     return person.model_copy(update=updates) if updates else person
 

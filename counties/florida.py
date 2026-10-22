@@ -161,7 +161,15 @@ HOLMES = civitek("holmes", "Holmes County", "30")
 
 # Lote 4 de Civitek (22/10/2026): configurados con los nombres genéricos; los propios
 # de cada condado se agregan al ver su docket.
-GILCHRIST = civitek("gilchrist", "Gilchrist County", "21")
+GILCHRIST = civitek(
+    "gilchrist", "Gilchrist County", "21",
+    # "ARREST REPORT" del Sheriff (número GCSO..OFF, hora y lugar del arresto, narración):
+    # Bonilla, 19CF000125, Doc #9; Bartges, 26CF000143, Doc #9.
+    documents=(r"^\s*arrest report\b",),
+    # "SWORN COMPLAINT": el Warrant Affidavit para pedir la orden, con la narración. Es
+    # de antes del arresto, así que va de apoyo (Bartges, 26CF000139, Doc #8).
+    support=(r"^\s*sworn complaint\b",),
+)
 MADISON = civitek("madison", "Madison County", "40")
 DIXIE = civitek("dixie", "Dixie County", "15")
 GULF = civitek("gulf", "Gulf County", "23")
