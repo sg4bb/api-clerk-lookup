@@ -65,7 +65,8 @@ class ConfigTest(unittest.TestCase):
         for key, code in (("putnam", "54"), ("levy", "38"), ("nassau", "45"), ("columbia", "12"),
                           ("jackson", "32"), ("hendry", "26"), ("okeechobee", "47"), ("wakulla", "65"),
                           ("baker", "02"), ("bradford", "04"), ("washington", "67"), ("hardee", "25"),
-                          ("holmes", "30")):
+                          ("holmes", "30"), ("gilchrist", "21"), ("madison", "40"), ("dixie", "15"),
+                          ("gulf", "23"), ("union", "63")):
             county = get_county(key, "FL")
             self.assertEqual(county.base_url, f"https://www.civitekflorida.com/ocrs/county/{code}/")
             self.assertEqual(county.platform, "civitek_ocrs")
@@ -81,6 +82,10 @@ class ConfigTest(unittest.TestCase):
                             ("Washington County Sheriff's Office", "washington"), ("Chipley Police Department", "washington"),
                             ("Hardee County Sheriff's Office", "hardee"), ("Wauchula Police Department", "hardee"),
                             ("Holmes County Sheriff's Office", "holmes"), ("Bonifay Police Department", "holmes"),
+                            ("Gilchrist County Sheriff's Office", "gilchrist"), ("Madison County Sheriff's Office", "madison"),
+                            ("Madison Police Department", "madison"), ("Dixie County Sheriff's Office", "dixie"),
+                            ("Gulf County Sheriff's Office", "gulf"), ("Port St. Joe Police Department", "gulf"),
+                            ("Union County Sheriff's Office", "union"), ("Lake Butler Police Department", "union"),
                             ("Jacksonville Sheriff's Office", "duval")):
             self.assertEqual(florida.AGENCY_TO_COUNTY.get(normalize_agency(agency)), key, agency)
 
@@ -158,7 +163,11 @@ class LocationTest(unittest.TestCase):
         from tests.test_extractor import ARTICLE, extraction
         for city, agency, county in (("Palatka", None, "putnam"), (None, "Putnam County Sheriff's Office", "putnam"),
                                      ("Williston", None, "levy"), (None, "Levy County Sheriff's Office", "levy"),
-                                     ("Yulee", None, "nassau"), (None, "Fernandina Beach Police Department", "nassau")):
+                                     ("Yulee", None, "nassau"), (None, "Fernandina Beach Police Department", "nassau"),
+                                     ("Trenton", None, "gilchrist"), ("Fanning Springs", None, "gilchrist"),
+                                     ("Madison", None, "madison"), ("Cross City", None, "dixie"),
+                                     ("Port St. Joe", None, "gulf"), ("Wewahitchka", None, "gulf"),
+                                     ("Lake Butler", None, "union")):
             aq = build_query(extraction(county=None, city=city, agency=agency), ARTICLE)
             self.assertEqual(aq.query.county, county, (city, agency))
 

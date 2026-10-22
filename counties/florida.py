@@ -159,6 +159,14 @@ HARDEE = civitek(
 )
 HOLMES = civitek("holmes", "Holmes County", "30")
 
+# Lote 4 de Civitek (22/10/2026): configurados con los nombres genéricos; los propios
+# de cada condado se agregan al ver su docket.
+GILCHRIST = civitek("gilchrist", "Gilchrist County", "21")
+MADISON = civitek("madison", "Madison County", "40")
+DIXIE = civitek("dixie", "Dixie County", "15")
+GULF = civitek("gulf", "Gulf County", "23")
+UNION = civitek("union", "Union County", "63")
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -177,6 +185,11 @@ COUNTIES: dict[str, CountyConfig] = {
     WASHINGTON.key: WASHINGTON,
     HARDEE.key: HARDEE,
     HOLMES.key: HOLMES,
+    GILCHRIST.key: GILCHRIST,
+    MADISON.key: MADISON,
+    DIXIE.key: DIXIE,
+    GULF.key: GULF,
+    UNION.key: UNION,
 }
 
 
@@ -239,6 +252,16 @@ CITY_TO_COUNTY: dict[str, str] = {
     "ebro": "washington", "sunny hills": "washington",
     "wauchula": "hardee", "bowling green": "hardee", "zolfo springs": "hardee",
     "bonifay": "holmes", "ponce de leon": "holmes", "esto": "holmes", "noma": "holmes", "westville": "holmes",
+    # Fanning Springs se reparte con Levy; su ayuntamiento está en Gilchrist.
+    "trenton": "gilchrist", "bell": "gilchrist", "fanning springs": "gilchrist",
+    # Ojo: "Lee" (el pueblo de Madison) no se agrega: se confundiría con Lee County.
+    "madison": "madison", "greenville": "madison", "pinetta": "madison", "cherry lake": "madison",
+    # Ojo: "Suwannee" (el pueblo de Dixie) no se agrega: se confundiría con Suwannee County.
+    "cross city": "dixie", "horseshoe beach": "dixie", "old town": "dixie",
+    # Ojo: Mexico Beach está en Bay, no en Gulf.
+    "port st joe": "gulf", "port saint joe": "gulf", "wewahitchka": "gulf", "st joe beach": "gulf",
+    "saint joe beach": "gulf", "cape san blas": "gulf", "indian pass": "gulf", "highland view": "gulf",
+    "lake butler": "union", "worthington springs": "union", "raiford": "union",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
     "kissimmee": "osceola", "st cloud": "osceola", "saint cloud": "osceola", "poinciana": "osceola",
@@ -255,7 +278,7 @@ CITY_TO_COUNTY: dict[str, str] = {
     "jacksonville": "duval", "tallahassee": "leon", "gainesville": "alachua", "pensacola": "escambia",
     "fort myers": "lee", "cape coral": "lee", "naples": "collier", "sarasota": "sarasota",
     "bradenton": "manatee", "port st lucie": "st_lucie", "fort pierce": "st_lucie", "key west": "monroe",
-    "panama city": "bay", "palm coast": "flagler", "st augustine": "st_johns", "spring hill": "hernando",
+    "panama city": "bay", "mexico beach": "bay", "palm coast": "flagler", "st augustine": "st_johns", "spring hill": "hernando",
     "new port richey": "pasco", "the villages": "sumter",
 }
 
@@ -280,7 +303,11 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "bradford county so": "bradford", "starke pd": "bradford", "lawtey pd": "bradford",
     "washington county so": "washington", "chipley pd": "washington",
     "hardee county so": "hardee", "wauchula pd": "hardee", "bowling green pd": "hardee",
-    "holmes county so": "holmes", "bonifay pd": "holmes", "seminole county so": "seminole",
+    "holmes county so": "holmes", "bonifay pd": "holmes",
+    "gilchrist county so": "gilchrist", "madison county so": "madison", "madison pd": "madison",
+    "dixie county so": "dixie", "gulf county so": "gulf", "port st joe pd": "gulf",
+    "wewahitchka pd": "gulf", "union county so": "union", "lake butler pd": "union",
+    "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",
