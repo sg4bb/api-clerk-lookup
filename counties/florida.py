@@ -170,7 +170,12 @@ GILCHRIST = civitek(
     # de antes del arresto, así que va de apoyo (Bartges, 26CF000139, Doc #8).
     support=(r"^\s*sworn complaint\b",),
 )
-MADISON = civitek("madison", "Madison County", "40")
+MADISON = civitek(
+    "madison", "Madison County", "40",
+    # "ARREST REPORT" (McCray, 26CF000193; Barnhart, 26CF000107) o, si el arresto abrió el
+    # caso, "ARREST REPORT - INITIATING CASE" (Davis, 26CF000227, Doc #6: FHP).
+    documents=(r"^\s*arrest report\b",),
+)
 DIXIE = civitek("dixie", "Dixie County", "15")
 GULF = civitek("gulf", "Gulf County", "23")
 UNION = civitek("union", "Union County", "63")

@@ -671,3 +671,19 @@ class GilchristTest(unittest.TestCase):
 
     def test_stays_in_gilchrist(self):
         self.assertEqual(choose("marion", self.BONILLA), ([], []))
+
+
+class MadisonTest(unittest.TestCase):
+    # Davis (26CF000227, FHP), McCray (26CF000193) y Barnhart (26CF000107).
+    DAVIS = [(18, "09/03/2026", "CITATIONS"), (6, "09/01/2026", "ARREST REPORT - INITIATING CASE")]
+    MCCRAY = [(20, "08/04/2026", "ARREST REPORT"), (12, "07/29/2026", "FIRST APPEARANCE ORDER")]
+    BARNHART = [(22, "04/22/2026", "ARREST REPORT"), (10, "04/16/2026", "FIRST APPEARANCE ORDER"),
+                (8, "04/15/2026", "BOOKING INFORMATION")]
+
+    def test_both_arrest_report_names(self):
+        self.assertEqual(choose("madison", self.DAVIS), ([6], []))
+        self.assertEqual(choose("madison", self.MCCRAY), ([20], []))
+        self.assertEqual(choose("madison", self.BARNHART), ([22], []))
+
+    def test_stays_in_madison(self):
+        self.assertEqual(choose("marion", self.DAVIS), ([], []))
