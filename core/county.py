@@ -32,7 +32,8 @@ class CountyConfig:
     # El caso puede abrirse ANTES del arresto (orden de arresto), por eso
     # la ventana arranca unos días antes del incidente.
     window_days_before: int = 7
-    window_days_after: int = 45
+    # 60: Porter (Washington) se arrestó con orden y el caso se abrió 54 días después del hecho.
+    window_days_after: int = 60
     max_candidates_to_open: int = 5
     # Personas del artículo que se prueban, una tras otra, si la primera no da
     # con el caso. Cada una es otra búsqueda (y en algunos portales otro CAPTCHA).

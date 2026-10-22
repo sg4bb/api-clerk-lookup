@@ -84,6 +84,9 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
     # Anti-invención: el nombre tiene que aparecer en el artículo.
     people = []
     for person in extraction.people:
+        if _descriptive_name(person.first_name, person.last_name):
+            warnings.append(f"Descarté '{person.first_name} {person.last_name}': es una descripción, no un nombre")
+            continue
         if _word_in(person.first_name, haystack) and _surname_in(person.last_name, haystack):
             people.append(person)
         else:
@@ -156,6 +159,22 @@ def _period(day: date, precision: str) -> tuple[date, date]:
         start = day.replace(day=1)
         end = (start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
     return start - timedelta(days=7), end + timedelta(days=45)
+
+
+# Palabras que describen a alguien sin nombrarlo ("A Lynn Haven man", "the driver").
+_DESCRIPTIVE = {"man", "woman", "men", "women", "male", "female", "suspect", "suspects", "driver", "resident",
+                "teen", "teenager", "boy", "girl", "person", "individual", "subject", "victim", "unknown"}
+
+
+def _descriptive_name(first: Optional[str], last: Optional[str]) -> bool:
+    """El modelo puso una descripción como nombre (Fennell, Washington: "A Lynn Haven man" en
+    nombre y apellido, porque Facebook cortó la publicación antes del nombre)."""
+    a, b = normalize(first or ""), normalize(last or "")
+    if not a or not b:
+        return False
+    words = f"{a} {b}".split()
+    return (a == b and len(a.split()) > 1) or a.split()[0] in ("a", "an", "the") \
+        or any(w in _DESCRIPTIVE for w in words)
 
 
 def _word_in(value: str, haystack: str) -> bool:

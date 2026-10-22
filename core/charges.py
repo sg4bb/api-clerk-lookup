@@ -42,7 +42,7 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     "mischief": ("criminal mischief", "vandal"),
     "license": ("driver s license", "drivers license", "no valid", "license suspended",
                 "suspended license", "dwls", "without a license", "lic susp", "license susp",
-                "susp or revoked", "suspended or revoked"),
+                "susp or revoked", "suspended or revoked", "dl susp"),
 }
 
 _PATTERNS = {cat: [re.compile(r"\b" + re.escape(k)) for k in keys] for cat, keys in CATEGORIES.items()}

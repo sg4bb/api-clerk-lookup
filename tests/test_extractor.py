@@ -293,3 +293,25 @@ class WrongPublishedDateTest(unittest.TestCase):
         aq = build_query(extraction(incident_date="2026-03-01"), ARTICLE)
         self.assertIsNone(aq.query.incident_date)
         self.assertEqual(aq.query.published_date, date(2023, 10, 23))
+
+
+
+class DescriptiveNameTest(unittest.TestCase):
+    """Fennell (Washington): Facebook cortó el texto antes del nombre y el modelo puso "A Lynn Haven man"."""
+
+    def test_description_is_not_a_name(self):
+        text = "A Lynn Haven man is facing multiple felony charges after a traffic stop on State Road 20."
+        article = Article(url="u", title="Facebook", text=text, published=date(2026, 9, 28), via="browser")
+        with self.assertRaises(Exception) as ctx:
+            build_query(extraction(people=[person("A Lynn Haven man", "A Lynn Haven man")], incident_date=None,
+                                   city=None, county="Washington"), article)
+        self.assertIn("doesn't name", str(ctx.exception))
+
+    def test_real_names_pass(self):
+        from extractor import _descriptive_name
+        for first, last in (("Thomas", "Mues"), ("Jarvis", "Fennell"), ("Mandy", "Manley"), ("Anna", "Adamo"),
+                            ("Laike", "McNeil"), ("Thea", "Theriot"), ("Roosevelt", "Peterson")):
+            self.assertFalse(_descriptive_name(first, last), (first, last))
+        self.assertTrue(_descriptive_name("A Lynn Haven man", "A Lynn Haven man"))
+        self.assertTrue(_descriptive_name("The", "Driver"))
+        self.assertTrue(_descriptive_name("Chipley", "man"))

@@ -583,6 +583,7 @@ class ChargeCategoryTest(unittest.TestCase):
         from core.charges import categorize
         self.assertEqual(categorize(["ACCESSORY AFTER THE FACT OF CAPITAL FE"]), {"accessory"})
         self.assertEqual(categorize(["DRIVING WHILE LIC SUSP OR REVOKED"]), {"license"})
+        self.assertEqual(categorize(["OPERATING WHILE DL SUSP CANC REVOKED 1ST OFFENSE"]), {"license"})
 
 
 class BradfordTest(unittest.TestCase):
@@ -598,3 +599,31 @@ class BradfordTest(unittest.TestCase):
 
     def test_stays_in_bradford(self):
         self.assertEqual(choose("marion", self.DOCKET)[0], [])
+
+
+class WashingtonTest(unittest.TestCase):
+    # Kyle Porter (Washington, 24CF000229).
+    DOCKET = [(14, "06/21/2024", "FINGERPRINT CARDS AND PALM PRINTS"),
+              (12, "06/21/2024", "FIRST APPEARANCE"),
+              (6, "06/20/2024", "BENCH WARRANT W/ AFFIDAVIT/COMPLAINT")]
+
+    def test_bench_warrant_affidavit_is_support(self):
+        self.assertEqual(choose("washington", self.DOCKET), ([], [6]))
+
+    def test_affidavit_complaint_is_main(self):
+        rows = [(9, "08/14/2026", "FIRST APPEARANCE"), (8, "08/14/2026", "AFFIDAVIT - COMPLAINT")]
+        self.assertEqual(choose("washington", rows), ([8], []))
+
+    def test_stays_in_washington(self):
+        self.assertEqual(choose("marion", self.DOCKET), ([], []))
+
+
+class WindowAfterTest(unittest.TestCase):
+    def test_porter_case_opened_54_days_after_is_inside(self):
+        """Porter (Washington): hecho 27/04/2024, caso abierto con la orden el 20/06/2024; sin publicación."""
+        from core.lookup import search_window
+        q = LookupQuery(first_name="Kyle", last_name="Porter", county="washington", state="FL",
+                        incident_date=date(2024, 4, 27))
+        start, end = search_window(q, get_county("washington", "FL"))
+        self.assertEqual((start, end), (date(2024, 4, 20), date(2024, 6, 26)))
+        self.assertTrue(start <= date(2024, 6, 20) <= end)

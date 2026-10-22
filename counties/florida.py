@@ -139,7 +139,16 @@ BRADFORD = civitek(
     # Jordan, 18CF000593).
     documents=(r"^\s*arrest report\b",),
 )
-WASHINGTON = civitek("washington", "Washington County", "67")
+WASHINGTON = civitek(
+    "washington", "Washington County", "67",
+    # "BENCH WARRANT W/ AFFIDAVIT/COMPLAINT": la orden con el Probable Cause Affidavit del
+    # Sheriff (número WCSO..OFF, hora y narración del hecho). Es de antes del arresto, así que
+    # va como apoyo; si el caso no tiene informe del arresto, se entrega como principal
+    # (Porter, 24CF000229, Doc #6).
+    support=(r"^\s*bench warrant w/?\s*affidavit\b",),
+    # En los arrestos en el momento: "AFFIDAVIT - COMPLAINT" (Carmona, 26CT000140, Doc #8; con candado).
+    documents=(r"^\s*affidavit\s*-?\s*complaint\b",),
+)
 HARDEE = civitek("hardee", "Hardee County", "25")
 HOLMES = civitek("holmes", "Holmes County", "30")
 

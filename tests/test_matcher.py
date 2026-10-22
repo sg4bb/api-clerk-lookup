@@ -332,10 +332,10 @@ class OldCaseArticlesTest(unittest.TestCase):
         date_from, date_to = search_window(q, orange)
         self.assertEqual(date_from, date(2023, 6, 17))
         self.assertTrue(date_from <= date(2023, 10, 20) <= date_to)
-        # Con fecha de arresto la ventana sigue siendo corta.
+        # Con fecha de arresto la ventana sigue siendo corta (60 días desde el 21/10/2026; antes 45).
         q2 = LookupQuery(first_name="X", last_name="Y", county="orange", incident_date=date(2023, 6, 24),
                          arrest_date=date(2023, 6, 24), published_date=date(2024, 3, 18))
-        self.assertEqual(search_window(q2, orange)[1], date(2023, 8, 8))
+        self.assertEqual(search_window(q2, orange)[1], date(2023, 8, 23))
 
     def test_year_only_search_window(self):
         from core.lookup import search_window

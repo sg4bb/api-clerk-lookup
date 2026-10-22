@@ -107,7 +107,7 @@ de `counties/florida.py`, para que no los tome otro condado.
 | DeSoto | 35.487 | 14 | Requiere registro notarizado | |
 | Baker | 28.899 | 02 | En parte ("ARREST REPORT - INITIATING CASE" y "FIRST APPEARANCE ORDER" se ven; el "SWORN COMPLAINT" pide solicitud) | Hecho (21/10/2026). Probado: Roberts (caso abierto como 250 y renumerado 249 en la división BX), Jewell (el portal tardó 45 s en responder), Trueblood (eligió el caso principal sobre el consolidado; antes ganaba una multa solo por el nombre). Rowland sin caso en el portal |
 | Bradford | 27.335 | 04 | Sí (arrest report, junto a la first appearance order) | Hecho (21/10/2026). Probado: Drerup (tres arrestados; el 19CF000613 sale como mismo arresto), Jordan. Sin caso, con razón: Hodges y Kerr murieron en el hecho |
-| Washington | 26.568 | 67 | Sin verificar | Configurado (20/10/2026); en prueba |
+| Washington | 26.568 | 67 | Sí (bench warrant w/ affidavit/complaint: orden con el probable cause affidavit; el "affidavit - complaint" de los arrestos en el momento suele tener candado) | Hecho (21/10/2026). Probado: Porter (caso abierto 54 días después del hecho: la ventana pasó de 45 a 60 días), Carmona (affidavit con candado), Leverette. Mekara sin caso (detenido en Alabama). Fennell: Facebook corta la publicación antes del nombre |
 | Hardee | 25.883 | 25 | En parte ("más restricciones" que registrados) | Configurado (20/10/2026); en prueba |
 | Holmes | 20.059 | 30 | Sin verificar | Configurado (20/10/2026); en prueba |
 | Gilchrist | 19.503 | 21 | Sin verificar | |
