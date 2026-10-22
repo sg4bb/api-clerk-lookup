@@ -340,6 +340,36 @@ def _click_control(page, name: re.Pattern, timeout_ms: int) -> bool:
     return True
 
 
+def _enter_portal(page) -> None:
+    """De la página del condado al formulario, pulsando lo que el portal muestre.
+
+    Casi todos los condados piden "Public" y después el aviso legal ("I Agree");
+    Holmes abre directamente el aviso (22/10/2026). Si "Public" está, se sigue
+    el camino de siempre; si solo está el aviso, se acepta y listo.
+    """
+    if page.locator(LASTNAME).count():
+        return                           # la sesión ya estaba dentro
+    first_step = page.locator(LASTNAME).or_(_controls(page, PUBLIC_RE)).or_(_controls(page, AGREE_RE))
+    try:
+        first_step.first.wait_for(timeout=15_000)
+    except PlaywrightTimeout:
+        raise SearchError("The court portal didn't show its Public access option") from None
+    if page.locator(LASTNAME).count():
+        return
+    if not _controls(page, PUBLIC_RE).count():
+        log.info("El portal abrió directamente el aviso legal (sin \"Public\")")
+        _click_control(page, AGREE_RE, 5_000)
+        return
+    _click_control(page, PUBLIC_RE, 5_000)
+    agree_or_form = page.locator(LASTNAME).or_(_controls(page, AGREE_RE))
+    try:
+        agree_or_form.first.wait_for(timeout=20_000)
+    except PlaywrightTimeout:
+        raise SearchError("The court portal didn't open after choosing Public access") from None
+    if not page.locator(LASTNAME).count():
+        _click_control(page, AGREE_RE, 5_000)
+
+
 # Estado de una fila de persona, para el diagnóstico (no cambia nada en la página).
 _PERSON_STATE_JS = """(i) => {
   const rows = document.querySelectorAll('tbody[id$="partySearchResultsTable_data"] > tr[data-ri]');
@@ -525,17 +555,7 @@ class CivitekOcrsAdapter(ClerkAdapter):
         if shown:
             raise SearchError(f"The court portal opened {shown} County instead of {self.county.name}. "
                               "The county's portal code needs to be corrected.")
-        if page.locator(LASTNAME).count():
-            return                       # la sesión ya estaba dentro
-        if not _click_control(page, PUBLIC_RE, 15_000):
-            raise SearchError("The court portal didn't show its Public access option") from None
-        agree_or_form = page.locator(LASTNAME).or_(_controls(page, AGREE_RE))
-        try:
-            agree_or_form.first.wait_for(timeout=20_000)
-        except PlaywrightTimeout:
-            raise SearchError("The court portal didn't open after choosing Public access") from None
-        if not page.locator(LASTNAME).count():
-            _click_control(page, AGREE_RE, 5_000)
+        _enter_portal(page)
         # Si el formulario tarda, _ensure_form le da más tiempo y, si hace falta,
         # entra de nuevo una vez antes de rendirse.
 

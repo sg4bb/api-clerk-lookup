@@ -438,3 +438,41 @@ class LateResultsTest(unittest.TestCase):
         with mock.patch.object(civitek_ocrs, "passes_on_its_own", return_value=True):
             with self.assertRaises(SearchError):
                 self.adapter(self.Page(late_ok=False)).search(self.query(), None, None)
+
+
+class EnterPortalTest(unittest.TestCase):
+    """Entrada al formulario: "Public" -> "I Agree" (casi todos) o solo "I Agree" (Holmes, 22/10/2026)."""
+
+    FORM = "<input name='form:search_tab:lastname'>"
+    AGREE = ("<p>DISCLAIMER</p><button type='button' onclick=\"document.body.innerHTML="
+             "&quot;" + FORM + "&quot;; window.clicks.push('agree')\">I Agree</button>"
+             "<a href='#'>Accessibility Policy</a>")
+
+    def run_entry(self, html):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright no instalado")
+        from adapters.civitek_ocrs import _enter_portal
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.set_content(html)
+            page.evaluate("window.clicks = []")
+            _enter_portal(page)
+            page.wait_for_selector("input[name='form:search_tab:lastname']", timeout=5_000)
+            clicks = page.evaluate("window.clicks")
+            browser.close()
+        return clicks
+
+    def test_public_then_agree(self):
+        html = ("<button type='button' onclick=\"window.clicks.push('public'); "
+                "document.body.innerHTML = document.getElementById('next').innerHTML\">Public</button>"
+                "<template id='next'>" + self.AGREE + "</template>")
+        self.assertEqual(self.run_entry(html), ["public", "agree"])
+
+    def test_disclaimer_without_public(self):
+        self.assertEqual(self.run_entry(self.AGREE), ["agree"])
+
+    def test_form_already_open(self):
+        self.assertEqual(self.run_entry(self.FORM), [])
