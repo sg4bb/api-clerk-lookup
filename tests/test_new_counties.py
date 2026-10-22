@@ -627,3 +627,19 @@ class WindowAfterTest(unittest.TestCase):
         start, end = search_window(q, get_county("washington", "FL"))
         self.assertEqual((start, end), (date(2024, 4, 20), date(2024, 6, 26)))
         self.assertTrue(start <= date(2024, 6, 20) <= end)
+
+
+class HardeeTest(unittest.TestCase):
+    # Elvis Gray (Hardee, 24CF000270) y John Layport (Hardee, 26CF000203).
+    GRAY = [(9, "08/13/2024", "BOOKING SUMMARY FILED"), (8, "08/13/2024", "WARRANT RETURNED SERVED"),
+            (7, "08/12/2024", "ARREST REPORT FILED")]
+    LAYPORT = [(15, "07/01/2026", "FIRST APPEARANCE"), (14, "07/01/2026", "COMPLAINT AFFIDAVIT")]
+
+    def test_arrest_report_filed_and_warrant_served(self):
+        self.assertEqual(choose("hardee", self.GRAY), ([7], [8]))
+
+    def test_complaint_affidavit_still_works(self):
+        self.assertEqual(choose("hardee", self.LAYPORT), ([14], []))
+
+    def test_stays_in_hardee(self):
+        self.assertEqual(choose("marion", self.GRAY), ([], []))

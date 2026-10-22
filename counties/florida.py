@@ -149,7 +149,14 @@ WASHINGTON = civitek(
     # En los arrestos en el momento: "AFFIDAVIT - COMPLAINT" (Carmona, 26CT000140, Doc #8; con candado).
     documents=(r"^\s*affidavit\s*-?\s*complaint\b",),
 )
-HARDEE = civitek("hardee", "Hardee County", "25")
+HARDEE = civitek(
+    "hardee", "Hardee County", "25",
+    # "ARREST REPORT FILED": en los arrestos con orden es el affidavit para la orden, con la
+    # narración (Gray, 24CF000270, Doc #7: FDLE). En el momento sale "COMPLAINT AFFIDAVIT"
+    # (genérico; Layport, 26CF000203).
+    documents=(r"^\s*arrest report\b",),
+    support=(r"^\s*warrant returned served\b",),
+)
 HOLMES = civitek("holmes", "Holmes County", "30")
 
 COUNTIES: dict[str, CountyConfig] = {
