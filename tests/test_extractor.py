@@ -114,6 +114,12 @@ class OutOfScopeTest(unittest.TestCase):
         self.assertIn("only Florida cases are searched", str(exc))
         self.assertEqual(self.reason(state="Georgia", county=None, city="Atlanta", agency=None).reason, "state")
 
+    def test_other_state_names_the_county(self):
+        """Trevon Brown (22/10/2026): "Madison County" en Alabama, sin ciudad."""
+        exc = self.reason(state="AL", county="Madison County", city=None, agency=None)
+        self.assertIn("about Madison County, AL.", str(exc))
+        self.assertNotIn("County County", str(exc))
+
     def test_county_not_in_florida_without_state(self):
         self.assertEqual(self.reason(state=None, county="Fulton", city="Atlanta", agency="Atlanta PD").reason, "state")
 

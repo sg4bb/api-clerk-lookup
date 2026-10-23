@@ -269,9 +269,13 @@ def resolve_county(extraction: Extraction) -> str:
     state = _state_code(extraction.state)
     city = (extraction.city or "").strip() or None
     place = ", ".join(p for p in (city, state) if p) or "an unknown location"
+    # El modelo a veces escribe "Madison County": sin repetir "County" en los avisos.
+    county_name = re.sub(r"\s+(county|parish)\s*$", "", (extraction.county or "").strip(), flags=re.I) or None
     supported = ", ".join(supported_counties("FL"))
 
     if state and state != "FL":
+        if not city and county_name:
+            place = f"{county_name} County, {state}"     # Trevon Brown: "about AL" a secas (22/10/2026)
         raise OutOfScope("state", f"The article is about {place}. For now, only Florida cases are searched.",
                          state=state, city=city)
 
@@ -291,7 +295,7 @@ def resolve_county(extraction: Extraction) -> str:
 
     if county is None:
         if extraction.county and not state:
-            raise OutOfScope("state", f"'{extraction.county}' County is not in Florida ({place}). "
+            raise OutOfScope("state", f"'{county_name}' County is not in Florida ({place}). "
                                       "For now, only Florida cases are searched.", county=extraction.county, city=city)
         log.info("Sin condado: ciudad=%r condado=%r agencia=%r", city, extraction.county, extraction.agency)
         raise OutOfScope("unknown", "The article doesn't say which city or county the arrest was in, "
