@@ -587,6 +587,10 @@ class CivitekOcrsAdapter(ClerkAdapter):
         if date_from and date_to:
             page.fill("input[name='form:search_tab:fromDate']", f"{date_from:%m/%d/%Y}")
             page.fill("input[name='form:search_tab:toDate']", f"{date_to:%m/%d/%Y}")
+        else:
+            # Búsqueda sin fechas: el formulario reusado puede traer las de la búsqueda anterior.
+            page.fill("input[name='form:search_tab:fromDate']", "")
+            page.fill("input[name='form:search_tab:toDate']", "")
         log.info("Formulario: %s", page.evaluate(_FORM_STATE_JS))
 
     def _tick_case_type(self, value: str) -> None:

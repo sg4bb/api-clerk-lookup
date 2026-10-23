@@ -20,6 +20,7 @@ from .adapter import DocumentUnavailable, DownloadError, SearchError
 from .browser import open_browser
 from .captcha import CaptchaHandler, CaptchaTimeout, LiveViewCaptcha, ManualLocalCaptcha
 from .county import CountyConfig
+from .charges import categorize
 from .matcher import pick_best, prelim_reasons, prelim_score, related_cases, resolve_same_incident, score_case
 from .models import CaseDetails, LookupQuery, LookupResult
 from .utils import last_name_variants, portal_text, today
@@ -106,6 +107,7 @@ def run_lookup(
                 attempts.append((person, result, scored))
                 if result.status == "found":
                     break
+            wide = _wide_search(adapter, attempts) if _wide_search_applies(attempts) else None
         except CaptchaTimeout as exc:
             return LookupResult("captcha_timeout", message=str(exc))
         except (SearchError, DownloadError) as exc:
@@ -120,7 +122,10 @@ def run_lookup(
             return LookupResult("error", message=(
                 f"The court portal didn't respond as expected ({type(exc).__name__}). "
                 "Try again in a few minutes."))
-    return _combine(attempts)
+    result = _combine(attempts)
+    if wide and result.status == "not_found" and not result.closest:
+        result.closest = wide
+    return result
 
 
 # Qué resultado se entrega si se probó a más de una persona.
@@ -155,7 +160,84 @@ def closest_case(scored: list) -> Optional[dict]:
              and (m.offense_gap is None or m.offense_gap <= CLOSEST_MAX_OFFENSE_GAP)]
     if not valid:
         return None
-    match, details = max(valid, key=lambda s: s[0].score)
+    return _closest_dict(*max(valid, key=lambda s: s[0].score))
+
+
+# --- Búsqueda sin fechas (último recurso) -------------------------------------
+# Si nadie dio caso en la ventana de fechas y no hay un "caso más cercano", se busca
+# una vez más sin rango de fechas: la nota puede salir meses o años después del hecho,
+# no decir cuándo pasó o traer la fecha mal (Patel, Madison, 23/10/2026). Lo que salga
+# NUNCA es "found": se muestra como sugerencia, con la fecha de apertura a la vista,
+# y solo si el nombre es exacto y los cargos coinciden.
+WIDE_MAX_OPEN = 5
+# Un caso abierto mucho después de la nota no es el de la nota (que ya habla del arresto).
+WIDE_FILED_AFTER_PUBLISHED_DAYS = 60
+
+
+def _wide_search_applies(attempts: list) -> bool:
+    if not attempts or any(r.status != "not_found" for _, r, _ in attempts):
+        return False
+    if closest_case([s for _, _, scored in attempts for s in scored]):
+        return False
+    return any(categorize(q.charges) for q, _, _ in attempts)
+
+
+def _wide_search(adapter, attempts: list) -> Optional[dict]:
+    """Sugerencia sin límite de fechas, o None. Un fallo aquí no cambia el resultado."""
+    for person, _, scored in attempts:
+        if not categorize(person.charges):
+            continue
+        # Los que ya se abrieron para esta persona en el rango de fechas no se repiten.
+        opened = {d.candidate.case_number for _, d in scored}
+        try:
+            suggestion = _wide_search_person(adapter, person, opened)
+        except Exception as exc:
+            log.warning("La búsqueda sin fechas de %s falló (%s); el resultado no cambia",
+                        _full_name(person), exc)
+            return None
+        if suggestion:
+            return suggestion
+    return None
+
+
+def _wide_search_person(adapter, person: LookupQuery, opened: set) -> Optional[dict]:
+    query = _first_word_only(person)
+    search_query = replace(query, first_name=portal_text(query.first_name),
+                           middle_name=portal_text(query.middle_name) or None,
+                           last_name=portal_text(query.last_name))
+    log.info("Sin caso en el rango de fechas: busco a %s sin fechas (solo como sugerencia)", _full_name(person))
+    adapter.throttle()
+    candidates = adapter.search(search_query, None, None)
+    undated = replace(query, incident_date=None, arrest_date=None, approx_date=None, date_from=None, date_to=None)
+    latest = (query.published_date + timedelta(days=WIDE_FILED_AFTER_PUBLISHED_DAYS)
+              if query.published_date else None)
+    pool = [c for c in candidates
+            if c.case_number not in opened and prelim_score(undated, c) > 0
+            and not (latest and c.filed_date and c.filed_date > latest)]
+    # Primero los de mejor nombre y, entre ellos, los más cercanos a la nota.
+    pool.sort(key=lambda c: (prelim_score(undated, c), c.filed_date or date.min), reverse=True)
+    log.info("Sin fechas: %d caso(s); abro hasta %d", len(pool), WIDE_MAX_OPEN)
+    best = None
+    for candidate in pool[:WIDE_MAX_OPEN]:
+        adapter.throttle()
+        details = adapter.open_case(candidate)
+        match = score_case(query, details)
+        exact = "nombre exacto" in match.reasons or any(r.startswith("coincide con un alias") for r in match.reasons)
+        charges = any(r.startswith("cargos coinciden") for r in match.reasons)
+        log.info("Sin fechas: %s -> %d %s", candidate.case_number, match.score, match.reasons)
+        if exact and charges and not match.disqualified and (best is None or match.score > best[0].score):
+            best = (match, details)
+    if not best:
+        log.info("Sin fechas: ningún caso con el mismo nombre y cargos parecidos")
+        return None
+    suggestion = _closest_dict(*best)
+    suggestion["wide"] = True
+    log.info("Sugerencia sin fechas: %s (abierto %s, %d%%)", suggestion["case_number"],
+             suggestion["filed_date"], suggestion["score"])
+    return suggestion
+
+
+def _closest_dict(match, details) -> dict:
     c = details.candidate
     return {
         "case_number": c.case_number,
