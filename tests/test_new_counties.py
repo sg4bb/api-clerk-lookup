@@ -673,6 +673,42 @@ class GilchristTest(unittest.TestCase):
         self.assertEqual(choose("marion", self.BONILLA), ([], []))
 
 
+class DixieTest(unittest.TestCase):
+    # Reyes (Dixie, 26CF000037): el affidavit está con candado; el número va como "Agency Citation".
+    REYES = [(11, "02/27/2026", "FIRST APPEARANCE ORDER"), (10, "02/27/2026", "STATEMENT OF RIGHTS"),
+             (7, "02/27/2026", "PROBABLE CAUSE / ARREST AFFIDAVIT"),
+             (6, "02/27/2026", "Agency Citation 26OFF000169 filed on 2/27/2026"),
+             (1, "02/27/2026", "Case 152026CF000037CFAXMX Filed with Clerk on 2/27/2026")]
+
+    def test_agency_citation_is_the_report_number(self):
+        from core.lookup import agency_case_number
+        self.assertEqual(agency_case_number(details_with_docket(self.REYES)), "26OFF000169")
+
+    def test_agency_case_number_still_wins(self):
+        from core.lookup import agency_case_number
+        rows = self.REYES + [(4, "02/27/2026", "Agency Case Number: 26-000123")]
+        self.assertEqual(agency_case_number(details_with_docket(rows)), "26-000123")
+
+    def test_traffic_citations_are_not_report_numbers(self):
+        from core.lookup import agency_case_number
+        rows = [(16, "08/13/2026", "Citation AE24GWE- filed on 8/13/2026"),
+                (6, "02/27/2026", "Agency Citation AE24GWE filed on 2/27/2026")]
+        self.assertIsNone(agency_case_number(details_with_docket(rows)))
+
+    def test_search_warrant_affidavit_is_support(self):
+        buck = [(10, "12/10/2025", "AFFIDAVIT FOR SEARCH WARRANT-20864 SE 19 HIGHWAY"),
+                (9, "12/10/2025", "AFFIDAVIT FOR SEARCH WARRANT-16319 SE 19 HWY"),
+                (8, "12/10/2025", "APPLICATION FOR CRIMINAL INDIGENT STATUS APPROVED")]
+        self.assertEqual(choose("dixie", buck), ([], [9, 10]))
+        self.assertEqual(choose("marion", buck), ([], []))
+
+    def test_trafficking_stolen_property_is_not_drugs(self):
+        from core.charges import categorize
+        self.assertEqual(categorize(["DEALING STOLEN PROPERTY: TRAFFICKING"]), {"theft"})
+        self.assertEqual(categorize(["TRAFFICKING IN STOLEN PROPERTY"]), {"theft"})
+        self.assertIn("drugs", categorize(["TRAFFICKING IN METHAMPHETAMINE"]))
+
+
 class MadisonTest(unittest.TestCase):
     # Davis (26CF000227, FHP), McCray (26CF000193) y Barnhart (26CF000107).
     DAVIS = [(18, "09/03/2026", "CITATIONS"), (6, "09/01/2026", "ARREST REPORT - INITIATING CASE")]

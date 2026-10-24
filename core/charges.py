@@ -53,6 +53,9 @@ _PATTERNS = {cat: [re.compile(r"\b" + re.escape(k)) for k in keys] for cat, keys
 
 # "Obstructing justice - tamper w/ evidence" (Trueblood, Baker) contaba como resistencia.
 _NOT_RESISTING = re.compile(r"\bobstruct\w*\s+(?:of\s+)?justice\b")
+# "Dealing stolen property: trafficking" (Williamson, Dixie, 18CF000059) contaba como drogas;
+# sigue contando como robo por "stolen".
+_NOT_DRUGS = re.compile(r"\bstolen\s+property\s+traffick\w*|\btraffick\w*\s+(?:in\s+)?stolen\s+property\b")
 
 
 def categorize(charges: Iterable[str]) -> set[str]:
@@ -60,7 +63,8 @@ def categorize(charges: Iterable[str]) -> set[str]:
     for charge in charges:
         text = normalize(charge)
         for cat, patterns in _PATTERNS.items():
-            subject = _NOT_RESISTING.sub(" ", text) if cat == "resisting" else text
+            subject = (_NOT_RESISTING.sub(" ", text) if cat == "resisting"
+                       else _NOT_DRUGS.sub(" ", text) if cat == "drugs" else text)
             if any(p.search(subject) for p in patterns):
                 found.add(cat)
     return found

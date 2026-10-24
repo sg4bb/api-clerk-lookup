@@ -426,6 +426,9 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
 
 
 _AGENCY_NUMBER_RE = re.compile(r"agency case number\s*:\s*([A-Z0-9][A-Z0-9\-/]*)", re.I)
+# Dixie no anota "Agency Case Number": "Agency Citation 26OFF000169 filed on 2/27/2026"
+# (Reyes, 26CF000037). Solo el formato de reporte del Sheriff (..OFF..), no multas.
+_AGENCY_CITATION_RE = re.compile(r"agency citation\s*:?\s*(\d{2}OFF\d+)\b", re.I)
 
 
 def agency_case_number(details: CaseDetails) -> Optional[str]:
@@ -433,9 +436,12 @@ def agency_case_number(details: CaseDetails) -> Optional[str]:
 
     Si hay varios, el de la entrada más antigua: la que se cargó al abrir el caso.
     """
-    found = [(e.date or date.max, m.group(1).upper()) for e in details.docket
-             if (m := _AGENCY_NUMBER_RE.search(e.description or ""))]
-    return min(found)[1] if found else None
+    for pattern in (_AGENCY_NUMBER_RE, _AGENCY_CITATION_RE):   # el de siempre tiene prioridad
+        found = [(e.date or date.max, m.group(1).upper()) for e in details.docket
+                 if (m := pattern.search(e.description or ""))]
+        if found:
+            return min(found)[1]
+    return None
 
 
 MAX_DOWNLOAD_TRIES = 4   # documentos que se intentan si el portal no publica los primeros

@@ -176,7 +176,14 @@ MADISON = civitek(
     # caso, "ARREST REPORT - INITIATING CASE" (Davis, 26CF000227, Doc #6: FHP).
     documents=(r"^\s*arrest report\b",),
 )
-DIXIE = civitek("dixie", "Dixie County", "15")
+DIXIE = civitek(
+    "dixie", "Dixie County", "15",
+    # El affidavit de arresto está siempre con candado. Cuando hubo allanamiento, el
+    # "AFFIDAVIT FOR SEARCH WARRANT-<dirección>" es público y trae el relato jurado de la
+    # investigación: va de apoyo y se entrega si el de arresto no se puede bajar
+    # (Buck, 25MM000190: máquinas de juego).
+    support=(r"^\s*affidavit for search warrant\b",),
+)
 GULF = civitek("gulf", "Gulf County", "23")
 UNION = civitek("union", "Union County", "63")
 
