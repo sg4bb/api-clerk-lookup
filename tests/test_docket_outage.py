@@ -78,7 +78,8 @@ class LookupOutageTest(unittest.TestCase):
         self.assertEqual(result.status, "no_document")
         self.assertEqual(result.case_number, "26000172CFAXMX")
         self.assertIn("Dockets are currently unavailable", result.message)
-        self.assertIn("Try again later", result.message)
+        self.assertIn("try again later", result.message)
+        self.assertIn("arrest affidavit", result.message)
 
 
 if __name__ == "__main__":

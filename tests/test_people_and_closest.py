@@ -265,3 +265,21 @@ class InitialDateTest(unittest.TestCase):
         details = CaseDetails(WILLIAMS_DRUGS.candidate, charges(
             (date(2018, 12, 28), date(2018, 12, 28), "POSSESSION OF A CONTROLLED SUBSTANCE")), [])
         self.assertLess(score_case(q, details).score, 30)
+
+
+class JuvenileTest(unittest.TestCase):
+    """Braden Thomas (Gulf, 24/10/2026): 16 años; los casos de menores no son públicos."""
+
+    def test_minor_not_found_explains_why(self):
+        result, _ = run([query("Braden", "Thomas", age=16)], {})
+        self.assertEqual(result.status, "not_found")
+        self.assertIn("is 16", result.message)
+        self.assertIn("Juvenile cases", result.message)
+
+    def test_adult_keeps_the_usual_message(self):
+        result, _ = run([query("Braden", "Thomas", age=19)], {})
+        self.assertNotIn("Juvenile", result.message)
+
+    def test_minor_charged_as_adult_is_still_found(self):
+        result, _ = run([query("Mark", "Jones", age=17)], {"Jones": [JONES_FOUND]})
+        self.assertEqual(result.status, "found")

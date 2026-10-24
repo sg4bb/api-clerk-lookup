@@ -148,6 +148,16 @@ def _combine(attempts: list[tuple[LookupQuery, LookupResult, list]]) -> LookupRe
     if len(attempts) > 1:
         log.info("Resultado con %s (%s)", _full_name(attempts[index][0]), result.status)
     if result.status == "not_found":
+        minors = [q for q, _, _ in attempts if q.age is not None and q.age < 18]
+        if minors:
+            # Braden Thomas (Gulf, 24/10/2026): 16 años, enviado a detención juvenil. Los casos
+            # de menores son confidenciales; a los que se juzga como adultos sí se los encuentra,
+            # por eso se busca igual y el aviso va solo si no aparece nada.
+            q = minors[0]
+            result.message = (f"The story says {_full_name(q)} is {q.age}. Juvenile cases in Florida are "
+                              "confidential and don't appear on the public court portal, unless the minor "
+                              "is charged as an adult.")
+            log.info("%s tiene %d años: los casos de menores no son públicos", _full_name(q), q.age)
         result.closest = closest_case([s for _, _, scored in attempts for s in scored])
         if result.closest:
             log.info("Caso más cercano: %s (%d%%)", result.closest["case_number"], result.closest["score"])
@@ -361,8 +371,9 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
             "no_document", case_number=details.candidate.case_number,
             score=match.score, reasons=match.reasons, candidates=summary,
             message=("The case was found, but the court portal isn't showing its docket right now "
-                     "(it says \"Dockets are currently unavailable\"), so its documents and the agency "
-                     "report number can't be read. This is an outage on the portal's side. Try again later."),
+                     "(it says \"Dockets are currently unavailable\"), an outage on the portal's side. "
+                     "To get the arrest affidavit and the agency report number, try again later, "
+                     "once the portal shows the docket again."),
             related_cases=related, docket=docket, agency_case_number=agency_number,
         )
     if not documents and support:
