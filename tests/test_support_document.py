@@ -95,9 +95,12 @@ class WithheldDocumentTest(unittest.TestCase):
                       (2, "07/24/2026", "SWORN ARREST COMPLAINT AFFIDAVIT FILED"),
                       (1, "07/24/2026", "Case Filed with Clerk")]
 
-    def test_next_document_is_tried(self):
-        result, downloaded, _ = run(self.TWO_AFFIDAVITS, withheld={2})
-        self.assertEqual((result.status, downloaded, result.document), ("found", [14], "ARREST AFFIDAVIT"))
+    def test_stops_at_the_first_withheld(self):
+        """Buck (Dixie, 23/10/2026): cada intento tardaba un minuto; no se insiste con los demás."""
+        result, downloaded, _ = run(self.TWO_AFFIDAVITS, withheld={2})     # el #2 se pide primero
+        self.assertEqual((result.status, downloaded), ("no_document", []))
+        self.assertIn("right now", result.message)
+
 
     def test_nothing_released_is_no_document(self):
         result, downloaded, _ = run(self.TWO_AFFIDAVITS, withheld={2, 14})
@@ -106,11 +109,9 @@ class WithheldDocumentTest(unittest.TestCase):
         self.assertIn("right now", result.message)
         self.assertIn("temporary", result.message)
 
-    def test_warrant_used_when_affidavit_withheld(self):
+    def test_warrant_not_tried_when_affidavit_withheld(self):
         result, downloaded, _ = run(GARCIA_DOCKET, withheld={12})
-        self.assertEqual((result.status, downloaded), ("found", [10]))
-        self.assertTrue(result.document.startswith("CAPIAS SERVED"))
-        self.assertIsNone(result.support_document)
+        self.assertEqual((result.status, downloaded), ("no_document", []))
 
 
 if __name__ == "__main__":

@@ -374,8 +374,10 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
         )
 
     on_status("downloading")
-    # Si el portal no publica todavía un documento, se prueba el siguiente
-    # (otros affidavits y, al final, la orden ejecutada).
+    # Se prueba el siguiente documento solo si el anterior falló por otra cosa. Si el
+    # portal responde "not available at this time", el servidor de documentos no está
+    # entregando: insistir con los demás solo gasta minutos de navegador (Buck, Dixie,
+    # 23/10/2026: un minuto por intento y nada que bajar).
     chosen, pdf_path, withheld = None, None, []
     for doc in (documents + support)[:MAX_DOWNLOAD_TRIES]:
         adapter.throttle()
@@ -384,8 +386,9 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
             chosen = doc
             break
         except DocumentUnavailable as exc:
-            log.info("El portal no entrega ahora '%s': %s", doc.description, exc)
+            log.info("El portal no entrega ahora '%s': %s; no pido los demás", doc.description, exc)
             withheld.append(doc.description)
+            break
     if chosen is None:
         return scored, LookupResult(
             "no_document", case_number=details.candidate.case_number,

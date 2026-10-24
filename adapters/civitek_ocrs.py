@@ -827,6 +827,11 @@ class CivitekOcrsAdapter(ClerkAdapter):
             raise DownloadError(f"'{entry.description}' has no document link")
         url = urljoin(details.source_url or self.page.url, entry.doc_ref)
         status, content_type, body = self.fetch(self.page, url, details.source_url)
+        if status < 400 and not is_pdf(body) and b"not available at this time" in body.lower():
+            # El portal ya dijo que no lo entrega: reintentar desde la página del caso
+            # tarda otro minuto y responde lo mismo (Buck, Dixie, 23/10/2026).
+            self._save_download_debug(entry, status, content_type, body)
+            raise DocumentUnavailable(f"The court portal isn't handing over '{entry.description}' right now")
         if status < 400 and not is_pdf(body) and details.source_url:
             # Algunos condados solo entregan el documento con la página del caso
             # abierta (en Marion no hacía falta). Se reabre y se pide desde ahí.
