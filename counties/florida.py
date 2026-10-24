@@ -185,7 +185,16 @@ DIXIE = civitek(
     support=(r"^\s*affidavit for search warrant\b",),
 )
 GULF = civitek("gulf", "Gulf County", "23")
-UNION = civitek("union", "Union County", "63")
+UNION = civitek(
+    "union", "Union County", "63",
+    # "ARREST REPORT" del Sheriff (UCSO..ARR, con el número UCSO..OFF): Danlovich, 20CF000050.
+    # Va primero el que se llama solo así: en George (22CF000034) también están "ARREST
+    # REPORT FOR INDICTMENT" y "ARREST REPORT FROM ALACHUA COUNTY SHERIFF".
+    documents=(r"^\s*arrest report\s*$", r"^\s*arrest report\b"),
+    # "SWORN COMPLAINT": el Warrant Affidavit para pedir la orden, de antes del arresto
+    # (George, Doc #7): de apoyo, y principal si no hay informe del arresto.
+    support=(r"^\s*sworn complaint\b",),
+)
 
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,

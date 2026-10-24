@@ -709,6 +709,29 @@ class DixieTest(unittest.TestCase):
         self.assertIn("drugs", categorize(["TRAFFICKING IN METHAMPHETAMINE"]))
 
 
+class UnionTest(unittest.TestCase):
+    # George (22CF000034, orden y luego arresto en Alachua) y Danlovich (20CF000050).
+    GEORGE = [(40, "05/04/2022", "CONSOLIDATED FROM 63-2022-CF-0035 - ARREST REPORT"),
+              (39, "05/04/2022", "ARREST REPORT FOR INDICTMENT"),
+              (30, "04/18/2022", "ARREST REPORT FROM ALACHUA COUNTY SHERIFF"),
+              (12, "04/05/2022", "ARREST REPORT"), (10, "04/05/2022", "FIRST APPEARANCE ORDER"),
+              (7, "03/21/2022", "SWORN COMPLAINT")]
+    DANLOVICH = [(9, "05/19/2020", "FIRST APPEARANCE ORDER"), (6, "05/15/2020", "ARREST REPORT")]
+
+    def test_plain_arrest_report_first(self):
+        docs, support = choose("union", self.GEORGE)
+        self.assertEqual(docs[0], 12)
+        self.assertEqual(set(docs), {12, 39, 30})        # sin el "CONSOLIDATED FROM ..."
+        self.assertEqual(support, [7])
+        self.assertEqual(choose("union", self.DANLOVICH), ([6], []))
+
+    def test_warrant_affidavit_alone_is_support(self):
+        self.assertEqual(choose("union", [(7, "03/21/2022", "SWORN COMPLAINT")]), ([], [7]))
+
+    def test_stays_in_union(self):
+        self.assertEqual(choose("marion", self.DANLOVICH), ([], []))
+
+
 class MadisonTest(unittest.TestCase):
     # Davis (26CF000227, FHP), McCray (26CF000193) y Barnhart (26CF000107).
     DAVIS = [(18, "09/03/2026", "CITATIONS"), (6, "09/01/2026", "ARREST REPORT - INITIATING CASE")]
