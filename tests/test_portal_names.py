@@ -32,7 +32,23 @@ class PortalTextTest(unittest.TestCase):
 
     def test_variants_without_accents(self):
         self.assertEqual(last_name_variants(portal_text("González Delgado")),
-                         ["Gonzalez Delgado", "GonzalezDelgado", "Gonzalez-Delgado"])
+                         ["Gonzalez Delgado", "GonzalezDelgado", "Gonzalez-Delgado", "Delgado", "Gonzalez"])
+
+
+class GluedMiddleNameTest(unittest.TestCase):
+    def test_middle_name_glued_to_the_last_name(self):
+        """Gulf (24/10/2026): el modelo dio "Conan Koepke"; el portal tiene KOEPKE, KURTIS CONAN."""
+        from core.matcher import score_case
+        from core.models import CaseCandidate, CaseDetails
+        self.assertIn("Koepke", last_name_variants("Conan Koepke"))
+        q = LookupQuery(first_name="Kurtis", last_name="Conan Koepke", county="gulf", state="FL",
+                        incident_date=date(2026, 9, 11))
+        candidate = CaseCandidate("26000300CFAXMX", "KOEPKE, KURTIS CONAN", "Felony", "OPEN", None,
+                                  date(2026, 9, 12), "x")
+        match = score_case(q, CaseDetails(candidate, [], []))
+        self.assertFalse(match.disqualified, match.reasons)
+        self.assertIn("apellido compuesto (conan koepke)", match.reasons)
+        self.assertEqual(match.score, 100)
 
 
 class SearchFormTest(unittest.TestCase):
@@ -67,7 +83,7 @@ class SearchFormTest(unittest.TestCase):
 
         self.assertEqual(result.status, "not_found")
         self.assertEqual([last for _, _, last in searched],
-                         ["Gonzalez Delgado", "GonzalezDelgado", "Gonzalez-Delgado"])
+                         ["Gonzalez Delgado", "GonzalezDelgado", "Gonzalez-Delgado", "Delgado", "Gonzalez"])
         self.assertTrue(all(first == "Jose" and middle == "Alberto" for first, middle, _ in searched))
 
 

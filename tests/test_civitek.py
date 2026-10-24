@@ -476,3 +476,33 @@ class EnterPortalTest(unittest.TestCase):
 
     def test_form_already_open(self):
         self.assertEqual(self.run_entry(self.FORM), [])
+
+
+class CaseDebugTest(unittest.TestCase):
+    """Gulf (24/10/2026): si la pestaña del caso no carga, se guarda ESA pestaña y el paso."""
+
+    def test_saves_the_case_tab(self):
+        import tempfile
+        from datetime import date
+        from pathlib import Path
+        from counties import get_county
+        from core.models import CaseCandidate
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            self.skipTest("Playwright no instalado")
+        candidate = CaseCandidate("26000172CFAXMX", "KOEPKE, KURTIS CONAN", "Felony", "OPEN", None,
+                                  date(2026, 9, 15), "x")
+        with sync_playwright() as p, tempfile.TemporaryDirectory() as tmp:
+            browser = p.chromium.launch()
+            tab = browser.new_page()
+            tab.set_content("<title>Gulf County OCRS</title><p>This case is confidential</p>")
+            adapter = CivitekOcrsAdapter(None, get_county("gulf", "FL"), None)
+            adapter.debug_dir = Path(tmp)
+            adapter._save_case_debug(tab, candidate, "esperar la tabla del docket")
+            text = (Path(tmp) / "case_26000172CFAXMX.txt").read_text(encoding="utf-8")
+            self.assertTrue((Path(tmp) / "case_26000172CFAXMX.png").exists())
+            self.assertTrue((Path(tmp) / "case_26000172CFAXMX.html").exists())
+            browser.close()
+        self.assertIn("paso donde falló: esperar la tabla del docket", text)
+        self.assertIn("This case is confidential", text)

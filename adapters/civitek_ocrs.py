@@ -709,11 +709,16 @@ class CivitekOcrsAdapter(ClerkAdapter):
     def open_case(self, candidate: CaseCandidate) -> CaseDetails:
         url = urljoin(self.page.url, candidate.detail_ref)
         tab = self.page.context.new_page()
+        step = "abrir la página del caso"
         try:
             tab.goto(url, wait_until="domcontentloaded")
+            step = "esperar la tabla del docket"
             tab.wait_for_selector('[id="form:docketDataTable1"]', timeout=25_000)
+            step = "desplegar el detalle de los cargos"
             self._expand_charges(tab)
+            step = "mostrar todo el docket"
             self._show_all_docket(tab)
+            step = "leer cargos y docket"
             data = tab.evaluate(_READ_CASE_JS)
             details = CaseDetails(candidate=candidate, charges=charges_from_case(data),
                                   docket=docket_from_case(data), source_url=tab.url,
@@ -726,9 +731,37 @@ class CivitekOcrsAdapter(ClerkAdapter):
                 log.info("Detalle de cargos (%s): %s", candidate.case_number, details_text[:900])
             return details
         except PlaywrightTimeout:
+            self._save_case_debug(tab, candidate, step)
             raise SearchError(f"The case page for {candidate.case_number} did not load") from None
         finally:
             tab.close()
+
+    def _save_case_debug(self, tab: Page, candidate: CaseCandidate, step: str) -> None:
+        """La pestaña del caso que no cargó (no la de resultados): dónde se quedó y qué mostraba.
+
+        Gulf, 24/10/2026: Koepke (26CF000172) falló dos veces y el debug general
+        solo traía la página de resultados.
+        """
+        try:
+            title, url = tab.title(), tab.url
+        except Exception:
+            title, url = "?", "?"
+        log.warning("La pestaña del caso %s se quedó en: %s (título %r, %s)",
+                    candidate.case_number, step, title, url[:160])
+        if not self.debug_dir:
+            return
+        try:
+            self.debug_dir.mkdir(parents=True, exist_ok=True)
+            name = f"case_{candidate.case_number}"
+            (self.debug_dir / f"{name}.txt").write_text(
+                f"caso: {candidate.case_number}\npaso donde falló: {step}\ntítulo: {title}\nurl: {url}\n\n"
+                + (tab.evaluate("() => document.body ? document.body.innerText : ''") or "")[:6000],
+                encoding="utf-8")
+            (self.debug_dir / f"{name}.html").write_text(tab.content(), encoding="utf-8")
+            tab.screenshot(path=str(self.debug_dir / f"{name}.png"), full_page=True)
+            log.info("Debug de la pestaña del caso guardado en %s (%s.*)", self.debug_dir, name)
+        except Exception as exc:
+            log.warning("No pude guardar el debug de la pestaña del caso: %s", exc)
 
     @staticmethod
     def _expand_charges(tab: Page) -> None:

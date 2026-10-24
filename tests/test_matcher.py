@@ -57,9 +57,11 @@ class UtilsTest(unittest.TestCase):
 
     def test_last_name_variants(self):
         self.assertEqual(last_name_variants("Ward"), ["Ward"])
-        self.assertEqual(last_name_variants("Cruz Peraza"), ["Cruz Peraza", "CruzPeraza", "Cruz-Peraza"])
+        self.assertEqual(last_name_variants("Cruz Peraza"),
+                         ["Cruz Peraza", "CruzPeraza", "Cruz-Peraza", "Peraza", "Cruz"])
         self.assertEqual(last_name_variants("Cruzperaza"), ["Cruzperaza"])
-        self.assertEqual(last_name_variants("Cruz-Peraza"), ["Cruz-Peraza", "CruzPeraza", "Cruz Peraza"])
+        self.assertEqual(last_name_variants("Cruz-Peraza"),
+                         ["Cruz-Peraza", "CruzPeraza", "Cruz Peraza", "Peraza", "Cruz"])
 
     def test_suffix_is_not_middle_name(self):
         self.assertEqual(split_defendant("RODRIGUEZ, WILFREDO JR"), ("rodriguez", "wilfredo", ""))

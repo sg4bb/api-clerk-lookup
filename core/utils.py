@@ -111,13 +111,13 @@ def safe_filename(name: str, max_length: int = 100) -> str:
     return stem[:max_length - len(ext) - 1].rstrip(" ._-") + "." + ext
 
 
-MAX_SURNAME_VARIANTS = 3
+MAX_SURNAME_VARIANTS = 5
 
 
 def last_name_variants(last_name: str) -> list[str]:
     """Formas de escribir un apellido compuesto, empezando por la original.
 
-    "Cruz Peraza" -> ["Cruz Peraza", "CruzPeraza", "Cruz-Peraza"]
+    "Cruz Peraza" -> ["Cruz Peraza", "CruzPeraza", "Cruz-Peraza", "Peraza", "Cruz"]
     "O'Brien" -> ["O'Brien", "OBrien", "O Brien"]
     Un apellido simple devuelve solo [el original].
     Visto en Orange: guarda "CRUZPERAZA" y no encuentra "Cruz Peraza".
@@ -131,7 +131,12 @@ def last_name_variants(last_name: str) -> list[str]:
         parts = [p for p in re.split(r"[\s\-]+", original) if p]
         if len(parts) < 2:
             return [original]
-        variants = [original, "".join(parts), "-".join(parts), " ".join(parts)]
+        variants = [original, "".join(parts), "-".join(parts), " ".join(parts),
+                    # Al final, cada palabra sola: el modelo a veces pega el segundo nombre
+                    # al apellido ("Kurtis Conan Koepke" -> "Conan Koepke"; el portal tiene
+                    # KOEPKE, KURTIS CONAN: Gulf, 24/10/2026) y algunos portales guardan
+                    # solo el primer apellido hispano. El comparador ya los reconoce.
+                    parts[-1], parts[0]]
     unique: list[str] = []
     for v in variants:
         if v.lower() not in {u.lower() for u in unique}:

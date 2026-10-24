@@ -207,7 +207,7 @@ def _create_with_retry(client, models: list[str], **kwargs):
             index += 1
             reason = f"error {status}" if status else type(exc).__name__
             if index % len(models):
-                log.warning("NVIDIA no disponible con %s (%s); pruebo %s", model, reason, models[index % len(models)])
+                log.warning("El modelo %s no respondió (%s); pruebo %s", model, reason, models[index % len(models)])
                 continue
             pause = wait
             retry_after = getattr(getattr(exc, "response", None), "headers", {}).get("retry-after", "")
@@ -219,7 +219,7 @@ def _create_with_retry(client, models: list[str], **kwargs):
                     f"NVIDIA is still overloaded after {budget:.0f} s and {attempt} attempt(s): {_short(exc)}. "
                     "Try again in a few minutes (or raise NVIDIA_RETRY_MAX_S).") from exc
             pause = min(pause, remaining)
-            log.warning("NVIDIA no disponible con %s (%s); reintento en %.0f s", model, reason, pause)
+            log.warning("El modelo %s no respondió (%s); reintento en %.0f s", model, reason, pause)
             time.sleep(pause)
             wait = min(wait * 2, 60.0)
 
