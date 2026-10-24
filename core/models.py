@@ -92,6 +92,9 @@ class CaseDetails:
     source_url: Optional[str] = None  # URL del detalle (se usa como Referer)
     # La fiscalía unió este caso a otro (Civitek: "Consolidated"); el principal es el otro.
     consolidated: bool = False
+    # El portal mostró el caso pero no su docket ("Dockets are currently unavailable",
+    # Gulf, 24/10/2026): sin docket no hay documentos ni número de reporte que leer.
+    docket_unavailable: bool = False
 
 
 @dataclass

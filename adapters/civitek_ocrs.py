@@ -106,6 +106,11 @@ _READ_RESULTS_JS = r"""
 
 # Cargos (con su detalle desplegado) y docket del caso. Las tablas "reflow" de
 # PrimeFaces repiten el título de la columna dentro de cada celda: se quita.
+# La página del caso está lista cuando aparece el docket o el aviso de que el servicio
+# de dockets no funciona (Gulf, 24/10/2026: todos los casos, hasta uno de 2016).
+_DOCKET_OR_OUTAGE_JS = """() => !!document.querySelector('[id="form:docketDataTable1"]')
+  || /dockets are currently unavailable/i.test(document.body ? document.body.innerText : '')"""
+
 _READ_CASE_JS = r"""
 () => {
   const clean = c => {
@@ -713,16 +718,21 @@ class CivitekOcrsAdapter(ClerkAdapter):
         try:
             tab.goto(url, wait_until="domcontentloaded")
             step = "esperar la tabla del docket"
-            tab.wait_for_selector('[id="form:docketDataTable1"]', timeout=25_000)
+            tab.wait_for_function(_DOCKET_OR_OUTAGE_JS, timeout=25_000)
+            unavailable = not tab.locator('[id="form:docketDataTable1"]').count()
+            if unavailable:
+                log.warning("%s: el portal dice \"Dockets are currently unavailable\"; leo solo los cargos",
+                            candidate.case_number)
             step = "desplegar el detalle de los cargos"
             self._expand_charges(tab)
-            step = "mostrar todo el docket"
-            self._show_all_docket(tab)
+            if not unavailable:
+                step = "mostrar todo el docket"
+                self._show_all_docket(tab)
             step = "leer cargos y docket"
             data = tab.evaluate(_READ_CASE_JS)
             details = CaseDetails(candidate=candidate, charges=charges_from_case(data),
                                   docket=docket_from_case(data), source_url=tab.url,
-                                  consolidated=is_consolidated(data))
+                                  consolidated=is_consolidated(data), docket_unavailable=unavailable)
             log.info("%s: %d cargo(s), %d entrada(s) de docket%s", candidate.case_number,
                      len(details.charges), len(details.docket),
                      " (consolidado en otro caso)" if details.consolidated else "")

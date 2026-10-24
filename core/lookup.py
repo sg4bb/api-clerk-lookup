@@ -354,6 +354,17 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
                  _describe(documents))
     if support:
         log.info("Documento de apoyo en %s: %s", details.candidate.case_number, _describe(support[:3]))
+    if not documents and not support and details.docket_unavailable:
+        log.warning("El portal no muestra el docket de %s (\"Dockets are currently unavailable\"): "
+                    "sin documentos ni número de reporte por ahora", details.candidate.case_number)
+        return scored, LookupResult(
+            "no_document", case_number=details.candidate.case_number,
+            score=match.score, reasons=match.reasons, candidates=summary,
+            message=("The case was found, but the court portal isn't showing its docket right now "
+                     "(it says \"Dockets are currently unavailable\"), so its documents and the agency "
+                     "report number can't be read. This is an outage on the portal's side. Try again later."),
+            related_cases=related, docket=docket, agency_case_number=agency_number,
+        )
     if not documents and support:
         # Sin arrest affidavit pero con la orden ejecutada: mejor la orden que nada.
         log.info("No hay arrest affidavit; entrego el documento de apoyo como principal")
