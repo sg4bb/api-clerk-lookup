@@ -196,6 +196,15 @@ UNION = civitek(
     support=(r"^\s*sworn complaint\b",),
 )
 
+
+# Lote 5 de Civitek (24/10/2026): configurados con los nombres genéricos; los propios
+# de cada condado se agregan al ver su docket. Hamilton: su aviso prohíbe republicar los datos.
+JEFFERSON = civitek("jefferson", "Jefferson County", "33")
+HAMILTON = civitek("hamilton", "Hamilton County", "24")
+CALHOUN = civitek("calhoun", "Calhoun County", "07")
+FRANKLIN = civitek("franklin", "Franklin County", "19")
+GLADES = civitek("glades", "Glades County", "22")
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -219,6 +228,11 @@ COUNTIES: dict[str, CountyConfig] = {
     DIXIE.key: DIXIE,
     GULF.key: GULF,
     UNION.key: UNION,
+    JEFFERSON.key: JEFFERSON,
+    HAMILTON.key: HAMILTON,
+    CALHOUN.key: CALHOUN,
+    FRANKLIN.key: FRANKLIN,
+    GLADES.key: GLADES,
 }
 
 
@@ -291,6 +305,14 @@ CITY_TO_COUNTY: dict[str, str] = {
     "port st joe": "gulf", "port saint joe": "gulf", "wewahitchka": "gulf", "st joe beach": "gulf",
     "saint joe beach": "gulf", "cape san blas": "gulf", "indian pass": "gulf", "highland view": "gulf",
     "lake butler": "union", "worthington springs": "union", "raiford": "union",
+    "monticello": "jefferson", "wacissa": "jefferson", "lamont": "jefferson", "lloyd": "jefferson",
+    "aucilla": "jefferson",
+    "jasper": "hamilton", "jennings": "hamilton", "white springs": "hamilton",
+    "blountstown": "calhoun", "altha": "calhoun", "clarksville": "calhoun",
+    "apalachicola": "franklin", "carrabelle": "franklin", "eastpoint": "franklin",
+    "st george island": "franklin", "saint george island": "franklin", "alligator point": "franklin",
+    "moore haven": "glades", "buckhead ridge": "glades", "lakeport": "glades", "ortona": "glades",
+    "muse": "glades",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
     "kissimmee": "osceola", "st cloud": "osceola", "saint cloud": "osceola", "poinciana": "osceola",
@@ -336,6 +358,11 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "gilchrist county so": "gilchrist", "madison county so": "madison", "madison pd": "madison",
     "dixie county so": "dixie", "gulf county so": "gulf", "port st joe pd": "gulf",
     "wewahitchka pd": "gulf", "union county so": "union", "lake butler pd": "union",
+    "jefferson county so": "jefferson", "monticello pd": "jefferson",
+    "hamilton county so": "hamilton", "jasper pd": "hamilton", "white springs pd": "hamilton",
+    "calhoun county so": "calhoun", "blountstown pd": "calhoun",
+    "franklin county so": "franklin", "apalachicola pd": "franklin", "carrabelle pd": "franklin",
+    "glades county so": "glades", "moore haven pd": "glades",
     "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",

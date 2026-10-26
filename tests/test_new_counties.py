@@ -66,7 +66,8 @@ class ConfigTest(unittest.TestCase):
                           ("jackson", "32"), ("hendry", "26"), ("okeechobee", "47"), ("wakulla", "65"),
                           ("baker", "02"), ("bradford", "04"), ("washington", "67"), ("hardee", "25"),
                           ("holmes", "30"), ("gilchrist", "21"), ("madison", "40"), ("dixie", "15"),
-                          ("gulf", "23"), ("union", "63")):
+                          ("gulf", "23"), ("union", "63"), ("jefferson", "33"), ("hamilton", "24"),
+                          ("calhoun", "07"), ("franklin", "19"), ("glades", "22")):
             county = get_county(key, "FL")
             self.assertEqual(county.base_url, f"https://www.civitekflorida.com/ocrs/county/{code}/")
             self.assertEqual(county.platform, "civitek_ocrs")
@@ -86,6 +87,11 @@ class ConfigTest(unittest.TestCase):
                             ("Madison Police Department", "madison"), ("Dixie County Sheriff's Office", "dixie"),
                             ("Gulf County Sheriff's Office", "gulf"), ("Port St. Joe Police Department", "gulf"),
                             ("Union County Sheriff's Office", "union"), ("Lake Butler Police Department", "union"),
+                            ("Jefferson County Sheriff's Office", "jefferson"), ("Monticello Police Department", "jefferson"),
+                            ("Hamilton County Sheriff's Office", "hamilton"), ("Jasper Police Department", "hamilton"),
+                            ("Calhoun County Sheriff's Office", "calhoun"), ("Blountstown Police Department", "calhoun"),
+                            ("Franklin County Sheriff's Office", "franklin"), ("Apalachicola Police Department", "franklin"),
+                            ("Glades County Sheriff's Office", "glades"), ("Moore Haven Police Department", "glades"),
                             ("Jacksonville Sheriff's Office", "duval")):
             self.assertEqual(florida.AGENCY_TO_COUNTY.get(normalize_agency(agency)), key, agency)
 
@@ -167,7 +173,10 @@ class LocationTest(unittest.TestCase):
                                      ("Trenton", None, "gilchrist"), ("Fanning Springs", None, "gilchrist"),
                                      ("Madison", None, "madison"), ("Cross City", None, "dixie"),
                                      ("Port St. Joe", None, "gulf"), ("Wewahitchka", None, "gulf"),
-                                     ("Lake Butler", None, "union")):
+                                     ("Lake Butler", None, "union"), ("Monticello", None, "jefferson"),
+                                     ("Jasper", None, "hamilton"), ("White Springs", None, "hamilton"),
+                                     ("Blountstown", None, "calhoun"), ("Apalachicola", None, "franklin"),
+                                     ("St. George Island", None, "franklin"), ("Moore Haven", None, "glades")):
             aq = build_query(extraction(county=None, city=city, agency=agency), ARTICLE)
             self.assertEqual(aq.query.county, county, (city, agency))
 
