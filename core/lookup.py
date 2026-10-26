@@ -450,7 +450,9 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
     )
 
 
-_AGENCY_NUMBER_RE = re.compile(r"agency case number\s*:\s*([A-Z0-9][A-Z0-9\-/]*)", re.I)
+# "Agency Case Number modified: 26004082" (Mack, Jefferson, 26CF000146) cuando el docket solo
+# trae el número corregido; si está el original, gana por ser la entrada más antigua.
+_AGENCY_NUMBER_RE = re.compile(r"agency case number(?:\s+modified)?\s*:\s*([A-Z0-9][A-Z0-9\-/]*)", re.I)
 # Dixie no anota "Agency Case Number": "Agency Citation 26OFF000169 filed on 2/27/2026"
 # (Reyes, 26CF000037). Solo el formato de reporte del Sheriff (..OFF..), no multas.
 _AGENCY_CITATION_RE = re.compile(r"agency citation\s*:?\s*(\d{2}OFF\d+)\b", re.I)

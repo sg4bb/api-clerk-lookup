@@ -188,8 +188,9 @@ GULF = civitek("gulf", "Gulf County", "23")
 UNION = civitek(
     "union", "Union County", "63",
     # "ARREST REPORT" del Sheriff (UCSO..ARR, con el número UCSO..OFF): Danlovich, 20CF000050.
-    # Va primero el que se llama solo así: en George (22CF000034) también están "ARREST
-    # REPORT FOR INDICTMENT" y "ARREST REPORT FROM ALACHUA COUNTY SHERIFF".
+    # En George (22CF000034) también están "ARREST REPORT FOR INDICTMENT" y "ARREST REPORT
+    # FROM ALACHUA COUNTY SHERIFF"; Civitek baja por orden de Doc #, así que sale primero el
+    # que entró primero, el del Sheriff de Union (#12).
     documents=(r"^\s*arrest report\s*$", r"^\s*arrest report\b"),
     # "SWORN COMPLAINT": el Warrant Affidavit para pedir la orden, de antes del arresto
     # (George, Doc #7): de apoyo, y principal si no hay informe del arresto.
@@ -199,7 +200,16 @@ UNION = civitek(
 
 # Lote 5 de Civitek (24/10/2026): configurados con los nombres genéricos; los propios
 # de cada condado se agregan al ver su docket. Hamilton: su aviso prohíbe republicar los datos.
-JEFFERSON = civitek("jefferson", "Jefferson County", "33")
+JEFFERSON = civitek(
+    "jefferson", "Jefferson County", "33",
+    # "ARREST, BOOKING,FIRST APPEARANCE,FILED": paquete con el Arrest Affidavit del Sheriff
+    # (número de reporte, hora y narración), el booking y la primera audiencia (Bhatt,
+    # 25CF000195, 10 páginas). "ARREST/NOTICE TO APPEAR" entra antes al expediente (Civitek
+    # baja por orden de Doc #), así que va de apoyo: se bajan los dos, y si no hay paquete
+    # (o tiene candado, como en Mack, 26CF000146), ese queda como principal.
+    documents=(r"^\s*arrest\s*,\s*booking\b",),
+    support=(r"^\s*arrest\s*/\s*notice to appear\b",),
+)
 HAMILTON = civitek("hamilton", "Hamilton County", "24")
 CALHOUN = civitek("calhoun", "Calhoun County", "07")
 FRANKLIN = civitek("franklin", "Franklin County", "19")

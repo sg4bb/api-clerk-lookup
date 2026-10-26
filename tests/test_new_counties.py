@@ -741,6 +741,27 @@ class UnionTest(unittest.TestCase):
         self.assertEqual(choose("marion", self.DANLOVICH), ([], []))
 
 
+class JeffersonTest(unittest.TestCase):
+    # Bhatt (Jefferson, 25CF000195) y Lazarus Mack (26CF000146, el paquete con candado).
+    BHATT = [(20, "10/21/2025", "ARREST, BOOKING,FIRST APPEARANCE,FILED"),
+             (12, "10/13/2025", "CONDITIONAL PLEA OF NOT GUILTY"),
+             (8, "10/10/2025", "ARREST/NOTICE TO APPEAR")]
+
+    def test_arrest_booking_package_first(self):
+        self.assertEqual(choose("jefferson", self.BHATT), ([20], [8]))
+
+    def test_modified_agency_number(self):
+        from core.lookup import agency_case_number
+        mack = [(18, "09/29/2026", "Agency Case Number modified: 26004082"),
+                (10, "08/24/2026", "ARREST, BOOKING,FIRST APPEARANCE,FILED")]
+        self.assertEqual(agency_case_number(details_with_docket(mack)), "26004082")
+        both = mack + [(4, "08/18/2026", "Agency Case Number: 26-003999")]
+        self.assertEqual(agency_case_number(details_with_docket(both)), "26-003999")
+
+    def test_stays_in_jefferson(self):
+        self.assertEqual(choose("marion", self.BHATT), ([], []))
+
+
 class MadisonTest(unittest.TestCase):
     # Davis (26CF000227, FHP), McCray (26CF000193) y Barnhart (26CF000107).
     DAVIS = [(18, "09/03/2026", "CITATIONS"), (6, "09/01/2026", "ARREST REPORT - INITIATING CASE")]
