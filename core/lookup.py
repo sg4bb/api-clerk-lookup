@@ -459,6 +459,9 @@ _AGENCY_NUMBER_RE = re.compile(r"agency case number(?:\s+modified)?\s*:\s*([A-Z0
 # Dixie no anota "Agency Case Number": "Agency Citation 26OFF000169 filed on 2/27/2026"
 # (Reyes, 26CF000037). Solo el formato de reporte del Sheriff (..OFF..), no multas.
 _AGENCY_CITATION_RE = re.compile(r"agency citation\s*:?\s*(\d{2}OFF\d+)\b", re.I)
+# Hamilton tampoco: el número va en el nombre del informe, "ARREST REPORT--HCSO25OFF000413"
+# (Daniel, 25CF000073). Solo el formato de reporte del Sheriff (..OFF..).
+_ARREST_REPORT_NUMBER_RE = re.compile(r"^\s*arrest report\s*-+\s*([A-Z]{2,6}\d{1,2}OFF\d+)\b", re.I)
 
 
 def agency_case_number(details: CaseDetails) -> Optional[str]:
@@ -466,7 +469,7 @@ def agency_case_number(details: CaseDetails) -> Optional[str]:
 
     Si hay varios, el de la entrada más antigua: la que se cargó al abrir el caso.
     """
-    for pattern in (_AGENCY_NUMBER_RE, _AGENCY_CITATION_RE):   # el de siempre tiene prioridad
+    for pattern in (_AGENCY_NUMBER_RE, _AGENCY_CITATION_RE, _ARREST_REPORT_NUMBER_RE):   # en ese orden
         found = [(e.date or date.max, m.group(1).upper()) for e in details.docket
                  if (m := pattern.search(e.description or ""))]
         if found:

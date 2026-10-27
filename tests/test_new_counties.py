@@ -774,6 +774,27 @@ class GulfTest(unittest.TestCase):
         self.assertEqual(choose("marion", self.OTTOSON), ([], []))
 
 
+class HamiltonTest(unittest.TestCase):
+    # Josh Daniel (Hamilton, 25CF000073) y Joan Ellis (25CF000150, división B).
+    DANIEL = [(12, "05/06/2025", "FIRST APPEARANCE ORDER"), (9, "05/05/2025", "ARREST REPORT--HCSO25OFF000413")]
+    ELLIS = [(8, "08/18/2025", "FIRST APPEARANCE ORDER"), (6, "08/18/2025", "ARREST REPORT-HCSO25OFF000808")]
+
+    def test_arrest_report_with_number(self):
+        self.assertEqual(choose("hamilton", self.DANIEL), ([9], []))
+        self.assertEqual(choose("hamilton", self.ELLIS), ([6], []))
+
+    def test_report_number_from_the_document_name(self):
+        from core.lookup import agency_case_number
+        self.assertEqual(agency_case_number(details_with_docket(self.DANIEL)), "HCSO25OFF000413")
+        self.assertEqual(agency_case_number(details_with_docket(self.ELLIS)), "HCSO25OFF000808")
+        with_line = self.DANIEL + [(4, "05/05/2025", "Agency Case Number: 25-000413")]
+        self.assertEqual(agency_case_number(details_with_docket(with_line)), "25-000413")
+        self.assertIsNone(agency_case_number(details_with_docket([(9, "05/05/2025", "ARREST REPORT")])))
+
+    def test_stays_in_hamilton(self):
+        self.assertEqual(choose("marion", self.DANIEL), ([], []))
+
+
 class MadisonTest(unittest.TestCase):
     # Davis (26CF000227, FHP), McCray (26CF000193) y Barnhart (26CF000107).
     DAVIS = [(18, "09/03/2026", "CITATIONS"), (6, "09/01/2026", "ARREST REPORT - INITIATING CASE")]

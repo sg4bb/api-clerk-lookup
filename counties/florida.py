@@ -215,7 +215,12 @@ JEFFERSON = civitek(
     documents=(r"^\s*arrest\s*,\s*booking\b",),
     support=(r"^\s*arrest\s*/\s*notice to appear\b",),
 )
-HAMILTON = civitek("hamilton", "Hamilton County", "24")
+HAMILTON = civitek(
+    "hamilton", "Hamilton County", "24",
+    # "ARREST REPORT--HCSO25OFF000413": el informe del Sheriff, con el número de reporte en el
+    # nombre (Daniel, 25CF000073; Ellis, 25CF000150, a veces con un solo guion).
+    documents=(r"^\s*arrest report\b",),
+)
 CALHOUN = civitek("calhoun", "Calhoun County", "07")
 FRANKLIN = civitek("franklin", "Franklin County", "19")
 GLADES = civitek("glades", "Glades County", "22")
