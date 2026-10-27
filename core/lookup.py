@@ -21,7 +21,7 @@ from .browser import open_browser
 from .captcha import CaptchaHandler, CaptchaTimeout, LiveViewCaptcha, ManualLocalCaptcha
 from .county import CountyConfig
 from .charges import categorize
-from .matcher import pick_best, prelim_reasons, prelim_score, related_cases, resolve_same_incident, score_case
+from .matcher import INITIAL_NEAR_DAYS, pick_best, prelim_reasons, prelim_score, related_cases, resolve_same_incident, score_case
 from .models import CaseDetails, LookupQuery, LookupResult
 from .utils import last_name_variants, portal_text, today
 
@@ -167,7 +167,10 @@ def _combine(attempts: list[tuple[LookupQuery, LookupResult, list]]) -> LookupRe
 def closest_case(scored: list) -> Optional[dict]:
     """El mejor caso que no alcanzó el mínimo, si vale la pena mostrarlo."""
     valid = [(m, d) for m, d in scored if not m.disqualified and m.score >= CLOSEST_MIN
-             and (m.offense_gap is None or m.offense_gap <= CLOSEST_MAX_OFFENSE_GAP)]
+             and (m.offense_gap is None or m.offense_gap <= CLOSEST_MAX_OFFENSE_GAP
+                  # Ofensa de semanas antes, pero el arresto se anotó en la fecha de la nota
+                  # (Koepke, Gulf, 27/10/2026): es el caso, no otro hecho.
+                  or (m.initial_gap is not None and m.initial_gap <= INITIAL_NEAR_DAYS))]
     if not valid:
         return None
     return _closest_dict(*max(valid, key=lambda s: s[0].score))

@@ -184,7 +184,12 @@ DIXIE = civitek(
     # (Buck, 25MM000190: máquinas de juego).
     support=(r"^\s*affidavit for search warrant\b",),
 )
-GULF = civitek("gulf", "Gulf County", "23")
+GULF = civitek(
+    "gulf", "Gulf County", "23",
+    # "COMPLAINT/PC; ARREST REPORT; 1ST. APP. ORDER": la denuncia con la causa probable, el
+    # informe de arresto y la primera audiencia en un solo PDF (Harris Ottoson, 25CF000090, Doc #8).
+    documents=(r"^\s*complaint\s*/\s*pc\b", r"^\s*arrest report\b"),
+)
 UNION = civitek(
     "union", "Union County", "63",
     # "ARREST REPORT" del Sheriff (UCSO..ARR, con el número UCSO..OFF): Danlovich, 20CF000050.

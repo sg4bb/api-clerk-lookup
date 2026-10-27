@@ -111,7 +111,7 @@ def safe_filename(name: str, max_length: int = 100) -> str:
     return stem[:max_length - len(ext) - 1].rstrip(" ._-") + "." + ext
 
 
-MAX_SURNAME_VARIANTS = 5
+MAX_SURNAME_VARIANTS = 6
 
 
 def last_name_variants(last_name: str) -> list[str]:
@@ -127,11 +127,24 @@ def last_name_variants(last_name: str) -> list[str]:
         # "O'Brien" -> ["O'Brien", "OBrien", "O Brien"]. Visto en Sumter (Civitek,
         # 13/10/2026): con el apóstrofo el portal devuelve el formulario vacío.
         variants = [original, original.replace("'", ""), " ".join(original.replace("'", " ").split())]
+        words = original.split()
+        if len(words) >= 2:
+            # El segundo nombre pegado delante ("Timothy Carson O'Bryan" -> "Carson O'Bryan";
+            # el portal tiene O'BRYAN, TIMOTHY CARSON: Gulf, 27/10/2026): sin la primera
+            # palabra, con y sin apóstrofo, y al final la primera sola.
+            tails = ([" ".join(words[1:])] if len(words) >= 3 else []) + [words[-1]]
+            for tail in tails:
+                variants += [tail, tail.replace("'", "")]
+            variants.append(words[0])
     else:
         parts = [p for p in re.split(r"[\s\-]+", original) if p]
         if len(parts) < 2:
             return [original]
         variants = [original, "".join(parts), "-".join(parts), " ".join(parts),
+                    # Con tres palabras o más, sin la primera: el segundo nombre pegado delante de
+                    # un apellido compuesto ("Parker Eugene Harris Ottoson" -> "Eugene Harris
+                    # Ottoson"; el portal tiene HARRIS OTTOSON, PARKER EUGENE: Gulf, 27/10/2026).
+                    *([" ".join(parts[1:])] if len(parts) >= 3 else []),
                     # Al final, cada palabra sola: el modelo a veces pega el segundo nombre
                     # al apellido ("Kurtis Conan Koepke" -> "Conan Koepke"; el portal tiene
                     # KOEPKE, KURTIS CONAN: Gulf, 24/10/2026) y algunos portales guardan

@@ -359,6 +359,15 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
             score -= 10
             reasons.append(f"fecha de arresto lejana ({gap} días)")
 
+    # Arresto anotado ("Initial") cerca de la fecha de la nota aunque la nota no dé la
+    # del arresto: solo informa (no suma), y deja mostrar el caso como el más cercano
+    # cuando la ofensa es de semanas antes (Koepke, Gulf: material enviado el 10/08,
+    # allanamiento y arresto el 11/09, "Initial" el 15/09).
+    initial_gap = _initial_gap(query, details)
+    if arrest_gap is None and initial_gap is not None and initial_gap <= INITIAL_NEAR_DAYS:
+        checks.append({"ok": True, "text": "Arrest recorded on the story's date" if initial_gap == 0
+                       else f"Arrest recorded {_plural(initial_gap, 'day')} from the story's date"})
+
     # Sin fechas en los cargos: la fecha en que se abrió el caso.
     filed = _filed_points(query, details)
     if filed:
@@ -421,7 +430,19 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
     reasons.append(f"{max(score, 0)}/{possible} puntos posibles")
     # Lo que coincide primero, después lo que no (así se lee en la web).
     checks = [c for c in checks if c["ok"]] + [c for c in checks if not c["ok"]]
-    return MatchScore(min(confidence, 100), reasons, checks=checks, offense_gap=offense_gap)
+    return MatchScore(min(confidence, 100), reasons, checks=checks, offense_gap=offense_gap,
+                      initial_gap=initial_gap)
+
+
+INITIAL_NEAR_DAYS = 7
+
+
+def _initial_gap(query: LookupQuery, details: CaseDetails) -> Optional[int]:
+    anchor = query.arrest_date or query.incident_date
+    dates = [c.initial_date for c in details.charges if getattr(c, "initial_date", None)]
+    if not anchor or not dates:
+        return None
+    return min(abs((d - anchor).days) for d in dates)
 
 
 def _charge_list(details: CaseDetails, only: Optional[set] = None, limit: int = 2) -> str:

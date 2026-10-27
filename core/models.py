@@ -107,6 +107,8 @@ class MatchScore:
     checks: list[dict[str, Any]] = field(default_factory=list)
     # Días entre la ofensa más cercana y el incidente del artículo (None si no hay fechas).
     offense_gap: Optional[int] = None
+    # Días entre la fecha "Initial" (arresto, en Civitek) más cercana y la fecha de la nota.
+    initial_gap: Optional[int] = None
 
 
 @dataclass

@@ -762,6 +762,18 @@ class JeffersonTest(unittest.TestCase):
         self.assertEqual(choose("marion", self.BHATT), ([], []))
 
 
+class GulfTest(unittest.TestCase):
+    # Parker Harris Ottoson (Gulf, 25CF000090, Doc #8).
+    OTTOSON = [(13, "05/27/2025", "BOND FILED"), (12, "05/27/2025", "JAIL RELEASE TICKET"),
+               (8, "05/09/2025", "COMPLAINT/PC; ARREST REPORT; 1ST. APP. ORDER")]
+
+    def test_complaint_pc_package(self):
+        self.assertEqual(choose("gulf", self.OTTOSON), ([8], []))
+
+    def test_stays_in_gulf(self):
+        self.assertEqual(choose("marion", self.OTTOSON), ([], []))
+
+
 class MadisonTest(unittest.TestCase):
     # Davis (26CF000227, FHP), McCray (26CF000193) y Barnhart (26CF000107).
     DAVIS = [(18, "09/03/2026", "CITATIONS"), (6, "09/01/2026", "ARREST REPORT - INITIATING CASE")]

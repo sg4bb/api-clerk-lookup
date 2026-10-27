@@ -283,3 +283,41 @@ class JuvenileTest(unittest.TestCase):
     def test_minor_charged_as_adult_is_still_found(self):
         result, _ = run([query("Mark", "Jones", age=17)], {"Jones": [JONES_FOUND]})
         self.assertEqual(result.status, "found")
+
+
+class InitialNearStoryTest(unittest.TestCase):
+    """Koepke (Gulf, 27/10/2026): ofensa 10/08 (envío del material), allanamiento y arresto el
+    11/09 según la nota, "Initial" 15/09. Antes no salía ni como caso más cercano."""
+
+    def koepke(self, number, offense, initial, description):
+        candidate = CaseCandidate(number, "KOEPKE, KURTIS CONAN", "Felony 23-D", "OPEN", None, initial, "x")
+        return CaseDetails(candidate, charges((offense, initial, description)), [])
+
+    def test_shown_as_closest(self):
+        q = LookupQuery(first_name="Kurtis", last_name="Koepke", county="gulf", state="FL",
+                        incident_date=date(2026, 9, 11),
+                        charges=["Possession of 10 or More Child Sexual Abuse Material Items"])
+        main = self.koepke("26000172CFAXMX", date(2026, 8, 10), date(2026, 9, 15),
+                           "POSSESS 10 OR MORE CHILD PORN IMAGE F2 OFFENSE")
+        other = self.koepke("26000177CFAXMX", date(2024, 9, 11), date(2026, 9, 28),
+                            "VIDEO VOYEURISM 24 YOA OR OLDER CHILD LESS THAN 16")
+        result, _ = run([q], {"Koepke": [main, other]})
+        self.assertEqual(result.status, "not_found")
+        self.assertEqual(result.closest["case_number"], "26000172CFAXMX")
+        self.assertIn({"ok": True, "text": "Arrest recorded 4 days from the story's date"},
+                      result.closest["checks"])
+
+
+class ApostropheCompoundTest(unittest.TestCase):
+    def test_middle_name_glued_to_an_apostrophe_surname(self):
+        """Gulf (27/10/2026): qwen3 dio "Carson O'Bryan"; el portal tiene O'BRYAN, TIMOTHY CARSON."""
+        from core.utils import last_name_variants
+        self.assertEqual(last_name_variants("Carson O'Bryan"),
+                         ["Carson O'Bryan", "Carson OBryan", "Carson O Bryan", "O'Bryan", "OBryan", "Carson"])
+        self.assertEqual(last_name_variants("O'Brien"), ["O'Brien", "OBrien", "O Brien"])
+        q = LookupQuery(first_name="Timothy", last_name="Carson O'Bryan", county="gulf", state="FL",
+                        arrest_date=date(2025, 10, 6))
+        candidate = CaseCandidate("25000180CFAXMX", "O'BRYAN, TIMOTHY CARSON", "Felony", "OPEN", None,
+                                  date(2025, 10, 7), "x")
+        match = score_case(q, CaseDetails(candidate, [], []))
+        self.assertFalse(match.disqualified, match.reasons)

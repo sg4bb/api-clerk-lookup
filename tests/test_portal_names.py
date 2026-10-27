@@ -51,6 +51,23 @@ class GluedMiddleNameTest(unittest.TestCase):
         self.assertEqual(match.score, 100)
 
 
+class GluedMiddleNameCompoundTest(unittest.TestCase):
+    def test_middle_name_in_front_of_a_compound_surname(self):
+        """Gulf (27/10/2026): qwen dio "Eugene Harris Ottoson"; el portal tiene HARRIS OTTOSON, PARKER EUGENE."""
+        from core.matcher import score_case
+        from core.models import CaseCandidate, CaseDetails
+        variants = last_name_variants("Eugene Harris Ottoson")
+        self.assertEqual(variants[3], "Harris Ottoson")
+        self.assertEqual(variants[4:], ["Ottoson", "Eugene"])
+        q = LookupQuery(first_name="Parker", last_name="Eugene Harris Ottoson", county="gulf", state="FL",
+                        arrest_date=date(2025, 5, 8))
+        candidate = CaseCandidate("25000090CFAXMX", "HARRIS OTTOSON, PARKER EUGENE", "Felony", "OPEN", None,
+                                  date(2025, 5, 9), "x")
+        match = score_case(q, CaseDetails(candidate, [], []))
+        self.assertFalse(match.disqualified, match.reasons)
+        self.assertIn("nombre exacto", match.reasons)
+
+
 class SearchFormTest(unittest.TestCase):
     """Caso real (Orange, 2021-CF-015656-A-O): la noticia dice 'José Alberto González
     Delgado'; el portal solo lo encuentra como 'Jose' / 'Gonzalez Delgado'."""
