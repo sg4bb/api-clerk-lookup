@@ -120,8 +120,8 @@ de `counties/florida.py`, para que no los tome otro condado.
 | Calhoun | 13.700 | 07 | Sí ("probable cause affidavit" o "arrest report - initiating case" del Sheriff; "first appearance arrest packet" de apoyo) | Hecho (28/10/2026). Probado: Pierce (tercera persona de la nota), Bailey, Elrod (26CF000094 sale como mismo arresto), Glaze (arrest report + first appearance arrest packet). Reagan: lo arrestó Jackson y su caso está en Jackson |
 | Franklin | 13.321 | 19 | Sí ("probable cause filed": Warrantless Arrest Probable Cause Statement con la narración; "arrest/booking report - initiating case" = ficha de la cárcel, de apoyo, y principal si no hay causa probable) | Hecho (28/10/2026). Probado: Keith (causa probable + ficha), Reed (arresto con orden: solo la ficha; con la categoría de cargos "threats"), Alexander-Davis. Nowling: orden de Liberty, solo lo detuvieron en Franklin |
 | Glades | 12.815 | 22 | Sí ("booking report": informe del Sheriff con número de reporte, CAD y la causa probable, como en Hendry) | Hecho (28/10/2026). Probado: Kolotka (booking report del MM del arresto; empataba con los CF de hurto abiertos después y se resuelve por la fecha "Initial"), Telci (orden servida en la cárcel: el booking report es el de la orden). Rivers (citación de FWC, sin informe: nulo), Johnson (CSAM, sin informe publicado: nulo) |
-| Lafayette | 8.504 | 34 | En parte | |
-| Liberty | 8.016 | 39 | Sin verificar | |
+| Lafayette | 8.504 | 34 | En parte | Configurado (28/10/2026), con los nombres genéricos; en prueba |
+| Liberty | 8.016 | 39 | Sin verificar | Configurado (28/10/2026), con los nombres genéricos; en prueba. Nowling (orden de Liberty, detenido en Franklin) es un buen caso para probar |
 
 ### Lote 2 — BenchmarkWeb
 

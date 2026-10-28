@@ -67,7 +67,8 @@ class ConfigTest(unittest.TestCase):
                           ("baker", "02"), ("bradford", "04"), ("washington", "67"), ("hardee", "25"),
                           ("holmes", "30"), ("gilchrist", "21"), ("madison", "40"), ("dixie", "15"),
                           ("gulf", "23"), ("union", "63"), ("jefferson", "33"), ("hamilton", "24"),
-                          ("calhoun", "07"), ("franklin", "19"), ("glades", "22")):
+                          ("calhoun", "07"), ("franklin", "19"), ("glades", "22"),
+                          ("lafayette", "34"), ("liberty", "39")):
             county = get_county(key, "FL")
             self.assertEqual(county.base_url, f"https://www.civitekflorida.com/ocrs/county/{code}/")
             self.assertEqual(county.platform, "civitek_ocrs")
@@ -92,6 +93,7 @@ class ConfigTest(unittest.TestCase):
                             ("Calhoun County Sheriff's Office", "calhoun"), ("Blountstown Police Department", "calhoun"),
                             ("Franklin County Sheriff's Office", "franklin"), ("Apalachicola Police Department", "franklin"),
                             ("Glades County Sheriff's Office", "glades"), ("Moore Haven Police Department", "glades"),
+                            ("Lafayette County Sheriff's Office", "lafayette"), ("Liberty County Sheriff's Office", "liberty"),
                             ("Jacksonville Sheriff's Office", "duval")):
             self.assertEqual(florida.AGENCY_TO_COUNTY.get(normalize_agency(agency)), key, agency)
 
@@ -176,7 +178,9 @@ class LocationTest(unittest.TestCase):
                                      ("Lake Butler", None, "union"), ("Monticello", None, "jefferson"),
                                      ("Jasper", None, "hamilton"), ("White Springs", None, "hamilton"),
                                      ("Blountstown", None, "calhoun"), ("Apalachicola", None, "franklin"),
-                                     ("St. George Island", None, "franklin"), ("Moore Haven", None, "glades")):
+                                     ("St. George Island", None, "franklin"), ("Moore Haven", None, "glades"),
+                                     ("Mayo", None, "lafayette"), ("Bristol", None, "liberty"),
+                                     ("Hosford", None, "liberty")):
             aq = build_query(extraction(county=None, city=city, agency=agency), ARTICLE)
             self.assertEqual(aq.query.county, county, (city, agency))
 

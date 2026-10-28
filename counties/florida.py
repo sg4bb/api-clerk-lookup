@@ -243,6 +243,9 @@ GLADES = civitek(
     # sección "Probable Cause" con la narración (Telci, 25000121CFMXAX, Doc #19). Igual que Hendry.
     documents=(r"^\s*booking report\b",),
 )
+# Lote 6. Con los nombres genéricos de Civitek hasta ver sus dockets.
+LAFAYETTE = civitek("lafayette", "Lafayette County", "34")
+LIBERTY = civitek("liberty", "Liberty County", "39")
 
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
@@ -272,6 +275,8 @@ COUNTIES: dict[str, CountyConfig] = {
     CALHOUN.key: CALHOUN,
     FRANKLIN.key: FRANKLIN,
     GLADES.key: GLADES,
+    LAFAYETTE.key: LAFAYETTE,
+    LIBERTY.key: LIBERTY,
 }
 
 
@@ -352,6 +357,9 @@ CITY_TO_COUNTY: dict[str, str] = {
     "st george island": "franklin", "saint george island": "franklin", "alligator point": "franklin",
     "moore haven": "glades", "buckhead ridge": "glades", "lakeport": "glades", "ortona": "glades",
     "muse": "glades",
+    # Ojo: "Day" (el pueblo de Lafayette) no se agrega: es una palabra común.
+    "mayo": "lafayette",
+    "bristol": "liberty", "hosford": "liberty", "sumatra": "liberty", "telogia": "liberty",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
     "kissimmee": "osceola", "st cloud": "osceola", "saint cloud": "osceola", "poinciana": "osceola",
@@ -402,6 +410,7 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "calhoun county so": "calhoun", "blountstown pd": "calhoun",
     "franklin county so": "franklin", "apalachicola pd": "franklin", "carrabelle pd": "franklin",
     "glades county so": "glades", "moore haven pd": "glades",
+    "lafayette county so": "lafayette", "liberty county so": "liberty",
     "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
