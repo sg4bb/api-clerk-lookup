@@ -94,6 +94,12 @@ def run_article(
         searched = florida.ALL_COUNTIES.get(aq.query.county)
         if searched and _county_key(extraction.county) != aq.query.county:
             result.extraction["county"] = searched
+        # La fecha que el modelo puso como incidente o arresto y era la de la condena no se
+        # muestra como tal (ver build_query): con ella no se buscó.
+        court = {str(d) for d in aq.query.court_dates}
+        for key in ("incident_date", "arrest_date"):
+            if (result.extraction.get(key) or "")[:10] in court:
+                result.extraction[key] = None
         result.query, result.notes, result.warnings = _jsonable(asdict(aq.query)), aq.notes, aq.warnings
         # Los demás arrestados del artículo, por si el primero no da con el caso
         # (solo si nadie eligió a una persona en particular).

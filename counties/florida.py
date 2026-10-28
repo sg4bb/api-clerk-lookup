@@ -245,7 +245,12 @@ GLADES = civitek(
 )
 # Lote 6. Con los nombres genéricos de Civitek hasta ver sus dockets.
 LAFAYETTE = civitek("lafayette", "Lafayette County", "34")
-LIBERTY = civitek("liberty", "Liberty County", "39")
+LIBERTY = civitek(
+    "liberty", "Liberty County", "39",
+    # "PROBABLE CAUSE" a secas: la causa probable del arresto, cargada el día de la primera
+    # audiencia (Cox, 25000066CFMXAX, 09/06/2025). Exacto, para no tomar "... probable cause hearing".
+    documents=(r"^\s*probable cause\s*$",),
+)
 
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,

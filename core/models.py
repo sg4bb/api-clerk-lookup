@@ -42,6 +42,10 @@ class LookupQuery:
     # Fecha a la que corresponde "age" (la publicación del artículo). Una nota
     # de sentencia dice la edad actual, no la que tenía en el incidente.
     age_as_of: Optional[date] = None
+    # Fechas de veredicto, declaración de culpa, condena o sentencia que da la nota
+    # ("convicted on June 30", "sentenced today"). En las notas de condena suele ser
+    # la única fecha: se compara con la fecha "Court" de los cargos y fija la búsqueda.
+    court_dates: list[date] = field(default_factory=list)
     # Los artículos casi nunca traen el segundo nombre; por defecto se usa
     # solo para puntuar, no para filtrar la búsqueda.
     use_middle_name_in_search: bool = False
@@ -74,6 +78,8 @@ class Charge:
     # Civitek: fecha "Initial" del cargo (en la práctica, la del arresto; la
     # fecha de ofensa a veces viene mal cargada). Solo suma en el puntaje.
     initial_date: Optional[date] = None
+    # Civitek: fecha "Court" del cargo (la disposición: "Adjudicated Guilty", "Dismissed"...).
+    court_date: Optional[date] = None
 
 
 @dataclass

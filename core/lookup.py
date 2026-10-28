@@ -32,6 +32,9 @@ StatusCallback = Callable[[str], None]
 
 
 WARRANT_LEAD_DAYS = 30   # ver search_window
+# Solo hay fecha de condena o sentencia: el caso se abrió antes, a veces años antes
+# (Cox, Liberty: abierto 09/06/2025, condena 30/06/2026; Rivers, Glades: unos dos años).
+COURT_LOOKBACK_DAYS = 3 * 365
 
 
 def search_window(query: LookupQuery, county: CountyConfig) -> tuple[Optional[date], Optional[date]]:
@@ -49,6 +52,9 @@ def search_window(query: LookupQuery, county: CountyConfig) -> tuple[Optional[da
         if not query.arrest_date and published_limit:
             date_to = max(date_to, published_limit)
         return query.date_from, min(date_to, today())
+    if not start_anchor and query.court_dates:
+        return (min(query.court_dates) - timedelta(days=COURT_LOOKBACK_DAYS),
+                min(max(query.court_dates) + timedelta(days=1), today()))
     if not start_anchor:
         if not query.approx_date:
             return None, None

@@ -106,6 +106,17 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
 
     incident = _valid_date(extraction.incident_date, article.published, "incident_date", warnings)
     arrest = _valid_date(extraction.arrest_date, article.published, "arrest_date", warnings)
+    court = sorted({d for d in (_valid_date(v, article.published, "court_date", warnings)
+                                for v in extraction.court_dates) if d})
+    # En una nota de condena el modelo puede poner la fecha del veredicto como la del hecho
+    # (Cox, Liberty, 28/10/2026: "On June 30, 2026, Cox was convicted" -> incident_date 2026-06-30).
+    # Un crimen y su condena nunca son el mismo día.
+    if incident and incident in court:
+        warnings.append(f"La fecha del incidente ({incident}) es la de la condena o sentencia; la descarto")
+        incident = None
+    if arrest and arrest in court:
+        warnings.append(f"La fecha de arresto ({arrest}) es la de la condena o sentencia; la descarto")
+        arrest = None
 
     # "back in 2022" o "in June 2023": no hay día exacto. Se busca en todo ese
     # período en vez de fingir un 1 de enero o un 1 de junio.
@@ -122,7 +133,10 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
         warnings.append(f"La fecha de arresto ({arrest}) es anterior al incidente ({incident}); la descarto")
         arrest = None
     approx = None
-    if not incident and not arrest and not date_from:
+    if court and not incident and not arrest and not date_from:
+        notes.append(f"fecha: solo hay fecha de condena o sentencia ({', '.join(map(str, court))}); "
+                     "busco casos abiertos antes")
+    elif not incident and not arrest and not date_from:
         approx = article.published
         warnings.append("El artículo no da fecha del incidente ni del arresto: busco en el mes previo a la publicación"
                         if approx else "Sin ninguna fecha: la búsqueda puede toparse con el límite de 500 resultados")
@@ -137,6 +151,7 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
         state="FL",
         incident_date=incident,
         arrest_date=arrest,
+        court_dates=court,
         age=person.age,
         agency=extraction.agency,
         charges=extraction.charges,
@@ -222,7 +237,7 @@ def _published_is_wrong(extraction: Extraction, article: Article) -> bool:
     if str(published.year) in text:
         return False
     later = []
-    for value in (extraction.incident_date, extraction.arrest_date):
+    for value in (extraction.incident_date, extraction.arrest_date, *extraction.court_dates):
         try:
             parsed = date.fromisoformat((value or "")[:10])
         except ValueError:

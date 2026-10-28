@@ -163,6 +163,9 @@ _INITIAL_RE = re.compile(r"initial\s*:\s*" + _DATE, re.I)
 # "...Prosecutor:09/03/2026Consolidated782.04.2 / ..." o "...Prosecutor:10/05/2026Filed..."
 _PROSECUTOR_RE = re.compile(r"prosecutor\s*:?\s*\d{1,2}/\d{1,2}/\d{4}\s*([a-z][a-z ]*?)(?=\d|$)", re.I)
 _ARREST_RE = re.compile(r"arrest\s*date\D{0,25}?" + _DATE, re.I)
+# "...LESS THAN 200Court:06/30/2026Adjudicated Guilty893.135.1f1 / ...": la disposición del cargo.
+# Va pegado al texto anterior (sin \b). "Transferred to Another Court893..." no lleva ":" ni fecha.
+_COURT_RE = re.compile(r"court\s*:\s*" + _DATE, re.I)
 _AGENCY_RE = re.compile(r"(?:arresting\s+)?agency\s*:?\s*([A-Z][A-Z0-9 .'&/-]{3,60}?)(?=\s{2,}|\s+[A-Z][a-z]|$)", re.I)
 
 
@@ -246,6 +249,7 @@ def charges_from_case(data: dict) -> list[Charge]:
         arrest = _ARREST_RE.search(detail)
         agency = _AGENCY_RE.search(detail)
         initial = _INITIAL_RE.search(detail)
+        court = _COURT_RE.search(detail)
         charges.append(Charge(
             offense_date=parse_us_date(offense.group(1)) if offense else None,
             description=col(cells, "description"),
@@ -254,6 +258,7 @@ def charges_from_case(data: dict) -> list[Charge]:
             agency=agency.group(1).strip() if agency else None,
             control_number=None,
             initial_date=parse_us_date(initial.group(1)) if initial else None,
+            court_date=parse_us_date(court.group(1)) if court else None,
         ))
     return charges
 

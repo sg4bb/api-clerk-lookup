@@ -9,7 +9,7 @@ Los pesos son un punto de partida; los ajustamos con casos reales.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from difflib import SequenceMatcher
 import re
 from typing import Callable, Optional
@@ -25,6 +25,12 @@ MIN_MARGIN = 15     # ventaja mínima (en puntos %) sobre el segundo mejor
 W_NAME, W_MIDDLE, W_OFFENSE, W_ARREST, W_AGENCY, W_AGE, W_CHARGES = 30, 5, 25, 15, 20, 10, 15
 # Solo cuenta si los cargos no traen fechas de ofensa ni de arresto (Civitek).
 W_FILED = 15
+# Fecha de condena o sentencia de la nota contra la fecha "Court" de los cargos (Civitek).
+# Solo cuenta si el caso trae esa fecha: un portal que no la muestra (Orange) no pierde nada.
+W_COURT = 20
+COURT_NEAR_DAYS = 3      # coincide (puntos completos)
+COURT_CLOSE_DAYS = 45    # veredicto y sentencia en días distintos (la mitad)
+COURT_FAR_DAYS = 180     # más lejos: es la condena de otro caso (resta)
 
 _AGENCY_ALIASES = {
     "police department": "pd",
@@ -254,7 +260,25 @@ def max_points(query: LookupQuery, details: CaseDetails) -> int:
     # tenga ninguno reconocible: así un caso de otra cosa (una multa) no gana solo por el nombre.
     total += W_CHARGES if categorize(query.charges) and any(x.description for x in details.charges) else 0
     total += W_FILED if _filed_points(query, details) is not None else 0
+    total += W_COURT if _court_gap(query, details) is not None else 0
     return total
+
+
+def _court_gap(query: LookupQuery, details: CaseDetails) -> Optional[int]:
+    """Días entre la fecha de condena de la nota y la fecha "Court" más cercana del caso.
+
+    Las fechas "Court" posteriores a la nota no cuentan: son de después (una apelación,
+    una nueva sentencia) y no lo que cuenta la nota (Rivers, Glades: nota de noviembre
+    de 2025, "Court" del CF en julio de 2026). None si falta alguno de los dos lados.
+    """
+    if not query.court_dates:
+        return None
+    limit = query.published_date + timedelta(days=3) if query.published_date else None
+    dates = [c.court_date for c in details.charges
+             if getattr(c, "court_date", None) and (not limit or c.court_date <= limit)]
+    if not dates:
+        return None
+    return min(abs((d - q).days) for d in dates for q in query.court_dates)
 
 
 def _day(d: date) -> str:
@@ -367,6 +391,26 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
     if arrest_gap is None and initial_gap is not None and initial_gap <= INITIAL_NEAR_DAYS:
         checks.append({"ok": True, "text": "Arrest recorded on the story's date" if initial_gap == 0
                        else f"Arrest recorded {_plural(initial_gap, 'day')} from the story's date"})
+
+    # Fecha de condena o sentencia (notas de condena: muchas veces la única fecha).
+    court_gap = _court_gap(query, details)
+    if court_gap is not None:
+        if court_gap <= COURT_NEAR_DAYS:
+            score += W_COURT if court_gap == 0 else W_COURT - 5
+            reasons.append("fecha de condena coincide" if court_gap == 0
+                           else f"fecha de condena a {court_gap} día(s)")
+            checks.append({"ok": True, "text": "Court date matches" if court_gap == 0
+                           else f"Court date {_plural(court_gap, 'day')} from the story's"})
+        elif court_gap <= COURT_CLOSE_DAYS:
+            score += W_COURT // 2
+            reasons.append(f"fecha de condena a {court_gap} días")
+            checks.append({"ok": True, "text": f"Court date {_plural(court_gap, 'day')} from the story's"})
+        elif court_gap > COURT_FAR_DAYS:
+            score -= 15
+            reasons.append(f"fecha de condena lejana ({court_gap} días)")
+            checks.append({"ok": False, "text": f"Court date {_how_long(court_gap)} from the story's"})
+        else:
+            reasons.append(f"fecha de condena a {court_gap} días (no suma)")
 
     # Sin fechas en los cargos: la fecha en que se abrió el caso.
     filed = _filed_points(query, details)

@@ -122,6 +122,8 @@ def process(case: dict[str, Any], base_output: Path, dry_run: bool, suspect: int
     else:
         print(f"  Incidente:  entre {q.date_from} y {q.date_to}  ({aq.extraction.incident_date_evidence})")
     print(f"  Arresto:    {q.arrest_date}")
+    if q.court_dates:
+        print(f"  Condena:    {', '.join(map(str, q.court_dates))}")
     print(f"  Agencia:    {q.agency}   Condado: {q.county}")
     print(f"  Cargos:     {'; '.join(q.charges) or '-'}")
     for other in aq.others:

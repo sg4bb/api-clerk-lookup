@@ -50,16 +50,20 @@ of that month or year and set incident_date_precision to "month" or "year"; neve
 Otherwise set incident_date_precision to "day".
 3. arrest_date: YYYY-MM-DD, only if stated or clearly implied (e.g. "arrived as he was leaving \
 the store ... taken into custody" means the same day as the incident); otherwise null.
-4. agency: the agency that made the arrest (e.g. "Orlando Police Department").
-5. city: where the crime happened (datelines like "ORLANDO, Fla. -" count). state: two letters ("FL"). \
+4. court_dates: YYYY-MM-DD of each verdict, guilty plea, conviction or sentencing the article reports \
+(e.g. "was convicted on June 30" -> that day; "was sentenced today" -> the publication date). \
+A court date is NEVER the incident_date or the arrest_date: in an article about a conviction or a sentence \
+that does not say when the crime happened, incident_date is null. Empty list if the article reports none.
+5. agency: the agency that made the arrest (e.g. "Orlando Police Department").
+6. city: where the crime happened (datelines like "ORLANDO, Fla. -" count). state: two letters ("FL"). \
 county: if not stated, use the county of that city (Orlando -> Orange).
-6. charges: list each charge as the article words it.
-7. Never guess. Use null or an empty list when the article does not say it.
+7. charges: list each charge as the article words it.
+8. Never guess. Use null or an empty list when the article does not say it.
 
 Respond only with a JSON object with exactly this shape:
 {"people": [{"first_name": "...", "middle_name": null, "last_name": "...", "suffix": null, "age": 23, \
 "role": "arrested", "evidence": "..."}], "incident_date": "YYYY-MM-DD", "incident_date_evidence": "...", "incident_date_precision": "day", \
-"arrest_date": "YYYY-MM-DD", "city": "...", "county": "...", "state": "FL", "agency": "...", \
+"arrest_date": "YYYY-MM-DD", "court_dates": ["YYYY-MM-DD"], "city": "...", "county": "...", "state": "FL", "agency": "...", \
 "charges": ["..."], "summary": "..."}"""
 
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]

@@ -855,6 +855,13 @@ class LibertyTest(unittest.TestCase):
         # Sin documento principal, el de apoyo se descarga como principal.
         self.assertEqual(choose("liberty", self.NOWLING), ([], [4]))
 
+    def test_probable_cause_alone(self):
+        """Cox (25000066CFMXAX): "PROBABLE CAUSE" el 09/06/2025, entre 204 entradas."""
+        rows = [(80, "08/17/2026", "JUDGMENT AND SENTENCE (OR)"), (12, "06/09/2025", "FIRST APPEARANCE"),
+                (11, "06/09/2025", "PROBABLE CAUSE"), (10, "06/23/2026", "MOTION FOR PROBABLE CAUSE HEARING")]
+        self.assertEqual(choose("liberty", rows), ([11], []))
+        self.assertEqual(choose("marion", rows), ([], []))
+
     def test_agency_number(self):
         from core.lookup import agency_case_number
         from tests.test_civitek import details_with_docket

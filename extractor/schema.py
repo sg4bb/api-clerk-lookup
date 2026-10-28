@@ -34,9 +34,20 @@ class Extraction(BaseModel):
     incident_date_precision: Optional[Literal["day", "month", "year"]] = Field(
         None, description="'day' if the article gives the exact day; 'month' or 'year' if it only gives that")
     arrest_date: Optional[str] = Field(None, description="YYYY-MM-DD date of the arrest, if stated or clearly implied")
+    court_dates: list[str] = Field(
+        default_factory=list,
+        description="YYYY-MM-DD dates of a verdict, guilty plea, conviction or sentencing reported in the article")
     city: Optional[str] = None
     county: Optional[str] = Field(None, description="County of the incident, e.g. 'Orange'")
     state: Optional[str] = Field(None, description="Two-letter state code, e.g. 'FL'")
     agency: Optional[str] = Field(None, description="Law enforcement agency that made the arrest")
     charges: list[str] = Field(default_factory=list, description="Each charge as written in the article")
     summary: Optional[str] = Field(None, description="One sentence describing the crime")
+
+    @field_validator("court_dates", mode="before")
+    @classmethod
+    def _court_dates_may_be_missing(cls, value):
+        # Un modelo que no conoce el campo, o que manda null o una sola fecha suelta.
+        if value is None:
+            return []
+        return [value] if isinstance(value, str) else value
