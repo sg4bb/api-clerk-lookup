@@ -842,6 +842,25 @@ class GladesTest(unittest.TestCase):
         self.assertEqual(choose("marion", self.TELCI), ([], []))
 
 
+class LibertyTest(unittest.TestCase):
+    # Nowling (Liberty, 26000069CFMXAX), arresto con orden: "WARRANT AFFIDAVIT & SERVED WARRANT" trae la
+    # orden, el informe del ayudante con la narración (reporte 26000521) y la hora en que la sirvieron.
+    NOWLING = [(14, "06/16/2026", "NO INFORMATION"), (13, "05/30/2026", "Agency Case Number modified: 44057"),
+               (5, "05/20/2026", "FIRST APPEARANCE ORDER"), (4, "05/20/2026", "WARRANT AFFIDAVIT & SERVED WARRANT")]
+    # McKnight (26000119CFMXAX), arresto en el momento: el "PC Affidavit" del Sheriff (LCSO26ARR000009).
+    MCKNIGHT = [(5, "08/21/2026", "PROBABLE CAUSE AFFIDAVIT")]
+
+    def test_generic_names_are_enough(self):
+        self.assertEqual(choose("liberty", self.MCKNIGHT), ([5], []))
+        # Sin documento principal, el de apoyo se descarga como principal.
+        self.assertEqual(choose("liberty", self.NOWLING), ([], [4]))
+
+    def test_agency_number(self):
+        from core.lookup import agency_case_number
+        from tests.test_civitek import details_with_docket
+        self.assertEqual(agency_case_number(details_with_docket(self.NOWLING)), "44057")
+
+
 class ThreatsCategoryTest(unittest.TestCase):
     def test_reed_is_found(self):
         """Reed (Franklin, 23CF000207): mismos cargos que la nota, pero sin categoría quedaba en 57 %."""
