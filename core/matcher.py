@@ -484,6 +484,43 @@ def pick_best(
     return valid[0], "found"
 
 
+# --- Empate entre el caso del arresto y casos abiertos después --------------
+# Kolotka (Glades, 28/10/2026): la nota cuenta el arresto (salió vestido de mujer).
+# Empataban el MM del arresto (obstrucción con disfraz, "Initial" a 2 días) y los CF
+# de hurto de la misma investigación, con "Initial" 22 días después. Para pedir el
+# footage del arresto, el caso es el que registra el arresto en esa fecha.
+
+ARREST_NEAR_DAYS = 3     # "Initial" a esta distancia o menos: es el arresto de la nota
+ARREST_FAR_DAYS = 10     # los demás deben tenerla a más de esto (registrados después)
+
+
+def resolve_by_arrest_date(
+    scored: list[tuple[MatchScore, CaseDetails]],
+    min_score: int = MIN_SCORE,
+    min_margin: int = MIN_MARGIN,
+) -> Optional[tuple[MatchScore, CaseDetails]]:
+    """Desempata cuando solo uno de los casos empatados registra el arresto en la fecha de la nota.
+
+    Gana si su "Initial" está a ARREST_NEAR_DAYS días o menos y la de todos los demás
+    empatados está a más de ARREST_FAR_DAYS. Si a algún otro le falta la fecha, o hay
+    dos cerca, sigue el empate. None si no aplica.
+    """
+    valid = sorted((s for s in scored if not s[0].disqualified), key=lambda s: s[0].score, reverse=True)
+    if not valid or valid[0][0].score < min_score:
+        return None
+    top = valid[0][0].score
+    close = [s for s in valid if top - s[0].score < min_margin]
+    if len(close) < 2:
+        return None
+    near = [s for s in close if s[0].initial_gap is not None and s[0].initial_gap <= ARREST_NEAR_DAYS]
+    if len(near) != 1 or near[0][0].score < min_score:
+        return None
+    others = [s for s in close if s is not near[0]]
+    if all(s[0].initial_gap is not None and s[0].initial_gap > ARREST_FAR_DAYS for s in others):
+        return near[0]
+    return None
+
+
 # --- Varios casos del mismo arresto -----------------------------------------
 # Un mismo arresto a veces genera varios casos. Visto en Orange (CLARKEROSEN,
 # 03/08/2023): dos hurtos en el mismo 7-Eleven, con números de reporte

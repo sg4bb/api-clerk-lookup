@@ -237,7 +237,12 @@ FRANKLIN = civitek(
     documents=(r"^\s*probable cause filed\b",),
     support=(r"^\s*arrest\s*/\s*booking report\b",),
 )
-GLADES = civitek("glades", "Glades County", "22")
+GLADES = civitek(
+    "glades", "Glades County", "22",
+    # "BOOKING REPORT": el reporte del Sheriff (GCSO) con número de reporte, CAD, lugar y la
+    # sección "Probable Cause" con la narración (Telci, 25000121CFMXAX, Doc #19). Igual que Hendry.
+    documents=(r"^\s*booking report\b",),
+)
 
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,

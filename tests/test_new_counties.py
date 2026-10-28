@@ -824,6 +824,20 @@ class FranklinTest(unittest.TestCase):
         self.assertEqual(choose("marion", self.KEITH), ([], []))
 
 
+class GladesTest(unittest.TestCase):
+    # David Cengiz Telci (Glades, 25000121CFMXAX): orden servida en la cárcel; el informe del
+    # Sheriff con la causa probable sale como "BOOKING REPORT" (Doc #19).
+    TELCI = [(23, "10/01/2025", "RECORD OF FIRST APPEARANCE"), (20, "09/29/2025", "CAPIAS WAS SRVD"),
+             (19, "09/29/2025", "BOOKING REPORT"), (18, "09/29/2025", "RECORD OF FIRST APPEARANCE"),
+             (9, "08/29/2025", "STATE FILED INFORMATION")]
+
+    def test_booking_report_is_main(self):
+        self.assertEqual(choose("glades", self.TELCI), ([19], []))
+
+    def test_stays_in_glades(self):
+        self.assertEqual(choose("marion", self.TELCI), ([], []))
+
+
 class ThreatsCategoryTest(unittest.TestCase):
     def test_reed_is_found(self):
         """Reed (Franklin, 23CF000207): mismos cargos que la nota, pero sin categoría quedaba en 57 %."""

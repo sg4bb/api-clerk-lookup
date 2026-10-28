@@ -321,3 +321,54 @@ class ApostropheCompoundTest(unittest.TestCase):
                                   date(2025, 10, 7), "x")
         match = score_case(q, CaseDetails(candidate, [], []))
         self.assertFalse(match.disqualified, match.reasons)
+
+
+class ArrestDateTieBreakTest(unittest.TestCase):
+    """Kolotka (Glades, 28/10/2026): empataban el MM del arresto (72) y los CF de hurto (71 y 63)
+    abiertos después con la misma investigación."""
+
+    STORY = ["theft of not only the boat, but also a John Deere Gator UTV",
+             "two warrants out of Okeechobee County", "resisting an officer via disguise"]
+
+    def query(self):
+        return LookupQuery(first_name="Joshua", last_name="Kolotka", county="glades", state="FL",
+                           incident_date=date(2024, 4, 24), arrest_date=date(2024, 4, 24), charges=self.STORY)
+
+    def case(self, number, *rows):
+        candidate = CaseCandidate(number, "KOLOTKA, JOSHUA", "Felony", "CLOSED", None, None, "x")
+        return CaseDetails(candidate, charges(*rows), [])
+
+    def cases(self, arrest_initial=date(2024, 4, 26)):
+        return [
+            self.case("24000120MMMXAX", (date(2024, 4, 26), arrest_initial, "OBSTRUCT BY DISGUISED PERSON")),
+            self.case("24000077CFMXAX", (date(2024, 4, 21), date(2024, 5, 16), "BURGLARY OF A STRUCTURE"),
+                      (date(2024, 4, 21), date(2024, 5, 16), "PETIT THEFT 2ND DEGREE 3RD OR SUBSEQUENT OFFENSE")),
+            self.case("24000076CFMXAX", (date(2024, 3, 18), date(2024, 5, 16), "GRAND THEFT OF MOTOR VEHICLE"),
+                      (date(2024, 4, 18), date(2024, 6, 25), "BURGLARY OF DWELLING")),
+        ]
+
+    def test_case_with_the_arrest_wins(self):
+        from core.matcher import resolve_by_arrest_date
+        scored = [(score_case(self.query(), d), d) for d in self.cases()]
+        self.assertEqual(pick_best(scored)[1], "ambiguous", [(m.score, m.reasons) for m, _ in scored])
+        winner = resolve_by_arrest_date(scored)
+        self.assertEqual(winner[1].candidate.case_number, "24000120MMMXAX")
+
+    def test_end_to_end(self):
+        result, _ = run([self.query()], {"Kolotka": self.cases()})
+        self.assertEqual(result.case_number, "24000120MMMXAX")
+
+    def test_still_ambiguous_without_a_clear_arrest(self):
+        """Si el del "arresto" tampoco lo registra cerca de la nota, sigue el empate."""
+        from core.matcher import resolve_by_arrest_date
+        scored = [(score_case(self.query(), d), d) for d in self.cases(arrest_initial=date(2024, 5, 16))]
+        self.assertIsNone(resolve_by_arrest_date(scored))
+
+    def test_still_ambiguous_when_another_has_no_initial(self):
+        from core.matcher import resolve_by_arrest_date
+        cases = self.cases()
+        cases[1] = self.case("24000077CFMXAX", (date(2024, 4, 21), None, "BURGLARY OF A STRUCTURE"),
+                             (date(2024, 4, 21), None, "PETIT THEFT 2ND DEGREE 3RD OR SUBSEQUENT OFFENSE"))
+        scored = [(score_case(self.query(), d), d) for d in cases]
+        self.assertEqual(pick_best(scored)[1], "ambiguous")
+        self.assertIsNone(resolve_by_arrest_date(scored))

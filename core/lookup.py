@@ -21,7 +21,8 @@ from .browser import open_browser
 from .captcha import CaptchaHandler, CaptchaTimeout, LiveViewCaptcha, ManualLocalCaptcha
 from .county import CountyConfig
 from .charges import categorize
-from .matcher import INITIAL_NEAR_DAYS, pick_best, prelim_reasons, prelim_score, related_cases, resolve_same_incident, score_case
+from .matcher import (INITIAL_NEAR_DAYS, pick_best, prelim_reasons, prelim_score, related_cases,
+                      resolve_by_arrest_date, resolve_same_incident, score_case)
 from .models import CaseDetails, LookupQuery, LookupResult
 from .utils import last_name_variants, portal_text, today
 
@@ -344,6 +345,12 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
             status = "found"
             log.info("Los casos empatados son del mismo arresto; elijo %s",
                      winner[1].candidate.case_number)
+        else:
+            winner = resolve_by_arrest_date(scored)
+            if winner:
+                status = "found"
+                log.info("Solo %s registra el arresto en la fecha de la nota (Initial); lo elijo",
+                         winner[1].candidate.case_number)
     if not winner:
         return scored, LookupResult(status, candidates=summary,
                             message="No case on the portal matches the article closely enough" if status == "not_found"

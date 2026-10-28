@@ -1,6 +1,6 @@
 # clerk-lookup
 
-Servicio que recibe los datos de un caso y devuelve **un único** Incident Report / Arrest Affidavit desde el portal del Clerk of Courts del condado. Cubre Orange County, FL (myeClerk), y Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia, Jackson, Hendry, Okeechobee, Wakulla, Baker, Bradford, Washington, Hardee, Holmes, Gilchrist, Madison, Dixie, Union, Jefferson, Gulf, Hamilton y Calhoun, FL (Civitek OCRS, probados con casos reales; Holmes y Dixie no publican los affidavits y dan solo el número de reporte); la lista completa y el orden de los próximos está en `docs/condados_florida.md`. El CAPTCHA lo resuelve una persona: hoy en una ventana de tu PC y, más adelante, dentro del dashboard con un iframe.
+Servicio que recibe los datos de un caso y devuelve **un único** Incident Report / Arrest Affidavit desde el portal del Clerk of Courts del condado. Cubre Orange County, FL (myeClerk), y Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia, Jackson, Hendry, Okeechobee, Wakulla, Baker, Bradford, Washington, Hardee, Holmes, Gilchrist, Madison, Dixie, Union, Jefferson, Gulf, Hamilton, Calhoun, Franklin y Glades, FL (Civitek OCRS, probados con casos reales; Holmes y Dixie no publican los affidavits y dan solo el número de reporte); la lista completa y el orden de los próximos está en `docs/condados_florida.md`. El CAPTCHA lo resuelve una persona: hoy en una ventana de tu PC y, más adelante, dentro del dashboard con un iframe.
 
 ## Instalación (Windows)
 
@@ -91,7 +91,7 @@ core/
   documents.py  convierte lo que entrega un visor (TIFF, páginas) en PDF
 adapters/
   orange_myeclerk.py   portal de Orange
-  civitek_ocrs.py      Civitek OCRS (Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia, Jackson, Hendry, Okeechobee, Wakulla, Baker, Bradford, Washington, Hardee, Holmes, Gilchrist, Madison, Dixie, Union, Jefferson, Gulf, Hamilton, Calhoun y, con solo agregar la ficha, otros condados)
+  civitek_ocrs.py      Civitek OCRS (Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia, Jackson, Hendry, Okeechobee, Wakulla, Baker, Bradford, Washington, Hardee, Holmes, Gilchrist, Madison, Dixie, Union, Jefferson, Gulf, Hamilton, Calhoun, Franklin, Glades y, con solo agregar la ficha, otros condados)
 counties/
   florida.py    configuración por condado (URL, códigos, documentos)
 extractor/
