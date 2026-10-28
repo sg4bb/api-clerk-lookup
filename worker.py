@@ -61,10 +61,16 @@ def _ask_stop(*_: Any) -> None:
     log.info("Cierre pedido: termino el pedido actual y salgo")
 
 
+# El aviso de fuera de cobertura lleva la lista de condados ("covered: ...") y la web la
+# muestra como etiquetas; con 25 condados pasaba de 400 caracteres y, cortada, la web ya
+# no la reconocía (Pippins, Bay, 28/10/2026).
+SHORT_LIMIT = 2000
+
+
 def _short(message) -> str:
     """Primera línea del mensaje, acotada: es lo que verá el usuario."""
     lines = [line.strip() for line in str(message or "").splitlines() if line.strip()]
-    return lines[0][:400] if lines else ""
+    return lines[0][:SHORT_LIMIT] if lines else ""
 
 
 def handle(store: JobStore, job: dict[str, Any], base_output: Path) -> str:

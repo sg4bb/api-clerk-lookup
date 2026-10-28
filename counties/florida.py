@@ -230,7 +230,13 @@ CALHOUN = civitek(
     documents=(r"^\s*arrest report\b",),
     support=(r"^\s*first appearance arrest packet\b",),
 )
-FRANKLIN = civitek("franklin", "Franklin County", "19")
+FRANKLIN = civitek(
+    "franklin", "Franklin County", "19",
+    # "PROBABLE CAUSE FILED": la declaración de causa probable (Keith, 24CF000229, Doc #11).
+    # "ARREST/BOOKING REPORT - INITIATING CASE" es la ficha de la cárcel (Doc #10): de apoyo.
+    documents=(r"^\s*probable cause filed\b",),
+    support=(r"^\s*arrest\s*/\s*booking report\b",),
+)
 GLADES = civitek("glades", "Glades County", "22")
 
 COUNTIES: dict[str, CountyConfig] = {

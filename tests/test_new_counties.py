@@ -812,6 +812,40 @@ class CalhounTest(unittest.TestCase):
         self.assertEqual(choose("marion", self.GLAZE), ([], []))
 
 
+class FranklinTest(unittest.TestCase):
+    # Kolton Keith (Franklin, 24CF000229) y Alexander-Davis (24CF000262).
+    KEITH = [(12, "11/04/2024", "GIVEN FIRST APPEARANCE ON: 10/30/24"), (11, "10/30/2024", "PROBABLE CAUSE FILED"),
+             (10, "10/30/2024", "ARREST/BOOKING REPORT - INITIATING CASE")]
+
+    def test_probable_cause_with_booking_report_as_support(self):
+        self.assertEqual(choose("franklin", self.KEITH), ([11], [10]))
+
+    def test_stays_in_franklin(self):
+        self.assertEqual(choose("marion", self.KEITH), ([], []))
+
+
+class ThreatsCategoryTest(unittest.TestCase):
+    def test_reed_is_found(self):
+        """Reed (Franklin, 23CF000207): mismos cargos que la nota, pero sin categoría quedaba en 57 %."""
+        from datetime import date
+        from core.charges import categorize
+        from core.matcher import score_case
+        from core.models import CaseCandidate, CaseDetails, LookupQuery
+        from tests.test_people_and_closest import charges
+        story = ["corruption by threat against public safety", "making harassing telephone calls"]
+        self.assertEqual(categorize(story), {"threats"})
+        q = LookupQuery(first_name="David", last_name="Reed", county="franklin", state="FL",
+                        incident_date=date(2023, 12, 18), arrest_date=date(2023, 12, 27), charges=story)
+        candidate = CaseCandidate("23000207CFAXMX", "REED, DAVID", "Felony", "OPEN", None, date(2023, 12, 27), "x")
+        details = CaseDetails(candidate, charges(
+            (date(2023, 12, 23), date(2023, 12, 30), "WRITTEN THREATS TO KILL OR DO BODILY HARM"),
+            (date(2023, 12, 23), date(2023, 12, 30), "CORRUPTION BY THREAT AGST PUBLIC SERVANT"),
+            (date(2023, 12, 23), date(2023, 12, 30), "HARASSING TELEPHONE CALLS")), [])
+        match = score_case(q, details)
+        self.assertGreaterEqual(match.score, 60, match.reasons)
+        self.assertIn("cargos coinciden (threats)", match.reasons)
+
+
 class MadisonTest(unittest.TestCase):
     # Davis (26CF000227, FHP), McCray (26CF000193) y Barnhart (26CF000107).
     DAVIS = [(18, "09/03/2026", "CITATIONS"), (6, "09/01/2026", "ARREST REPORT - INITIATING CASE")]
@@ -826,3 +860,19 @@ class MadisonTest(unittest.TestCase):
 
     def test_stays_in_madison(self):
         self.assertEqual(choose("marion", self.DAVIS), ([], []))
+
+
+class CoverageMessageTest(unittest.TestCase):
+    """Pippins (Bay, 28/10/2026): con 25 condados el aviso se cortaba a 400 caracteres y la
+    web ya no podía separar la lista "(covered: ...)" para mostrarla como etiquetas."""
+
+    def test_full_list_reaches_the_web(self):
+        from extractor import OutOfScope, build_query
+        from tests.test_extractor import ARTICLE, extraction
+        from worker import _short
+        with self.assertRaises(OutOfScope) as ctx:
+            build_query(extraction(county="Bay", city="Panama City", agency="Bay County Sheriff's Office"), ARTICLE)
+        message = str(ctx.exception)
+        self.assertGreater(len(message), 400)
+        self.assertEqual(_short(message), message)
+        self.assertTrue(message.endswith(")."))

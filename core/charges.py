@@ -39,6 +39,9 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     "child": ("child", "minor"),
     "domestic": ("domestic", "dating violence"),
     "arson": ("arson",),
+    # Amenazas y acoso: "corruption by threat against a public servant", "harassing telephone
+    # calls", "written threats to kill" (Reed, Franklin, 28/10/2026: se quedaba en 57 %).
+    "threats": ("threat", "harass"),
     # Venta de tabaco o vapeadores a menores: "sale of tobacco to a minor" en la nota,
     # "SALE NICOTINE DEVICE TO PERSONS UNDER 21YOA" en el portal (Patel, Madison, 23/10/2026).
     "tobacco": ("tobacco", "nicotine", "vape", "vaping", "cigarette", "e cig"),
