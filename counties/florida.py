@@ -221,7 +221,15 @@ HAMILTON = civitek(
     # nombre (Daniel, 25CF000073; Ellis, 25CF000150, a veces con un solo guion).
     documents=(r"^\s*arrest report\b",),
 )
-CALHOUN = civitek("calhoun", "Calhoun County", "07")
+CALHOUN = civitek(
+    "calhoun", "Calhoun County", "07",
+    # Casi siempre "PROBABLE CAUSE AFFIDAVIT" (genérico: Pierce, Bailey, Elrod). A veces, en su
+    # lugar, "Arrest Report - Initiating Case" del Sheriff (número CCSO..OFF, hora y narración);
+    # el "FIRST APPEARANCE ARREST PACKET" (checklist, primera audiencia, indigencia) entra antes
+    # al expediente y va de apoyo (Glaze, 26CF000184: Doc #9 y #1).
+    documents=(r"^\s*arrest report\b",),
+    support=(r"^\s*first appearance arrest packet\b",),
+)
 FRANKLIN = civitek("franklin", "Franklin County", "19")
 GLADES = civitek("glades", "Glades County", "22")
 

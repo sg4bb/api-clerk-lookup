@@ -795,6 +795,23 @@ class HamiltonTest(unittest.TestCase):
         self.assertEqual(choose("marion", self.DANIEL), ([], []))
 
 
+class CalhounTest(unittest.TestCase):
+    # Glaze (Calhoun, 26CF000184) y Pierce (26CF000182, probable cause affidavit genérico).
+    GLAZE = [(10, "08/12/2026", "BOOKING REPORT"), (9, "08/12/2026", "Arrest Report - Initiating Case"),
+             (6, "08/12/2026", "CCSO ARREST TRANSMITTAL PACKET FORM"),
+             (1, "08/09/2026", "FIRST APPEARANCE ARREST PACKET")]
+    PIERCE = [(5, "08/05/2026", "FIRST APPEARANCE"), (2, "08/04/2026", "PROBABLE CAUSE AFFIDAVIT")]
+
+    def test_arrest_report_with_packet_as_support(self):
+        self.assertEqual(choose("calhoun", self.GLAZE), ([9], [1]))
+
+    def test_probable_cause_affidavit_still_works(self):
+        self.assertEqual(choose("calhoun", self.PIERCE), ([2], []))
+
+    def test_stays_in_calhoun(self):
+        self.assertEqual(choose("marion", self.GLAZE), ([], []))
+
+
 class MadisonTest(unittest.TestCase):
     # Davis (26CF000227, FHP), McCray (26CF000193) y Barnhart (26CF000107).
     DAVIS = [(18, "09/03/2026", "CITATIONS"), (6, "09/01/2026", "ARREST REPORT - INITIATING CASE")]
