@@ -372,3 +372,24 @@ class ArrestDateTieBreakTest(unittest.TestCase):
         scored = [(score_case(self.query(), d), d) for d in cases]
         self.assertEqual(pick_best(scored)[1], "ambiguous")
         self.assertIsNone(resolve_by_arrest_date(scored))
+
+
+class ShipleyChargesTest(unittest.TestCase):
+    def test_portal_abbreviations_count_as_drugs(self):
+        """Shipley (Liberty, 26000100CFMXAX): "cargos no comparables" con 79 %."""
+        from core.charges import categorize
+        self.assertEqual(categorize(["POSS INTENT SELL/MFG/DELIV CTRL SUB SCHEDULE I (F2)"]), {"drugs"})
+        self.assertEqual(categorize(["POSSESSION OF PARAPHERNALIA (M1)"]), {"drugs"})
+        self.assertEqual(categorize(["POSS CNTRL SUB W/O PRESCRIPTION"]), {"drugs"})
+
+    def test_shipley_charges_match(self):
+        q = LookupQuery(first_name="Russell", last_name="Shipley", county="liberty", state="FL",
+                        incident_date=date(2026, 7, 20),
+                        charges=["possession of methamphetamine", "possession of paraphernalia"])
+        candidate = CaseCandidate("26000100CFMXAX", "SHIPLEY, RUSSELL", "Felony", "OPEN", None, date(2026, 7, 24), "x")
+        details = CaseDetails(candidate, charges(
+            (date(2026, 7, 20), date(2026, 7, 24), "POSS INTENT SELL/MFG/DELIV CTRL SUB SCHEDULE I (F2)"),
+            (date(2026, 7, 20), date(2026, 7, 24), "POSSESSION OF PARAPHERNALIA (M1)")), [])
+        match = score_case(q, details)
+        self.assertIn("cargos coinciden (drugs)", match.reasons)
+        self.assertGreater(match.score, 79)

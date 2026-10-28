@@ -23,9 +23,11 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     "kidnapping": ("kidnap", "false impris", "abduct"),
     "dui": ("dui", "driving under the influence", "drunk driv"),
     "trespass": ("trespass",),
+    # "CTRL SUB" y "PARAPHERNALIA" sin "drug": así escribe Liberty los cargos de Shipley
+    # (26000100CFMXAX, "POSS INTENT SELL/MFG/DELIV CTRL SUB SCHEDULE I"); quedaban "no comparables".
     "drugs": ("traffick", "cocaine", "heroin", "fentanyl", "methamph", "amphetamin", "cannabis",
               "marijuana", "oxycodone", "hydrocodone", "alprazolam", "controlled substance",
-              "narcotic", "possession of new drug", "drug"),
+              "narcotic", "possession of new drug", "drug", "ctrl sub", "cntrl sub", "paraphernal"),
     "weapon": ("firearm", "weapon", "armed", "gun", "knife"),
     # "Obstruct" es resistencia solo frente a un agente ("obstruct or oppose an officer"):
     # "obstructing justice" es alterar pruebas (ver _NOT_RESISTING y "tampering").
