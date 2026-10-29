@@ -264,6 +264,15 @@ LAFAYETTE = civitek(
 # "Probable Cause Statement"); en el docket sale como "Complaint" a secas (Mahoney, 2025CF000209CFAXWS,
 # Doc #2; Cleary, 2026CF004785CFAXWS, Doc #2). Exacto, para no tomar "Answer to Complaint".
 PASCO = civitek("pasco", "Pasco County", "51", documents=(r"^\s*complaint\s*$",))
+WALTON = civitek(
+    "walton", "Walton County", "66",
+    # "ARREST REPORT FILED." (con punto): el informe del arresto con la causa probable (Thorgaard,
+    # 26000908CFAXMX; Baldwin, 26000888CFAXMX; Adams, 25000441CFAXMX). "INCIDENT REPORT FILED." es el
+    # informe del hecho (FIBRS), con el número de reporte (DSPD25OFF000685), la narración y los
+    # testigos: de apoyo. El docket anota "AGENCY CASE NUMBER:".
+    documents=(r"^\s*arrest report filed\b",),
+    support=(r"^\s*incident report filed\b",),
+)
 LIBERTY = civitek(
     "liberty", "Liberty County", "39",
     # "PROBABLE CAUSE" a secas: la causa probable del arresto, cargada el día de la primera
@@ -302,6 +311,7 @@ COUNTIES: dict[str, CountyConfig] = {
     LAFAYETTE.key: LAFAYETTE,
     LIBERTY.key: LIBERTY,
     PASCO.key: PASCO,
+    WALTON.key: WALTON,
 }
 
 
@@ -389,6 +399,11 @@ CITY_TO_COUNTY: dict[str, str] = {
     "zephyrhills": "pasco", "dade city": "pasco", "wesley chapel": "pasco", "land o lakes": "pasco",
     "land o' lakes": "pasco", "trinity": "pasco", "san antonio": "pasco", "saint leo": "pasco",
     "st leo": "pasco", "shady hills": "pasco",
+    # Ojo: Santa Rosa Beach está en Walton, no en Santa Rosa County.
+    "defuniak springs": "walton", "de funiak springs": "walton", "freeport": "walton",
+    "santa rosa beach": "walton", "miramar beach": "walton", "inlet beach": "walton", "paxton": "walton",
+    "mossy head": "walton", "ponce de leon": "walton", "rosemary beach": "walton", "seaside": "walton",
+    "grayton beach": "walton", "watersound": "walton", "blue mountain beach": "walton", "dune allen": "walton",
     "bristol": "liberty", "hosford": "liberty", "sumatra": "liberty", "telogia": "liberty",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
@@ -441,6 +456,7 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "franklin county so": "franklin", "apalachicola pd": "franklin", "carrabelle pd": "franklin",
     "glades county so": "glades", "moore haven pd": "glades",
     "lafayette county so": "lafayette", "liberty county so": "liberty",
+    "walton county so": "walton", "defuniak springs pd": "walton", "de funiak springs pd": "walton",
     "pasco so": "pasco", "pasco county so": "pasco", "new port richey pd": "pasco", "port richey pd": "pasco",
     "zephyrhills pd": "pasco", "dade city pd": "pasco",
     "seminole county so": "seminole",

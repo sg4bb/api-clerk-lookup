@@ -68,7 +68,8 @@ class ConfigTest(unittest.TestCase):
                           ("holmes", "30"), ("gilchrist", "21"), ("madison", "40"), ("dixie", "15"),
                           ("gulf", "23"), ("union", "63"), ("jefferson", "33"), ("hamilton", "24"),
                           ("calhoun", "07"), ("franklin", "19"), ("glades", "22"),
-                          ("lafayette", "34"), ("liberty", "39"), ("pasco", "51")):
+                          ("lafayette", "34"), ("liberty", "39"), ("pasco", "51"),
+                          ("walton", "66")):
             county = get_county(key, "FL")
             self.assertEqual(county.base_url, f"https://www.civitekflorida.com/ocrs/county/{code}/")
             self.assertEqual(county.platform, "civitek_ocrs")
@@ -94,6 +95,8 @@ class ConfigTest(unittest.TestCase):
                             ("Franklin County Sheriff's Office", "franklin"), ("Apalachicola Police Department", "franklin"),
                             ("Glades County Sheriff's Office", "glades"), ("Moore Haven Police Department", "glades"),
                             ("Lafayette County Sheriff's Office", "lafayette"), ("Liberty County Sheriff's Office", "liberty"),
+                            ("Walton County Sheriff's Office", "walton"),
+                            ("DeFuniak Springs Police Department", "walton"),
                             ("Pasco Sheriff's Office", "pasco"), ("Pasco County Sheriff's Office", "pasco"),
                             ("New Port Richey Police Department", "pasco"), ("Zephyrhills Police Department", "pasco"),
                             ("Jacksonville Sheriff's Office", "duval")):
@@ -184,7 +187,9 @@ class LocationTest(unittest.TestCase):
                                      ("Mayo", None, "lafayette"), ("Bristol", None, "liberty"),
                                      ("Hosford", None, "liberty"), ("Port Richey", None, "pasco"),
                                      ("New Port Richey", None, "pasco"), ("Land O' Lakes", None, "pasco"),
-                                     ("Wesley Chapel", None, "pasco"), ("Spring Hill", None, "hernando")):
+                                     ("Wesley Chapel", None, "pasco"), ("Spring Hill", None, "hernando"),
+                                     ("DeFuniak Springs", None, "walton"), ("Santa Rosa Beach", None, "walton"),
+                                     ("Miramar Beach", None, "walton"), ("Freeport", None, "walton")):
             aq = build_query(extraction(county=None, city=city, agency=agency), ARTICLE)
             self.assertEqual(aq.query.county, county, (city, agency))
 
@@ -895,6 +900,29 @@ class LafayetteTest(unittest.TestCase):
         from core.lookup import agency_case_number
         from tests.test_civitek import details_with_docket
         self.assertEqual(agency_case_number(details_with_docket(self.BLAKE)), "24OFF000119")
+
+
+class WaltonTest(unittest.TestCase):
+    # Adams (25000441CFAXMX): arrest report e incident report de la policía de DeFuniak Springs.
+    ADAMS = [(5, "06/16/2025", "NONADVERSARY PROBABLE CAUSE DETERMINATION RULE 3.131"),
+             (4, "06/16/2025", "INCIDENT REPORT FILED."), (3, "06/16/2025", "ARREST REPORT FILED."),
+             (2, "06/16/2025", "AGENCY CASE NUMBER: 25OFF000685")]
+    # Thorgaard (26000908CFAXMX): solo el arrest report.
+    THORGAARD = [(4, "10/26/2026", "NONADVERSARY PROBABLE CAUSE DETERMINATION RULE 3.131"),
+                 (3, "10/26/2026", "ARREST REPORT FILED."), (2, "10/26/2026", "AGENCY CASE NUMBER: 2600152957")]
+
+    def test_arrest_report_with_incident_report_as_support(self):
+        self.assertEqual(choose("walton", self.ADAMS), ([3], [4]))
+        self.assertEqual(choose("walton", self.THORGAARD), ([3], []))
+
+    def test_agency_number(self):
+        from core.lookup import agency_case_number
+        from tests.test_civitek import details_with_docket
+        self.assertEqual(agency_case_number(details_with_docket(self.ADAMS)), "25OFF000685")
+        self.assertEqual(agency_case_number(details_with_docket(self.THORGAARD)), "2600152957")
+
+    def test_stays_in_walton(self):
+        self.assertEqual(choose("marion", self.ADAMS), ([], []))
 
 
 class PascoTest(unittest.TestCase):
