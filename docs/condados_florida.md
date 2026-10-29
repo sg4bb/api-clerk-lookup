@@ -16,24 +16,24 @@ herramienta, y hay que comprobarlo a mano en cada plataforma.
 | Plataforma | Condados | Población | Adaptadores |
 | --- | ---: | ---: | --- |
 | Orange myeClerk (hecho) | 1 | 1,51 M | 1 |
-| Civitek OCRS (`civitekflorida.com/ocrs/county/NN/`) | 32 | 2,00 M | 1 para todos |
+| Civitek OCRS (`civitekflorida.com/ocrs/county/NN/`) | 33 | 2,63 M | 1 para todos |
 | BenchmarkWeb (Pioneer / Catalis, `.../Home.aspx/Search`) | 10 | 2,62 M | 1 para todos |
-| Sistema propio de cada condado | 22 | 16,85 M | 1 por condado |
+| Sistema propio de cada condado | 21 | 16,22 M | 1 por condado |
 | Sin registros en línea | 2 | 0,07 M | — |
 
 ## Orden propuesto (por lotes)
 
 | Lote | Qué | Condados | Por qué |
 | --- | --- | --- | --- |
-| 1 | Adaptador Civitek | Marion (Ocala) y Sumter primero; luego los otros 30 | Un adaptador cubre 32 condados; Marion y Sumter son del área de Orlando |
+| 1 | Adaptador Civitek | Marion (Ocala) y Sumter primero; luego los otros 31 | Un adaptador cubre 33 condados (Pasco incluido, que estaba anotado como sistema propio); Marion y Sumter son del área de Orlando |
 | 2 | Adaptador BenchmarkWeb | Osceola y Flagler primero; luego St. Lucie, St. Johns, Escambia, Charlotte, Bay, Martin, Indian River, Clay | Un adaptador cubre 10; Osceola es vecino de Orange |
 | 3 | Centro de Florida (propios) | Seminole, Volusia, Brevard, Polk, Lake | Los condados que más cubren FOX 35, WESH, WFTV y ClickOrlando |
-| 4 | Grandes ciudades (propios) | Hillsborough, Palm Beach, Broward, Pinellas, Duval, Lee, Pasco, Sarasota, Manatee, Collier | Mucha población; uno por uno |
+| 4 | Grandes ciudades (propios) | Hillsborough, Palm Beach, Broward, Pinellas, Duval, Lee, Sarasota, Manatee, Collier | Mucha población; uno por uno |
 | 5 | Resto (propios) | Alachua, Citrus, Okaloosa, Monroe, Gadsden | Menor población o con obstáculos |
 | — | Limitados | Miami-Dade, Leon | Miami-Dade no muestra documentos al público; Leon los envía por correo pagando $1 por página |
 | — | Sin cobertura posible | Suwannee, Taylor | No tienen registros judiciales en línea |
 
-Con los lotes 1 a 3 quedarían cubiertos 48 condados y cerca del 40 % de la
+Con los lotes 1 a 3 quedarían cubiertos 49 condados y algo más del 40 % de la
 población del estado.
 
 ## Detalle por condado
@@ -90,6 +90,7 @@ de `counties/florida.py`, para que no los tome otro condado.
 
 | Condado | Población | Código | Documentos sin cuenta | Notas |
 | --- | ---: | --- | --- | --- |
+| Pasco | 633.029 | 51 | Sí ("Complaint" a secas: el Complaint Affidavit del Sheriff, con hora y lugar del arresto, cargos y el "Probable Cause Statement") | Hecho (29/10/2026). Estaba en el lote 4 como sistema propio; está en la lista de Civitek. Probado: Mahoney (2025CF000209CFAXWS), Cleary (2026CF004785CFAXWS) y Simpson (2026MM004366MMAXWS, desde pascocountyarrests.com), los tres con el complaint. Los posts de la página "Pasco County Arrests & Mugshots" de Facebook a veces llegan sin el texto del post (solo el aviso legal y comentarios): sin persona. Gill: qwen3 escribió "Brooklynn" por "Brookelynn" y el nombre se descartó por no estar en el texto. Los números terminan en AXWS o AXES (oficina oeste o este) |
 | Marion (Ocala) | 419.510 | 42 | Sí (arrest affidavit descargado) | Hecho. Archivo viejo aparte (FileBound) |
 | Hernando | 210.577 | 27 | Sí (arrest affidavit / booking report, probable cause affidavit) | Hecho (18/10/2026). Probado: Gordon, Hall, Cusati, Khalil, Field; Colon (caso más cercano); Monday (sin caso: el sospechoso murió). Número local "23000080CFAXMX" (año y número antes del tipo). La fecha "Initial" de los cargos es la del arresto; la de ofensa a veces viene mal cargada (Gordon: 2007) |
 | Santa Rosa | 207.983 | 57 | Solo pidiéndolas ("request images") | |
@@ -162,7 +163,6 @@ la plataforma.
 | Duval | 1.062.593 | CORE | Sí | Sí; los "a pedido" exigen cuenta | |
 | Pinellas | 971.218 | courtrecords.mypinellasclerk.gov | Sí | Sí; otros a pedido | |
 | Lee | 827.016 | matrix.leeclerk.org | No mencionado | Sí, redactados | Búsqueda por nombre y fechas |
-| Pasco | 633.029 | Sin verificar (CLERICUS) | Sin verificar | Sin verificar | |
 | Sarasota | 479.027 | ClerkNet 3.0 | No mencionado | Sin verificar | |
 | Manatee | 455.356 | records.manateeclerk.com | Sin verificar | Sí ("sin suscripción") | |
 | Collier | 408.381 | CMSWeb | No mencionado | Sí, gratis | |

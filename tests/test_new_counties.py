@@ -68,7 +68,7 @@ class ConfigTest(unittest.TestCase):
                           ("holmes", "30"), ("gilchrist", "21"), ("madison", "40"), ("dixie", "15"),
                           ("gulf", "23"), ("union", "63"), ("jefferson", "33"), ("hamilton", "24"),
                           ("calhoun", "07"), ("franklin", "19"), ("glades", "22"),
-                          ("lafayette", "34"), ("liberty", "39")):
+                          ("lafayette", "34"), ("liberty", "39"), ("pasco", "51")):
             county = get_county(key, "FL")
             self.assertEqual(county.base_url, f"https://www.civitekflorida.com/ocrs/county/{code}/")
             self.assertEqual(county.platform, "civitek_ocrs")
@@ -94,6 +94,8 @@ class ConfigTest(unittest.TestCase):
                             ("Franklin County Sheriff's Office", "franklin"), ("Apalachicola Police Department", "franklin"),
                             ("Glades County Sheriff's Office", "glades"), ("Moore Haven Police Department", "glades"),
                             ("Lafayette County Sheriff's Office", "lafayette"), ("Liberty County Sheriff's Office", "liberty"),
+                            ("Pasco Sheriff's Office", "pasco"), ("Pasco County Sheriff's Office", "pasco"),
+                            ("New Port Richey Police Department", "pasco"), ("Zephyrhills Police Department", "pasco"),
                             ("Jacksonville Sheriff's Office", "duval")):
             self.assertEqual(florida.AGENCY_TO_COUNTY.get(normalize_agency(agency)), key, agency)
 
@@ -180,7 +182,9 @@ class LocationTest(unittest.TestCase):
                                      ("Blountstown", None, "calhoun"), ("Apalachicola", None, "franklin"),
                                      ("St. George Island", None, "franklin"), ("Moore Haven", None, "glades"),
                                      ("Mayo", None, "lafayette"), ("Bristol", None, "liberty"),
-                                     ("Hosford", None, "liberty")):
+                                     ("Hosford", None, "liberty"), ("Port Richey", None, "pasco"),
+                                     ("New Port Richey", None, "pasco"), ("Land O' Lakes", None, "pasco"),
+                                     ("Wesley Chapel", None, "pasco"), ("Spring Hill", None, "hernando")):
             aq = build_query(extraction(county=None, city=city, agency=agency), ARTICLE)
             self.assertEqual(aq.query.county, county, (city, agency))
 
@@ -891,6 +895,30 @@ class LafayetteTest(unittest.TestCase):
         from core.lookup import agency_case_number
         from tests.test_civitek import details_with_docket
         self.assertEqual(agency_case_number(details_with_docket(self.BLAKE)), "24OFF000119")
+
+
+class PascoTest(unittest.TestCase):
+    # Mahoney (2025CF000209CFAXWS) y Cleary (2026CF004785CFAXWS): "Complaint" es el Complaint Affidavit del
+    # Sheriff, con el "Probable Cause Statement".
+    MAHONEY = [(16, "02/05/2025", "TETRAHYDROCANNABINOL 3F, POSSESSION OF MARIJUANA 3F, POSSESSION OF"),
+               (5, "01/16/2025", "Advice to Defendant"), (3, "01/15/2025", "Order of Commitment-Advisories"),
+               (2, "01/15/2025", "Complaint")]
+    CLEARY = [(4, "10/19/2026", "PUBLIC DEFENDER APPOINTED - WRITTEN PLEA OF NOT GUILTY, DEMAND FOR JURY TRIAL"),
+              (5, "10/17/2026", "Advice to Defendant"), (2, "10/16/2026", "Complaint")]
+
+    def test_complaint(self):
+        self.assertEqual(choose("pasco", self.MAHONEY), ([2], []))
+        self.assertEqual(choose("pasco", self.CLEARY), ([2], []))
+
+    def test_only_the_bare_complaint(self):
+        rows = [(10, "08/27/2026", "DEFENDANTS Answer TO COMPLAINT AND STATEMENT OF FINANCIAL HARDSHIP")]
+        self.assertEqual(choose("pasco", rows), ([], []))
+
+    def test_local_case_number(self):
+        self.assertEqual(case_number({"local": "[2025CF000209CFAXWS]", "ucn": "x"}), "2025CF000209CFAXWS")
+
+    def test_stays_in_pasco(self):
+        self.assertEqual(choose("marion", self.MAHONEY), ([], []))
 
 
 class LibertyTest(unittest.TestCase):

@@ -259,6 +259,11 @@ LAFAYETTE = civitek(
     # general se descartaban enteros. Aquí solo se excluye la entrada que es únicamente eso.
     exclude=(r"^[^,]*(?:insolvency|indigen|\bmotion\b)[^,]*$",),
 )
+# Pasco: el condado más grande de Civitek (estaba anotado como sistema propio). El informe del
+# arresto es el "PASCO COUNTY COMPLAINT AFFIDAVIT" del Sheriff (hora y lugar del arresto, cargos y
+# "Probable Cause Statement"); en el docket sale como "Complaint" a secas (Mahoney, 2025CF000209CFAXWS,
+# Doc #2; Cleary, 2026CF004785CFAXWS, Doc #2). Exacto, para no tomar "Answer to Complaint".
+PASCO = civitek("pasco", "Pasco County", "51", documents=(r"^\s*complaint\s*$",))
 LIBERTY = civitek(
     "liberty", "Liberty County", "39",
     # "PROBABLE CAUSE" a secas: la causa probable del arresto, cargada el día de la primera
@@ -296,6 +301,7 @@ COUNTIES: dict[str, CountyConfig] = {
     GLADES.key: GLADES,
     LAFAYETTE.key: LAFAYETTE,
     LIBERTY.key: LIBERTY,
+    PASCO.key: PASCO,
 }
 
 
@@ -378,6 +384,11 @@ CITY_TO_COUNTY: dict[str, str] = {
     "muse": "glades",
     # Ojo: "Day" (el pueblo de Lafayette) no se agrega: es una palabra común.
     "mayo": "lafayette",
+    # Ojo: Spring Hill está en Hernando y Lutz y Odessa son sobre todo de Hillsborough.
+    "new port richey": "pasco", "port richey": "pasco", "holiday": "pasco", "hudson": "pasco",
+    "zephyrhills": "pasco", "dade city": "pasco", "wesley chapel": "pasco", "land o lakes": "pasco",
+    "land o' lakes": "pasco", "trinity": "pasco", "san antonio": "pasco", "saint leo": "pasco",
+    "st leo": "pasco", "shady hills": "pasco",
     "bristol": "liberty", "hosford": "liberty", "sumatra": "liberty", "telogia": "liberty",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
@@ -396,7 +407,7 @@ CITY_TO_COUNTY: dict[str, str] = {
     "fort myers": "lee", "cape coral": "lee", "naples": "collier", "sarasota": "sarasota",
     "bradenton": "manatee", "port st lucie": "st_lucie", "fort pierce": "st_lucie", "key west": "monroe",
     "panama city": "bay", "mexico beach": "bay", "palm coast": "flagler", "st augustine": "st_johns", "spring hill": "hernando",
-    "new port richey": "pasco", "the villages": "sumter",
+    "the villages": "sumter",
 }
 
 # Agencias que solo actúan dentro de un condado (para resolver sin ciudad).
@@ -430,6 +441,8 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "franklin county so": "franklin", "apalachicola pd": "franklin", "carrabelle pd": "franklin",
     "glades county so": "glades", "moore haven pd": "glades",
     "lafayette county so": "lafayette", "liberty county so": "liberty",
+    "pasco so": "pasco", "pasco county so": "pasco", "new port richey pd": "pasco", "port richey pd": "pasco",
+    "zephyrhills pd": "pasco", "dade city pd": "pasco",
     "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
