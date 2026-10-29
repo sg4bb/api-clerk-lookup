@@ -273,6 +273,16 @@ WALTON = civitek(
     documents=(r"^\s*arrest report filed\b",),
     support=(r"^\s*incident report filed\b",),
 )
+SANTA_ROSA = civitek(
+    "santa_rosa", "Santa Rosa County", "57",
+    # "ARREST REPORT": paquete del Sheriff (SRSO) con el informe y su causa probable, la orden y su
+    # affidavit si la hubo, la ficha de la cárcel y la primera audiencia (Anderson, 25000475CFMXAX,
+    # Doc #6; Nasim, 26000317CFMXAX, Doc #6; Graves, 24001561CFMXAX, Doc #5, y "ARREST REPORT (COPY
+    # FROM FT WALTON BEACH PD)", Doc #13). "AFFIDAVIT FHP PROBABLE CAUSE": la declaración del
+    # patrullero de FHP con la narración (Nasim, Doc #22): de apoyo.
+    documents=(r"^\s*arrest report\b",),
+    support=(r"^\s*affidavit\b[^,]*\bprobable cause\b",),
+)
 LIBERTY = civitek(
     "liberty", "Liberty County", "39",
     # "PROBABLE CAUSE" a secas: la causa probable del arresto, cargada el día de la primera
@@ -312,6 +322,7 @@ COUNTIES: dict[str, CountyConfig] = {
     LIBERTY.key: LIBERTY,
     PASCO.key: PASCO,
     WALTON.key: WALTON,
+    SANTA_ROSA.key: SANTA_ROSA,
 }
 
 
@@ -404,6 +415,9 @@ CITY_TO_COUNTY: dict[str, str] = {
     "santa rosa beach": "walton", "miramar beach": "walton", "inlet beach": "walton", "paxton": "walton",
     "mossy head": "walton", "ponce de leon": "walton", "rosemary beach": "walton", "seaside": "walton",
     "grayton beach": "walton", "watersound": "walton", "blue mountain beach": "walton", "dune allen": "walton",
+    "milton": "santa_rosa", "east milton": "santa_rosa", "pace": "santa_rosa", "navarre": "santa_rosa",
+    "navarre beach": "santa_rosa", "gulf breeze": "santa_rosa", "jay": "santa_rosa", "bagdad": "santa_rosa",
+    "holley": "santa_rosa",
     "bristol": "liberty", "hosford": "liberty", "sumatra": "liberty", "telogia": "liberty",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
@@ -457,6 +471,8 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "glades county so": "glades", "moore haven pd": "glades",
     "lafayette county so": "lafayette", "liberty county so": "liberty",
     "walton county so": "walton", "defuniak springs pd": "walton", "de funiak springs pd": "walton",
+    "santa rosa county so": "santa_rosa", "milton pd": "santa_rosa", "gulf breeze pd": "santa_rosa",
+    "jay pd": "santa_rosa",
     "pasco so": "pasco", "pasco county so": "pasco", "new port richey pd": "pasco", "port richey pd": "pasco",
     "zephyrhills pd": "pasco", "dade city pd": "pasco",
     "seminole county so": "seminole",

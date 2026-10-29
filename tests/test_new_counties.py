@@ -69,7 +69,7 @@ class ConfigTest(unittest.TestCase):
                           ("gulf", "23"), ("union", "63"), ("jefferson", "33"), ("hamilton", "24"),
                           ("calhoun", "07"), ("franklin", "19"), ("glades", "22"),
                           ("lafayette", "34"), ("liberty", "39"), ("pasco", "51"),
-                          ("walton", "66")):
+                          ("walton", "66"), ("santa_rosa", "57")):
             county = get_county(key, "FL")
             self.assertEqual(county.base_url, f"https://www.civitekflorida.com/ocrs/county/{code}/")
             self.assertEqual(county.platform, "civitek_ocrs")
@@ -95,6 +95,8 @@ class ConfigTest(unittest.TestCase):
                             ("Franklin County Sheriff's Office", "franklin"), ("Apalachicola Police Department", "franklin"),
                             ("Glades County Sheriff's Office", "glades"), ("Moore Haven Police Department", "glades"),
                             ("Lafayette County Sheriff's Office", "lafayette"), ("Liberty County Sheriff's Office", "liberty"),
+                            ("Santa Rosa County Sheriff's Office", "santa_rosa"),
+                            ("Milton Police Department", "santa_rosa"), ("Gulf Breeze Police Department", "santa_rosa"),
                             ("Walton County Sheriff's Office", "walton"),
                             ("DeFuniak Springs Police Department", "walton"),
                             ("Pasco Sheriff's Office", "pasco"), ("Pasco County Sheriff's Office", "pasco"),
@@ -189,7 +191,9 @@ class LocationTest(unittest.TestCase):
                                      ("New Port Richey", None, "pasco"), ("Land O' Lakes", None, "pasco"),
                                      ("Wesley Chapel", None, "pasco"), ("Spring Hill", None, "hernando"),
                                      ("DeFuniak Springs", None, "walton"), ("Santa Rosa Beach", None, "walton"),
-                                     ("Miramar Beach", None, "walton"), ("Freeport", None, "walton")):
+                                     ("Miramar Beach", None, "walton"), ("Freeport", None, "walton"),
+                                     ("Milton", None, "santa_rosa"), ("Navarre", None, "santa_rosa"),
+                                     ("Gulf Breeze", None, "santa_rosa"), ("Pace", None, "santa_rosa")):
             aq = build_query(extraction(county=None, city=city, agency=agency), ARTICLE)
             self.assertEqual(aq.query.county, county, (city, agency))
 
@@ -900,6 +904,30 @@ class LafayetteTest(unittest.TestCase):
         from core.lookup import agency_case_number
         from tests.test_civitek import details_with_docket
         self.assertEqual(agency_case_number(details_with_docket(self.BLAKE)), "24OFF000119")
+
+
+class SantaRosaTest(unittest.TestCase):
+    # Nasim (26000317CFMXAX): paquete del Sheriff y la causa probable del patrullero de FHP.
+    NASIM = [(22, "03/10/2026", "AFFIDAVIT FHP PROBABLE CAUSE"), (14, "03/10/2026", "INFORMATION"),
+             (8, "03/10/2026", "MOTION FOR PRETRIAL DETENTION"), (11, "03/09/2026", "CITATION A77KELE- FILED ON 3/9/2026"),
+             (6, "03/09/2026", "ARREST REPORT"), (3, "03/09/2026", "OBTS # 5701176578 - SEQ: 1, SEQ: 2")]
+    # Graves (24001561CFMXAX): el del Sheriff y una copia del de la policía de Fort Walton Beach.
+    GRAVES = [(13, "10/30/2024", "ARREST REPORT (COPY FROM FT WALTON BEACH PD)"), (7, "10/28/2024", "INFORMATION"),
+              (5, "10/28/2024", "ARREST REPORT")]
+
+    def test_arrest_report_with_fhp_affidavit_as_support(self):
+        self.assertEqual(choose("santa_rosa", self.NASIM), ([6], [22]))
+
+    def test_first_arrest_report_comes_first(self):
+        self.assertEqual(choose("santa_rosa", self.GRAVES), ([5, 13], []))
+
+    def test_county_key_from_the_model(self):
+        from extractor import _county_key
+        self.assertEqual(_county_key("Santa Rosa County"), "santa_rosa")
+        self.assertEqual(get_county("santa_rosa", "FL").name, "Santa Rosa County")
+
+    def test_stays_in_santa_rosa(self):
+        self.assertEqual(choose("marion", self.NASIM), ([], []))
 
 
 class WaltonTest(unittest.TestCase):
