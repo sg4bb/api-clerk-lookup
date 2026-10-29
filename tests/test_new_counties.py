@@ -842,6 +842,21 @@ class GladesTest(unittest.TestCase):
         self.assertEqual(choose("marion", self.TELCI), ([], []))
 
 
+class LafayetteTest(unittest.TestCase):
+    # Kenton Blake (Lafayette, 24000023CFAXMX): el informe del Sheriff, con candado en ese caso.
+    BLAKE = [(22, "05/30/2024", "STATEMENT OF RIGHTS AND RECEIPT OF CHARGES ORDER"),
+             (18, "04/18/2024", "Arrest Report - Initiating Case"), (5, "04/09/2024", "Information"),
+             (3, "03/28/2024", "Agency Case Number: 24OFF000119")]
+
+    def test_arrest_report(self):
+        self.assertEqual(choose("lafayette", self.BLAKE), ([18], []))
+
+    def test_agency_number(self):
+        from core.lookup import agency_case_number
+        from tests.test_civitek import details_with_docket
+        self.assertEqual(agency_case_number(details_with_docket(self.BLAKE)), "24OFF000119")
+
+
 class LibertyTest(unittest.TestCase):
     # Nowling (Liberty, 26000069CFMXAX), arresto con orden: "WARRANT AFFIDAVIT & SERVED WARRANT" trae la
     # orden, el informe del ayudante con la narración (reporte 26000521) y la hora en que la sirvieron.

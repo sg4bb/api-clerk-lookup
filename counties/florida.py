@@ -244,7 +244,12 @@ GLADES = civitek(
     documents=(r"^\s*booking report\b",),
 )
 # Lote 6. Con los nombres genéricos de Civitek hasta ver sus dockets.
-LAFAYETTE = civitek("lafayette", "Lafayette County", "34")
+LAFAYETTE = civitek(
+    "lafayette", "Lafayette County", "34",
+    # "Arrest Report - Initiating Case" del Sheriff (Blake, 24000023CFAXMX, Doc #18, 20 páginas;
+    # ese estaba con candado). El número de reporte sale de "Agency Case Number: 24OFF000119".
+    documents=(r"^\s*arrest report\b",),
+)
 LIBERTY = civitek(
     "liberty", "Liberty County", "39",
     # "PROBABLE CAUSE" a secas: la causa probable del arresto, cargada el día de la primera
