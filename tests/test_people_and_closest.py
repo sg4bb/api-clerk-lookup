@@ -393,3 +393,22 @@ class ShipleyChargesTest(unittest.TestCase):
         match = score_case(q, details)
         self.assertIn("cargos coinciden (drugs)", match.reasons)
         self.assertGreater(match.score, 79)
+
+
+class ReleaseViolationTest(unittest.TestCase):
+    def test_gill_charges_are_comparable(self):
+        """Gill (Pasco, 2026MM004374MMAXES): 60 % con "cargos no comparables"."""
+        from core.charges import categorize
+        self.assertEqual(categorize(["PRE TRIAL RELEASE COND VIOL FOR DOMEST VIOL"]), {"release", "domestic"})
+        self.assertEqual(categorize(["CONDIT RELEASE VIOLATION PRE TRIAL RELEASE COND VIOL FOR DOM"]), {"release"})
+        self.assertEqual(categorize(["DOMESTIC BATTERY MISDEMEANOR"]), {"domestic", "battery"})
+        q = LookupQuery(first_name="BROOKELYNN", last_name="GILL", county="pasco", state="FL",
+                        incident_date=date(2026, 10, 13), arrest_date=date(2026, 10, 13),
+                        charges=["DOMESTIC BATTERY MISDEMEANOR", "PRE TRIAL RELEASE COND VIOL FOR DOMEST VIOL"])
+        candidate = CaseCandidate("2026MM004374MMAXES", "GILL, BROOKELYNN", "Misdemeanor", "OPEN", None,
+                                  date(2026, 10, 14), "x")
+        details = CaseDetails(candidate, charges(
+            (date(2026, 10, 5), date(2026, 10, 13), "CONDIT RELEASE VIOLATION PRE TRIAL RELEASE COND VIOL FOR DOM")), [])
+        match = score_case(q, details)
+        self.assertIn("cargos coinciden (release)", match.reasons)
+        self.assertGreater(match.score, 60)

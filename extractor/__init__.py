@@ -58,6 +58,8 @@ class ArticleQuery:
     extraction: Extraction
     warnings: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)   # correcciones hechas sobre la respuesta del modelo
+    # Nombres que la IA copió con una letra de más o de menos -> como los escribe la nota.
+    name_fixes: dict[str, str] = field(default_factory=dict)
 
 
 def query_from_url(url: str, suspect_index: int = 0) -> tuple[Article, ArticleQuery]:
@@ -83,18 +85,31 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
 
     # Anti-invención: el nombre tiene que aparecer en el artículo.
     people = []
+    described: list[str] = []      # para el mensaje de la web (en inglés)
+    name_fixes: dict[str, str] = {}
+    misread: list[str] = []
     for person in extraction.people:
+        full = f"{person.first_name} {person.last_name}"
         if _descriptive_name(person.first_name, person.last_name):
-            warnings.append(f"Descarté '{person.first_name} {person.last_name}': es una descripción, no un nombre")
+            warnings.append(f"Descarté '{full}': es una descripción, no un nombre")
+            described.append(full)
             continue
+        if _surname_in(person.last_name, haystack) and not _word_in(person.first_name, haystack):
+            written = _first_name_as_written(person.first_name, person.last_name, article)
+            if written:
+                notes.append(f"nombre: el modelo escribió '{person.first_name}'; en el artículo dice '{written}'")
+                name_fixes[person.first_name] = written
+                person = person.model_copy(update={"first_name": written})
         if _word_in(person.first_name, haystack) and _surname_in(person.last_name, haystack):
             people.append(person)
         else:
-            warnings.append(f"Descarté '{person.first_name} {person.last_name}': el nombre no aparece en el artículo")
+            warnings.append(f"Descarté '{full}': el nombre no aparece en el artículo")
+            misread.append(full)
     if not people:
-        detail = f" ({'; '.join(warnings)})" if warnings else ""
+        for warning in warnings:
+            log.info(warning)
         raise NoSuspect("The article doesn't name the person who was arrested or charged. "
-                        f"The court portal can only be searched by name.{detail}")
+                        "The court portal can only be searched by name." + _discarded_names(described, misread))
 
     ranked = [p for p in people if p.role in ARRESTED_ROLES] + [p for p in people if p.role not in ARRESTED_ROLES]
     if suspect_index >= len(ranked):
@@ -163,7 +178,7 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
     )
     others = [p for p in ranked if p is not person]
     return ArticleQuery(query=query, person=person, others=others, extraction=extraction,
-                        warnings=warnings, notes=notes)
+                        warnings=warnings, notes=notes, name_fixes=name_fixes)
 
 
 def _period(day: date, precision: str) -> tuple[date, date]:
@@ -190,6 +205,54 @@ def _descriptive_name(first: Optional[str], last: Optional[str]) -> bool:
     words = f"{a} {b}".split()
     return (a == b and len(a.split()) > 1) or a.split()[0] in ("a", "an", "the") \
         or any(w in _DESCRIPTIVE for w in words)
+
+
+def _discarded_names(described: list[str], misread: list[str]) -> str:
+    """Por qué no sirvió el nombre que dio la IA, para la web (los detalles en español quedan en la consola)."""
+    parts = []
+    if misread:
+        names = " and ".join(misread)
+        parts.append(f" The AI read the name{'s' if len(misread) > 1 else ''} as {names}, "
+                     f"but the article doesn't spell {'them' if len(misread) > 1 else 'it'} that way.")
+    if described:
+        parts.append(f" The AI took a description (\"{described[0]}\") for the name.")
+    return "".join(parts)
+
+
+def _one_edit(a: str, b: str) -> bool:
+    """True si a y b difieren en una sola letra (cambiada, sobrante o faltante)."""
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long_ = (a, b) if len(a) < len(b) else (b, a)
+    return any(long_[:i] + long_[i + 1:] == short for i in range(len(long_)))
+
+
+def _first_name_as_written(first_name: str, last_name: str, article: Article) -> Optional[str]:
+    """El nombre tal como lo escribe la nota, si la IA lo copió con una letra de más o de menos.
+
+    Gill (Pasco, 29/10/2026): el post dice "BROOKELYNN GILL" y qwen3 escribió "Brooklynn"; el
+    nombre se descartaba por no estar en el texto. Solo se corrige si la palabra va pegada al
+    apellido (hasta dos palabras en medio, por un segundo nombre), es única y tiene 4 letras o más:
+    un nombre inventado o de otra persona se sigue descartando.
+    """
+    first, last = normalize(first_name), normalize(last_name)
+    if len(first) < 4 or " " in first or not last:
+        return None
+    text = f"{article.title} {article.text}"
+    haystack = normalize(text)
+    words = haystack.split()
+    last_words = last.split()
+    found = set()
+    for i in range(len(words) - len(last_words) + 1):
+        if words[i:i + len(last_words)] == last_words:
+            found.update(w for w in words[max(0, i - 3):i] if _one_edit(w, first))
+    if len(found) != 1:
+        return None
+    word = found.pop()
+    original = re.search(rf"\b{re.escape(word)}\b", text, re.I)
+    return original.group(0) if original else None
 
 
 def _word_in(value: str, haystack: str) -> bool:

@@ -100,6 +100,10 @@ def run_article(
         for key in ("incident_date", "arrest_date"):
             if (result.extraction.get(key) or "")[:10] in court:
                 result.extraction[key] = None
+        # El nombre que la IA copió mal se muestra como lo escribe la nota (con ese se buscó).
+        for person in result.extraction.get("people") or []:
+            if person.get("first_name") in aq.name_fixes:
+                person["first_name"] = aq.name_fixes[person["first_name"]]
         result.query, result.notes, result.warnings = _jsonable(asdict(aq.query)), aq.notes, aq.warnings
         # Los demás arrestados del artículo, por si el primero no da con el caso
         # (solo si nadie eligió a una persona en particular).

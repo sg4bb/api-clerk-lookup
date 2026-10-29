@@ -104,3 +104,63 @@ class PipelineStatusTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+GILL = Article(url="https://www.facebook.com/share/p/1XrK6UnNWt/", title="Pasco County Arrests & Mugshots",
+               text=("Wow a $50,000 bond for that?\n\n24-year-old BROOKELYNN GILL was booked on 10/13/26.\n\n"
+                     "DOMESTIC BATTERY MISDEMEANOR\nPRE TRIAL RELEASE COND VIOL FOR DOMEST VIOL\n") * 2,
+               published=date(2026, 10, 13), via="browser")
+
+
+def gill(first="Brooklynn", last="Gill"):
+    return extraction(people=[dict(first_name=first, last_name=last, role="arrested", evidence="-", age=24)],
+                      city=None, county="Pasco", agency="Pasco County Sheriff's Office",
+                      incident_date="2026-10-13", charges=["DOMESTIC BATTERY MISDEMEANOR"])
+
+
+class MisspelledNameTest(unittest.TestCase):
+    """Gill (Pasco, 29/10/2026): qwen3 escribió "Brooklynn" y el post dice "BROOKELYNN"."""
+
+    def test_first_name_is_taken_as_written(self):
+        aq = build_query(gill(), GILL)
+        self.assertEqual((aq.query.first_name, aq.query.last_name), ("BROOKELYNN", "Gill"))
+        self.assertEqual(aq.name_fixes, {"Brooklynn": "BROOKELYNN"})
+        self.assertTrue(any("Brooklynn" in n and "BROOKELYNN" in n for n in aq.notes), aq.notes)
+
+    def test_made_up_names_are_still_discarded(self):
+        for first, last in (("Brooklyn", "Smith"),     # apellido que no está
+                            ("Bruce", "Gill"),          # nombre muy distinto
+                            ("Brooklnnn", "Gill")):     # dos letras distintas
+            with self.assertRaises(NoSuspect, msg=(first, last)):
+                build_query(gill(first, last), GILL)
+
+    def test_word_must_be_next_to_the_surname(self):
+        """La palabra parecida tiene que ir junto al apellido, no en otra parte de la nota."""
+        article = Article(url="u", title="Arrest", text=("Brookelynn Park neighbors called deputies. "
+                                                         "Deputies arrested Tom Gill on Friday. ") * 5,
+                          published=date(2026, 10, 13), via="direct")
+        with self.assertRaises(NoSuspect):
+            build_query(gill(), article)
+
+    def test_message_for_the_web_is_in_english(self):
+        with self.assertRaises(NoSuspect) as ctx:
+            build_query(gill("Brooklnnn"), GILL)
+        message = str(ctx.exception)
+        self.assertIn("The AI read the name as Brooklnnn Gill, but the article doesn't spell it that way.", message)
+        self.assertNotIn("Descarté", message)
+
+    def test_description_message(self):
+        described = dict(first_name="A Lynn Haven", last_name="man", role="arrested", evidence="-", age=None)
+        with self.assertRaises(NoSuspect) as ctx:
+            build_query(extraction(people=[described]), VAGUE)
+        self.assertIn('The AI took a description ("A Lynn Haven man") for the name.', str(ctx.exception))
+        self.assertNotIn("Descarté", str(ctx.exception))
+
+    def test_web_shows_the_name_as_written(self):
+        with mock.patch.object(extractor, "fetch_article", return_value=GILL), \
+             mock.patch.object(extractor, "extract", return_value=gill()), \
+             mock.patch.object(pipeline, "run_lookup", return_value=pipeline.LookupResult("not_found")), \
+             tempfile.TemporaryDirectory() as tmp:
+            result = pipeline.run_article(GILL.url, Path(tmp))
+        self.assertEqual(result.extraction["people"][0]["first_name"], "BROOKELYNN")
+        self.assertEqual(result.query["first_name"], "BROOKELYNN")

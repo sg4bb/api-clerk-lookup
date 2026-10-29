@@ -39,7 +39,13 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     "fraud": ("fraud", "forg", "counterfeit", "uttering", "identity"),
     "sexual": ("sexual", "lewd", "rape", "molest"),
     "child": ("child", "minor"),
-    "domestic": ("domestic", "dating violence"),
+    # "DOMEST VIOL" (Gill, Pasco): "domest" cubre también "domestic".
+    "domestic": ("domest", "dating violence"),
+    # Violar las condiciones de la libertad antes del juicio: "PRE TRIAL RELEASE COND VIOL FOR DOMEST
+    # VIOL" en la nota, "CONDIT RELEASE VIOLATION PRE TRIAL RELEASE..." en el portal (Gill, Pasco,
+    # 2026MM004374MMAXES: quedaba "no comparables" y pasaba justo con 60 %).
+    "release": ("pre trial release", "pretrial release", "condit release", "conditional release",
+                "release cond", "release violation"),
     "arson": ("arson",),
     # Amenazas y acoso: "corruption by threat against a public servant", "harassing telephone
     # calls", "written threats to kill" (Reed, Franklin, 28/10/2026: se quedaba en 57 %).
