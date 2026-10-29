@@ -412,3 +412,22 @@ class ReleaseViolationTest(unittest.TestCase):
         match = score_case(q, details)
         self.assertIn("cargos coinciden (release)", match.reasons)
         self.assertGreater(match.score, 60)
+
+
+class ObsceneCommunicationTest(unittest.TestCase):
+    def test_johnson_is_found(self):
+        """Johnson (Santa Rosa, 19001033CFMXAX): 53 % con "cargos no comparables"."""
+        from core.charges import categorize
+        story = ["obscene communication -- the use of a computer to seduce/solicit/lure a child"]
+        self.assertEqual(categorize(story), {"sexual", "child"})
+        self.assertEqual(categorize(["OBSCENE COMMUNICATION-USE COMPUTER TO SEDUCE SOLICIT LURE CH"]), {"sexual"})
+        self.assertEqual(categorize(["SOLICITATION OF PROSTITUTION"]), set())
+        q = LookupQuery(first_name="Christopher", last_name="Johnson", county="santa_rosa", state="FL", age=30,
+                        incident_date=date(2019, 5, 28), arrest_date=date(2019, 5, 28), charges=story)
+        candidate = CaseCandidate("19001033CFMXAX", "JOHNSON, CHRISTOPHER", "Felony", "CLOSED", None,
+                                  date(2019, 5, 29), "x")
+        details = CaseDetails(candidate, charges(
+            (date(2019, 5, 15), date(2019, 5, 28), "OBSCENE COMMUNICATION-USE COMPUTER TO SEDUCE SOLICIT LURE CH")), [])
+        match = score_case(q, details)
+        self.assertIn("cargos coinciden (sexual)", match.reasons)
+        self.assertGreaterEqual(match.score, 60, match.reasons)

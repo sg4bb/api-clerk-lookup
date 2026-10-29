@@ -37,7 +37,10 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     "accessory": ("accessory after", "accessory to", "accessory before"),
     "fleeing": ("flee", "elud"),
     "fraud": ("fraud", "forg", "counterfeit", "uttering", "identity"),
-    "sexual": ("sexual", "lewd", "rape", "molest"),
+    # "Obscene communication - use computer to seduce/solicit/lure a child" (Johnson, Santa Rosa,
+    # 19001033CFMXAX): el portal corta en "LURE CH" y quedaba "no comparables" (53 %). "Solicit" no
+    # va: también es "solicitation of prostitution" o solicitar un homicidio.
+    "sexual": ("sexual", "lewd", "rape", "molest", "obscene", "seduce", "lure"),
     "child": ("child", "minor"),
     # "DOMEST VIOL" (Gill, Pasco): "domest" cubre también "domestic".
     "domestic": ("domest", "dating violence"),
