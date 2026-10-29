@@ -851,6 +851,42 @@ class LafayetteTest(unittest.TestCase):
     def test_arrest_report(self):
         self.assertEqual(choose("lafayette", self.BLAKE), ([18], []))
 
+    def test_comma_separated_packages(self):
+        """Los tres Jones (29/10/2026): el formulario útil va primero o segundo en una lista con comas."""
+        # Los nombres completos: todos traen "APPLICATION FOR CRIMINAL INDIGENT STATUS" en la lista.
+        jacob = [(9, "06/10/2025", "Information"),
+                 (4, "05/29/2025", "INCIDENT REPORT,ARREST REPORT,FIRST APPEARANCE INFORMATION SHEET.STATEMENT "
+                                   "OF RIGHTS AND RECEIPT OF CHARGES,FIRST APPEARNCE ORDER,APPLICATION FOR CRIMINAL "
+                                   "INDIGENT STATUS,DESIGNATION OF CURRENT MAILING AND EMAIL ADDRESS")]
+        montie = [(9, "07/17/2026", "SURETY BOND"),
+                  (8, "07/17/2026", "ARREST REPORT,INCIDENT REPORT,CITATION,PROPERTY INTAKE FORM,STATEMENT OF "
+                                    "RIGHTS AND RECEIPT OF CHARGES,FIRST APPEARANCE ORDER,APPLICATION FOR CRIMINAL "
+                                    "INDIGENT STATUS,DESIGNATION OF CURRENT MAILING AND EMAIL ADDRESS FIRST "
+                                    "APPEARANCE INFORMATION SHEET")]
+        wendy = [(11, "08/15/2025", "BOND INFORMATION"),
+                 (9, "08/15/2025", "STATEMENT OF RIGHTS AND RECEIPT OF CHARGES,APPLICATION FOR CRIMINAL INDIGENT "
+                                   "STATUS,FIRST APPEARANCE ORDER,PROBABLE CAUSE AFFIDAVIT,FIRST APPEARANCE "
+                                   "INFORMATION SHEET")]
+        self.assertEqual(choose("lafayette", jacob), ([4], []))
+        self.assertEqual(choose("lafayette", montie), ([8], []))
+        self.assertEqual(choose("lafayette", wendy), ([9], []))
+        # Un "incident report" que no trae el arrest report no cuenta.
+        self.assertEqual(choose("lafayette", [(3, "05/29/2025", "INCIDENT REPORT,FIRST APPEARANCE ORDER")]), ([], []))
+        self.assertEqual(choose("marion", jacob), ([], []))
+
+    def test_single_exclusions_still_apply(self):
+        """Lo que se excluía sigue excluido cuando la entrada es solo eso."""
+        from counties import get_county
+        county = get_county("lafayette", "FL")
+        import re
+        rx = [re.compile(p, re.I) for p in county.document_exclude]
+        for text in ("APPLICATION FOR CRIMINAL INDIGENT STATUS", "AFFIDAVIT OF INSOLVENCY",
+                     "MOTION TO SUPPRESS ARREST REPORT"):
+            self.assertTrue(any(x.search(text) for x in rx), text)
+        # Los demás condados de Civitek siguen con la exclusión general.
+        from counties.florida import CIVITEK_EXCLUDE
+        self.assertEqual(get_county("liberty", "FL").document_exclude, CIVITEK_EXCLUDE)
+
     def test_agency_number(self):
         from core.lookup import agency_case_number
         from tests.test_civitek import details_with_docket

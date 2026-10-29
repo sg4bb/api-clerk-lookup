@@ -54,8 +54,10 @@ CIVITEK_SUPPORT = [r"\bwarrant served\b", r"\bcapias served\b", r"^\s*warrant af
 CIVITEK_EXCLUDE = [r"insolvency", r"indigen", r"\bmotion\b"]
 
 
-def civitek(key: str, name: str, code: str, documents: tuple = (), support: tuple = ()) -> CountyConfig:
-    """Un condado de Civitek. `documents` y `support`: nombres que solo usa ese condado."""
+def civitek(key: str, name: str, code: str, documents: tuple = (), support: tuple = (),
+            exclude: tuple = ()) -> CountyConfig:
+    """Un condado de Civitek. `documents` y `support`: nombres que solo usa ese condado.
+    `exclude`: si se da, reemplaza a CIVITEK_EXCLUDE solo para ese condado."""
     return CountyConfig(
         key=key,
         name=name,
@@ -64,7 +66,7 @@ def civitek(key: str, name: str, code: str, documents: tuple = (), support: tupl
         base_url=f"https://www.civitekflorida.com/ocrs/county/{code}/",
         case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
         document_priority=CIVITEK_DOCUMENTS + list(documents),
-        document_exclude=CIVITEK_EXCLUDE,
+        document_exclude=list(exclude) or CIVITEK_EXCLUDE,
         support_documents=CIVITEK_SUPPORT + list(support),
         captcha="turnstile",
         throttle_s=2.0,
@@ -246,9 +248,16 @@ GLADES = civitek(
 # Lote 6. Con los nombres genéricos de Civitek hasta ver sus dockets.
 LAFAYETTE = civitek(
     "lafayette", "Lafayette County", "34",
-    # "Arrest Report - Initiating Case" del Sheriff (Blake, 24000023CFAXMX, Doc #18, 20 páginas;
-    # ese estaba con candado). El número de reporte sale de "Agency Case Number: 24OFF000119".
-    documents=(r"^\s*arrest report\b",),
+    # El informe del Sheriff, a veces junto con otros formularios y con los nombres separados por comas:
+    # "Arrest Report - Initiating Case" (Blake, 24000023CFAXMX, Doc #18, con candado),
+    # "ARREST REPORT,INCIDENT REPORT,CITATION,..." (M. D. Jones, 26000029CFAXMX, Doc #8) o
+    # "INCIDENT REPORT,ARREST REPORT,FIRST APPEARANCE..." (J. Jones, 25000018CFAXMX, Doc #4). La
+    # "probable cause affidavit" dentro de otro paquete (W. Jones, 25000038CFAXMX, Doc #9) ya la toma
+    # el nombre genérico. El número de reporte (LCSO25OFF000236) viene en el PDF, no en el docket.
+    documents=(r"^\s*(?:incident report\s*,\s*)?arrest report\b",),
+    # Los paquetes incluyen la "APPLICATION FOR CRIMINAL INDIGENT STATUS" en la lista: con la exclusión
+    # general se descartaban enteros. Aquí solo se excluye la entrada que es únicamente eso.
+    exclude=(r"^[^,]*(?:insolvency|indigen|\bmotion\b)[^,]*$",),
 )
 LIBERTY = civitek(
     "liberty", "Liberty County", "39",
