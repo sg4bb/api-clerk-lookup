@@ -115,6 +115,9 @@ class MatchScore:
     offense_gap: Optional[int] = None
     # Días entre la fecha "Initial" (arresto, en Civitek) más cercana y la fecha de la nota.
     initial_gap: Optional[int] = None
+    # Cargos del caso contra los de la nota: True coinciden, False distintos o no
+    # comparables, None si no hay con qué comparar (la nota no trae cargos reconocibles).
+    charges_match: Optional[bool] = None
 
 
 @dataclass

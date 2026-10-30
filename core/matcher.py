@@ -464,8 +464,10 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
     # casos del mismo día (p. ej. un hurto y un burglary en el mismo arresto).
     q_cats = categorize(query.charges)
     c_cats = categorize(c.description for c in details.charges)
+    charges_match = None
     if q_cats and c_cats:
         shared = q_cats & c_cats
+        charges_match = bool(shared)
         if shared:
             score += round(W_CHARGES * len(shared) / len(q_cats))
             reasons.append(f"cargos coinciden ({', '.join(sorted(shared))})")
@@ -476,6 +478,7 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
             checks.append({"ok": False, "text": f"Different charges: {_charge_list(details)}"})
     elif q_cats and any(c.description for c in details.charges):
         # Sin puntos ni resta: no hay con qué comparar, pero tampoco cuenta como coincidencia.
+        charges_match = False
         reasons.append("cargos no comparables")
         checks.append({"ok": False, "text": f"Charges couldn't be compared: {_charge_list(details)}"})
 
@@ -485,7 +488,7 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
     # Lo que coincide primero, después lo que no (así se lee en la web).
     checks = [c for c in checks if c["ok"]] + [c for c in checks if not c["ok"]]
     return MatchScore(min(confidence, 100), reasons, checks=checks, offense_gap=offense_gap,
-                      initial_gap=initial_gap)
+                      initial_gap=initial_gap, charges_match=charges_match)
 
 
 INITIAL_NEAR_DAYS = 7
@@ -572,6 +575,33 @@ def resolve_by_arrest_date(
     others = [s for s in close if s is not near[0]]
     if all(s[0].initial_gap is not None and s[0].initial_gap > ARREST_FAR_DAYS for s in others):
         return near[0]
+    return None
+
+
+def resolve_by_charges(
+    scored: list[tuple[MatchScore, CaseDetails]],
+    min_score: int = MIN_SCORE,
+    min_margin: int = MIN_MARGIN,
+) -> Optional[tuple[MatchScore, CaseDetails]]:
+    """Desempata cuando solo uno de los empatados tiene los cargos de la nota.
+
+    Gana si sus cargos coinciden con los de la nota y los de todos los demás empatados
+    son distintos o no se pueden comparar. Uriarte (Highlands, 30/10/2026): 9 cargos de
+    lewd battery y molestation (26000795CF) empataban con un "open container" de la misma
+    parada (26000602MM), que ganaba por fechas. None si no aplica.
+    """
+    valid = sorted((s for s in scored if not s[0].disqualified), key=lambda s: s[0].score, reverse=True)
+    if not valid or valid[0][0].score < min_score:
+        return None
+    top = valid[0][0].score
+    close = [s for s in valid if top - s[0].score < min_margin]
+    if len(close) < 2:
+        return None
+    matching = [s for s in close if s[0].charges_match]
+    if len(matching) != 1 or matching[0][0].score < min_score:
+        return None
+    if all(s[0].charges_match is False for s in close if s is not matching[0]):
+        return matching[0]
     return None
 
 
