@@ -76,6 +76,10 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
         warnings.append(f"La fecha de publicación de la página ({article.published}) tiene el día y el mes invertidos; "
                         f"uso {swapped}")
         article = replace(article, published=swapped)
+    if _facebook_filler_date(article):
+        warnings.append(f"La fecha de publicación que dio Facebook ({article.published}) es de relleno "
+                        "(1 o 2 de enero de un año que el texto no menciona): no la uso")
+        article = replace(article, published=None)
     if _published_is_wrong(extraction, article):
         warnings.append(f"La fecha de publicación de la página ({article.published}) no aparece en el texto y "
                         "la del artículo sí: no la uso")
@@ -283,6 +287,13 @@ def _swapped_published(article: Article) -> Optional[date]:
     if _written_in_text(swapped, text) and not _written_in_text(published, text):
         return swapped
     return None
+
+
+def _facebook_filler_date(article: Article) -> bool:
+    """Fecha de relleno de Facebook (ver fetch.facebook_filler_date). fetch_article ya la quita antes de
+    que lea el modelo; esto cubre los artículos que llegan por otro camino (--reuse, texto guardado)."""
+    from .fetch import facebook_filler_date
+    return facebook_filler_date(article.url, article.published, f"{article.title} {article.text}")
 
 
 def _published_is_wrong(extraction: Extraction, article: Article) -> bool:

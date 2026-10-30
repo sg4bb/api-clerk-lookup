@@ -431,3 +431,29 @@ class ObsceneCommunicationTest(unittest.TestCase):
         match = score_case(q, details)
         self.assertIn("cargos coinciden (sexual)", match.reasons)
         self.assertGreaterEqual(match.score, 60, match.reasons)
+
+
+class NoDatesDanielsTest(unittest.TestCase):
+    def test_found_by_name_and_charges(self):
+        """Daniels (DeSoto): sin la fecha de relleno de Facebook no hay fechas; los cargos eligen el caso.
+        2026CF000068 (consolidado en otro, solo fleeing y resisting) no le gana a 2026CF000052."""
+        q = LookupQuery(first_name="Jeremy", middle_name="Bernard", last_name="Daniels", county="desoto", state="FL",
+                        charges=["Robbery by Sudden Snatching (Felony) - 2 counts", "Fleeing to Elude (Felony)",
+                                 "Resisting w/o violence"])
+
+        def case(number, filed, *rows, consolidated=False):
+            d = CaseDetails(CaseCandidate(number, "DANIELS, JEREMY BERNARD", "Felony", "OPEN", None, filed, "x"),
+                            charges(*rows), [])
+            d.consolidated = consolidated
+            return d
+        right = case("2026CF000052AXMA", date(2026, 2, 10),
+                     (date(2026, 2, 6), date(2026, 2, 6), "FLEE/ELUDE POLICE-FLEE WITH DISREGARD OF SAFETY"),
+                     (date(2026, 2, 6), date(2026, 2, 6), "ROBBERY-BY SUDDEN SNATCHING WO FIREARM OR WEAPON"),
+                     (date(2026, 2, 6), date(2026, 2, 6), "RESIST OFFICER-OBSTRUCT WO VIOLENCE"))
+        merged = case("2026CF000068AXMA", date(2026, 2, 27),
+                      (date(2026, 2, 25), date(2026, 2, 27), "FLEE/ELUDE POLICE-FLEE WITH DISREGARD OF SAFETY"),
+                      (date(2026, 2, 25), date(2026, 2, 27), "RESIST OFFICER-OBSTRUCT WO VIOLENCE"), consolidated=True)
+        old = case("2018CF000027AXMA", date(2018, 1, 16),
+                   (date(2017, 11, 1), date(2017, 11, 1), "AGGRAVATED BATTERY WITH FIREARM"))
+        result, _ = run([q], {"Daniels": [right, merged, old]})
+        self.assertEqual(result.case_number, "2026CF000052AXMA")

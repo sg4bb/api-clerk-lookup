@@ -34,6 +34,9 @@ Rules:
 Never include victims, witnesses, officers, deputies, attorneys, judges, relatives or officials. \
 Each person is an OBJECT (see the template), never a plain string. \
 Copy names exactly as written. Put Jr./Sr./III in "suffix", not in the last name. \
+If the article gives both a stage name, nickname or alias and the person's legal name (e.g. "rapper Bryant Myers, \
+whose real name is Bryan Robert Rohena Perez", "John Smith, known as Big J"), use the LEGAL name: the court \
+records only have that one. Never use the stage name or nickname as the name. \
 Keep compound surnames whole (e.g. "Cruz Peraza"). Hispanic names with two surnames go entirely \
 in last_name ("Javier Rosado Martinez" -> first_name "Javier", last_name "Rosado Martinez", middle_name null). \
 role: "arrested" if the article says the person was arrested, taken into custody or booked; \

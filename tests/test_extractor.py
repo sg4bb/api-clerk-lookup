@@ -296,7 +296,8 @@ class WrongPublishedDateTest(unittest.TestCase):
         aq = self.query(date(2001, 1, 1))
         self.assertEqual(aq.query.incident_date, date(2026, 10, 3))   # ni descartada ni movida al año 2000
         self.assertIsNone(aq.query.published_date)
-        self.assertTrue(any("publicación de la página" in w for w in aq.warnings))
+        # En Facebook, el 1 de enero de un año que el texto no menciona se descarta como fecha de relleno.
+        self.assertTrue(any("de relleno" in w for w in aq.warnings), aq.warnings)
 
     def test_real_publication_date_is_kept(self):
         aq = self.query(date(2026, 10, 5))
@@ -330,3 +331,81 @@ class DescriptiveNameTest(unittest.TestCase):
         self.assertTrue(_descriptive_name("A Lynn Haven man", "A Lynn Haven man"))
         self.assertTrue(_descriptive_name("The", "Driver"))
         self.assertTrue(_descriptive_name("Chipley", "man"))
+
+
+class FacebookPostTest(unittest.TestCase):
+    """Daniels (DeSoto, 30/10/2026): el texto de Facebook traía comentarios y otros posts de la página."""
+
+    POST = ("Earlier today, the DeSoto County Sheriff's Office received a report of a robbery and responded. "
+            "It was determined the subject, Jeremy Bernard Daniels, was giving the victim a ride.\n"
+            "• Robbery by Sudden Snatching (Felony) – 2 counts\n• Fleeing to Elude (Felony)\n")
+    REST = ("All reactions:\n248\n128 comments\nLike\nComment\nMost relevant\nJakeyla Washington\n"
+            "On Oct. 26, deputies were watching a vehicle at a home belonging to someone associated with "
+            "Pamela Reding, who was wanted for violating Supervised Pretrial Release.\nDate: 10/28/2026\n")
+
+    def test_only_the_post_is_kept(self):
+        from extractor.fetch import facebook_post_only
+        text = facebook_post_only(self.POST + self.REST)
+        self.assertIn("Jeremy Bernard Daniels", text)
+        self.assertNotIn("Reding", text)
+        self.assertNotIn("10/28/2026", text)
+
+    def test_text_without_markers_is_unchanged(self):
+        from extractor.fetch import facebook_post_only
+        self.assertEqual(facebook_post_only(self.POST), self.POST)
+        # La línea al principio (sin post antes) no deja el texto vacío.
+        self.assertEqual(facebook_post_only("Most relevant\n" + self.POST), "Most relevant\n" + self.POST)
+
+    def test_only_on_facebook(self):
+        from extractor import fetch as fetch_mod
+        self.assertTrue(fetch_mod.is_facebook("https://www.facebook.com/share/p/1ZQgrYH7wK/"))
+        self.assertTrue(fetch_mod.is_facebook("https://m.facebook.com/x"))
+        self.assertFalse(fetch_mod.is_facebook("https://www.wjhg.com/2026/most-relevant-news/"))
+
+    def test_filler_dates(self):
+        def build(published, url="https://www.facebook.com/dcsoflsheriff/posts/1"):
+            article = Article(url=url, title="DeSoto County Sheriff's Office", text=self.POST * 3,
+                              published=published, via="browser")
+            values = dict(people=[person("Jeremy", "Daniels")], incident_date=None, city=None, county="DeSoto",
+                          agency="DeSoto County Sheriff's Office", charges=["Robbery by Sudden Snatching"])
+            return build_query(Extraction.model_validate(values), article)
+        self.assertIsNone(build(date(1999, 1, 1)).query.published_date)
+        self.assertIsNone(build(date(2016, 1, 2)).query.published_date)
+        # Fechas normales de Facebook, y el 1 de enero fuera de Facebook, se respetan.
+        self.assertEqual(build(date(2026, 2, 6)).query.published_date, date(2026, 2, 6))
+        self.assertEqual(build(date(2026, 1, 1), url="https://www.wjhg.com/x").query.published_date, date(2026, 1, 1))
+
+
+class StageNameRuleTest(unittest.TestCase):
+    def test_prompt_asks_for_the_legal_name(self):
+        """Bryant Myers (DeSoto): el portal solo tiene el nombre legal (ROHENA PEREZ, BRYAN ROBERT)."""
+        from extractor.llm import SYSTEM_PROMPT
+        self.assertIn("use the LEGAL name", SYSTEM_PROMPT)
+        self.assertIn("Never use the stage name or nickname", SYSTEM_PROMPT)
+
+
+class FacebookFetchTest(unittest.TestCase):
+    def test_filler_date_is_dropped_before_the_model_reads_it(self):
+        """Daniels (DeSoto): con 1999-01-01 el modelo resolvía "Earlier today" en 1999 y se buscaba en 1998-1999."""
+        from unittest import mock
+        from extractor import fetch as fetch_mod
+        post = FacebookPostTest.POST * 3
+        page = Article(url="https://www.facebook.com/share/p/1CtHcAj2wP/", title="DeSoto County Sheriff's Office",
+                       text=post + FacebookPostTest.REST, published=date(1999, 1, 1), via="browser")
+        with mock.patch.object(fetch_mod.trafilatura, "fetch_url", return_value="<html></html>"), \
+             mock.patch.object(fetch_mod, "_parse", return_value=page), \
+             mock.patch.object(fetch_mod, "_usable", return_value=True):
+            article = fetch_mod.fetch_article(page.url)
+        self.assertIsNone(article.published)
+        self.assertNotIn("Reding", article.text)
+
+    def test_real_facebook_date_is_kept(self):
+        from unittest import mock
+        from extractor import fetch as fetch_mod
+        page = Article(url="https://www.facebook.com/x", title="Pasco County Arrests & Mugshots",
+                       text="24-year-old BROOKELYNN GILL was booked on 10/13/26. " * 5,
+                       published=date(2026, 10, 13), via="browser")
+        with mock.patch.object(fetch_mod.trafilatura, "fetch_url", return_value="<html></html>"), \
+             mock.patch.object(fetch_mod, "_parse", return_value=page), \
+             mock.patch.object(fetch_mod, "_usable", return_value=True):
+            self.assertEqual(fetch_mod.fetch_article(page.url).published, date(2026, 10, 13))

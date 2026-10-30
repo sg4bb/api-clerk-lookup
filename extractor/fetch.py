@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Optional
+from urllib.parse import urlparse
 
 import trafilatura
 from trafilatura import downloads as _trafilatura_downloads
@@ -151,10 +152,48 @@ def fetch_article(url: str) -> Article:
                              kind="unreachable")
         raise FetchError("Could not read an article at this link. The page may be behind a paywall, "
                          "or it may not be a news story.")
+    if is_facebook(url):
+        article.text = facebook_post_only(article.text)
+        # Antes de que la lea el modelo: con la fecha de relleno, "Earlier today" se volvía 1999-01-01.
+        if facebook_filler_date(url, article.published, f"{article.title} {article.text}"):
+            log.info("Facebook: la fecha de publicación %s es de relleno; no la uso", article.published)
+            article.published = None
     article.text = article.text[:MAX_TEXT_CHARS]
     log.info("Artículo: %r (%d caracteres, publicado %s, vía %s)",
              article.title, len(article.text), article.published, article.via)
     return article
+
+
+def is_facebook(url: str) -> bool:
+    host = (urlparse(url).netloc or "").lower()
+    return host == "facebook.com" or host.endswith(".facebook.com") or host == "fb.com"
+
+
+# Donde termina el post en el texto que da Facebook: después vienen las reacciones, los
+# comentarios y, a veces, otras publicaciones de la página (Daniels, DeSoto, 30/10/2026: el
+# texto traía también los posts de Pamela Reding y Eugene Sampson y el worker buscó a Reding).
+_FACEBOOK_POST_END = re.compile(r"^\s*(?:All reactions:?|Most relevant|Top comments|Newest|View more comments)\s*$",
+                                re.I | re.M)
+
+
+def facebook_post_only(text: str) -> str:
+    """Solo el post: el texto hasta la primera línea de reacciones o comentarios.
+    Si esa línea está al principio (no hay post antes), el texto queda como estaba."""
+    match = _FACEBOOK_POST_END.search(text or "")
+    if not match or match.start() < 40:
+        return text
+    log.info("Facebook: dejo solo el post (%d de %d caracteres; corto en %r)",
+             match.start(), len(text), match.group(0).strip())
+    return text[:match.start()].rstrip()
+
+
+def facebook_filler_date(url: str, published: Optional[date], text: str) -> bool:
+    """Facebook da fechas de relleno cuando no encuentra la del post: 1999-01-01 (Daniels, DeSoto),
+    2000-01-01, 2001-01-01 (Peterson, Jackson), 2016-01-02 (Cox, Liberty). Solo en Facebook, solo el
+    1 o 2 de enero y solo si ese año no aparece en el texto."""
+    if not published or not is_facebook(url) or published.month != 1 or published.day > 2:
+        return False
+    return str(published.year) not in (text or "")
 
 
 def _fetch_with_remote_browser(url: str) -> Optional[str]:
