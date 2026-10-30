@@ -126,6 +126,15 @@ class ScoreTest(unittest.TestCase):
         match = score_case(self.query(court_dates=[date(2026, 8, 3)]), COX_RIGHT)
         self.assertIn("fecha de condena a 34 días", match.reasons)
 
+    def test_sentencing_months_after_the_verdict_is_neutral(self):
+        """Lopez (DeSoto): veredicto en junio, sentencia en octubre. Entre 45 y 180 días no suma
+        ni resta: el puntaje es el mismo que sin fecha de condena (antes bajaba a 54 %)."""
+        q = self.query(court_dates=[date(2026, 10, 28)], published_date=date(2026, 10, 29))
+        match = score_case(q, COX_RIGHT)
+        self.assertIn("fecha de condena a 120 días (no suma)", match.reasons)
+        self.assertEqual(match.score, score_case(self.query(court_dates=[], published_date=date(2026, 10, 29)),
+                                                 COX_RIGHT).score)
+
     def test_court_date_after_the_story_does_not_count(self):
         """Rivers (Glades): nota de noviembre de 2025, "Court" del CF en julio de 2026."""
         rivers = case("24000026CFMXAX", date(2024, 3, 7),

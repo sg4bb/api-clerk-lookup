@@ -187,13 +187,25 @@ def facebook_post_only(text: str) -> str:
     return text[:match.start()].rstrip()
 
 
+_YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
+
+
 def facebook_filler_date(url: str, published: Optional[date], text: str) -> bool:
-    """Facebook da fechas de relleno cuando no encuentra la del post: 1999-01-01 (Daniels, DeSoto),
-    2000-01-01, 2001-01-01 (Peterson, Jackson), 2016-01-02 (Cox, Liberty). Solo en Facebook, solo el
-    1 o 2 de enero y solo si ese año no aparece en el texto."""
-    if not published or not is_facebook(url) or published.month != 1 or published.day > 2:
+    """Fechas falsas que da Facebook cuando no encuentra la del post. Solo en Facebook.
+
+    - El 1 o 2 de enero, si ese año no aparece en el texto: 1999-01-01 (Daniels, DeSoto),
+      2000-01-01, 2001-01-01 (Peterson, Jackson), 2016-01-02 (Cox, Liberty).
+    - Cualquier fecha anterior a un año que menciona el post: Lopez (DeSoto) salió
+      "publicado" el 2016-01-07 y el post habla de "back in 2023". Los años posteriores
+      al actual no cuentan (un plan para 2030 no prueba nada).
+    """
+    if not published or not is_facebook(url):
         return False
-    return str(published.year) not in (text or "")
+    text = text or ""
+    if published.month == 1 and published.day <= 2 and str(published.year) not in text:
+        return True
+    this_year = date.today().year
+    return any(published.year < int(y) <= this_year for y in _YEAR_RE.findall(text))
 
 
 def _fetch_with_remote_browser(url: str) -> Optional[str]:

@@ -324,6 +324,11 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
                             + (f" (last names tried: {', '.join(variants)})" if len(variants) > 1 else ""))
 
     ranked = sorted(candidates, key=lambda c: prelim_score(query, c), reverse=True)
+    if date_from is None and date_to is None:
+        # Sin fechas todos empatan por el nombre y quedaba el orden del portal (los más
+        # viejos primero). Callahan (DeSoto): 23 casos de 2005 a 2025; se abrían los 10 de
+        # 2005-2009 y los de 2025 nunca. Una noticia casi siempre habla de un caso reciente.
+        ranked = sorted(ranked, key=lambda c: (prelim_score(query, c), c.filed_date or date.min), reverse=True)
     for c in ranked:
         if prelim_score(query, c) <= 0:
             log.info("Descarto %s (%s): %s", c.case_number, c.defendant, prelim_reasons(query, c))

@@ -260,8 +260,18 @@ def max_points(query: LookupQuery, details: CaseDetails) -> int:
     # tenga ninguno reconocible: así un caso de otra cosa (una multa) no gana solo por el nombre.
     total += W_CHARGES if categorize(query.charges) and any(x.description for x in details.charges) else 0
     total += W_FILED if _filed_points(query, details) is not None else 0
-    total += W_COURT if _court_gap(query, details) is not None else 0
+    total += W_COURT if _court_counts(_court_gap(query, details)) else 0
     return total
+
+
+def _court_counts(gap: Optional[int]) -> bool:
+    """Si la fecha de condena entra en el máximo posible.
+
+    Entre COURT_CLOSE_DAYS y COURT_FAR_DAYS no suma ni resta, así que tampoco cuenta en el
+    máximo (si contara, restaría). Lopez (DeSoto, 30/10/2026): veredicto el 23/06/2026 y
+    sentencia en octubre, 127 días después; con ese tramo en el máximo quedaba en 54 %.
+    """
+    return gap is not None and not (COURT_CLOSE_DAYS < gap <= COURT_FAR_DAYS)
 
 
 def _court_gap(query: LookupQuery, details: CaseDetails) -> Optional[int]:
@@ -584,6 +594,9 @@ def same_incident(a: CaseDetails, b: CaseDetails) -> bool:
     - Portales que no muestran número de reporte, fecha de arresto ni agencia
       (Civitek): mismo acusado y fechas de ofensa a 1 día o menos. Una racha
       de hechos (robo, tiroteo, huida) se abre como varios casos del mismo día.
+      También mismo acusado con la misma fecha "Initial" (la del arresto):
+      Callahan (DeSoto) tiene tres compras controladas de diciembre y enero y el
+      caso de la escopeta, todos cargados en el arresto del 10/01/2025.
     """
     controls_a = {c.control_number for c in a.charges if c.control_number}
     controls_b = {c.control_number for c in b.charges if c.control_number}
@@ -600,19 +613,39 @@ def same_incident(a: CaseDetails, b: CaseDetails) -> bool:
         return True
     if any(c.control_number or c.arrest_date or c.agency for c in a.charges + b.charges):
         return False                     # el portal sí trae esos datos y no coinciden
-    if not (ka[0] and kb[0]):
-        return False
     if normalize(a.candidate.defendant) != normalize(b.candidate.defendant):
         return False
+    # Misma fecha "Initial" (Civitek): el arresto que abrió los dos casos es el mismo.
+    initial_a = {c.initial_date for c in a.charges if getattr(c, "initial_date", None)}
+    initial_b = {c.initial_date for c in b.charges if getattr(c, "initial_date", None)}
+    if initial_a and initial_a == initial_b:
+        return True
+    if not (ka[0] and kb[0]):
+        return False
     return min(abs((x - y).days) for x in ka[0] for y in kb[0]) <= 1
+
+
+def _offense_to_initial(details: CaseDetails) -> int:
+    """Días entre la ofensa y la fecha "Initial" (el arresto). Grande si no se sabe.
+
+    Entre casos del mismo arresto, el que tiene la ofensa más cerca del arresto es el que
+    abrió esa detención; los demás son órdenes viejas servidas ese día. Callahan (DeSoto):
+    el 2024MM000053 (parafernalia del 13/09/2023) tiene "Initial: 01/10/2025" como los del
+    tráfico, pero su declaración jurada es del hecho de 2023, no del arresto de 2025.
+    """
+    gaps = [abs((c.initial_date - c.offense_date).days) for c in details.charges
+            if getattr(c, "initial_date", None) and c.offense_date]
+    return min(gaps) if gaps else 10**6
 
 
 def _preference(details: CaseDetails, has_document: Callable[[CaseDetails], bool]):
     match = _CASE_TYPE_RE.match(details.candidate.case_number)
     rank = _TYPE_RANK.get(match.group(1) if match else "", 9)
     filed = details.candidate.filed_date or date.max
-    # Con documento primero; después el caso principal (no el consolidado en otro).
-    return (0 if has_document(details) else 1, 1 if details.consolidated else 0, rank, filed)
+    # Con documento primero; después el caso principal (no el consolidado en otro); después
+    # el de la ofensa más cercana al arresto (solo Civitek trae "Initial"; en los demás es igual).
+    return (0 if has_document(details) else 1, 1 if details.consolidated else 0, rank,
+            _offense_to_initial(details), filed)
 
 
 def resolve_same_incident(

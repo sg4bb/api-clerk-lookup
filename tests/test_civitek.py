@@ -267,6 +267,38 @@ class SameIncidentTest(unittest.TestCase):
         self.assertFalse(same_incident(lead, three_days))
         self.assertFalse(same_incident(lead, other_person))
 
+    def test_same_initial_date_is_the_same_arrest(self):
+        """Callahan (DeSoto): compras controladas de diciembre y enero y el caso de la escopeta,
+        todos con "Initial: 01/10/2025". Ofensas distintas, mismo arresto: se elige uno."""
+        def callahan(number, offense, initial=date(2025, 1, 10), defendant="CALLAHAN, KEVIN"):
+            candidate = CaseCandidate(case_number=number, defendant=defendant, dob=None,
+                                      filed_date=date(2025, 1, 13), detail_ref="x", case_type="Felony",
+                                      status="CLOSED")
+            return CaseDetails(candidate, [Charge(offense_date=offense, description="TRAFFICKING METHAMPHETAMINE",
+                                                  statute=None, arrest_date=None, agency=None,
+                                                  control_number=None, initial_date=initial)], [])
+        cases = [callahan("2025CF000012AXMA", date(2024, 12, 5)),
+                 callahan("2025CF000013AXMA", date(2025, 1, 10)),
+                 callahan("2025CF000014AXMA", date(2024, 12, 19))]
+        self.assertTrue(same_incident(cases[0], cases[1]))
+        q = LookupQuery(first_name="Kevin", last_name="Callahan", county="desoto", state="FL",
+                        charges=["Trafficking in methamphetamine"])
+        scored = [(score_case(q, d), d) for d in cases]
+        self.assertEqual(pick_best(scored)[1], "ambiguous")
+        winner = resolve_same_incident(scored, lambda d: True)
+        self.assertEqual(winner[1].candidate.case_number, "2025CF000013AXMA")
+        # Una orden vieja servida en el mismo arresto (abierta antes) no gana: su documento es del hecho viejo.
+        old_warrant = callahan("2024MM000053AXMA", date(2023, 9, 13))
+        old_warrant.candidate.filed_date = date(2024, 2, 2)
+        scored = [(score_case(q, d), d) for d in cases + [old_warrant]]
+        winner = resolve_same_incident(scored, lambda d: True)
+        self.assertEqual(winner[1].candidate.case_number, "2025CF000013AXMA")
+        self.assertIn("2024MM000053AXMA", related_cases(winner[1], scored))
+        # Otra fecha "Initial" (otro arresto) u otra persona: no se juntan.
+        self.assertFalse(same_incident(cases[0], callahan("2023CF000400AXMA", date(2023, 5, 1), date(2023, 5, 2))))
+        self.assertFalse(same_incident(cases[0], callahan("2025CF000015AXMA", date(2024, 12, 5),
+                                                         defendant="CALLAHAN, KEVIN JR")))
+
     def test_portals_with_arrest_data_keep_strict_rule(self):
         """Orange sí trae agencia y fecha de arresto: si no coinciden, no son el mismo arresto."""
         def orange(number, arrest):
