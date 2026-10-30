@@ -283,6 +283,17 @@ SANTA_ROSA = civitek(
     documents=(r"^\s*arrest report\b",),
     support=(r"^\s*affidavit\b[^,]*\bprobable cause\b",),
 )
+# Highlands: los nombres genéricos alcanzan. "ARREST AFFIDAVIT" es el Arrest Report del Sheriff con la
+# causa probable (Conklin, 26000840CFAXMX, Doc #12); en arrestos con orden, "WARRANT AFFIDAVIT" (Zeledon,
+# 25001153CFAXMX, Doc #8), de apoyo y principal si no hay otro. El docket anota "Agency Case Number".
+HIGHLANDS = civitek("highlands", "Highlands County", "28")
+DESOTO = civitek(
+    "desoto", "DeSoto County", "14",
+    # "BOOKING OFFICER'S REPORT, OFFICER'S ARREST REPORT FILED": la ficha de la cárcel y el "Officer's
+    # Arrest Report (Probable Cause Affidavit)" con la narración (Rohena Perez, 2026CF000348AXMA, Doc #7;
+    # Daniels, 2026CF000068AXMA, Doc #14). El docket anota "Agency Case Number" (2026-01906-1).
+    documents=(r"^\s*(?:booking officer'?s report\s*,\s*)?officer'?s arrest report\b",),
+)
 LIBERTY = civitek(
     "liberty", "Liberty County", "39",
     # "PROBABLE CAUSE" a secas: la causa probable del arresto, cargada el día de la primera
@@ -323,6 +334,8 @@ COUNTIES: dict[str, CountyConfig] = {
     PASCO.key: PASCO,
     WALTON.key: WALTON,
     SANTA_ROSA.key: SANTA_ROSA,
+    HIGHLANDS.key: HIGHLANDS,
+    DESOTO.key: DESOTO,
 }
 
 
@@ -418,6 +431,9 @@ CITY_TO_COUNTY: dict[str, str] = {
     "milton": "santa_rosa", "east milton": "santa_rosa", "pace": "santa_rosa", "navarre": "santa_rosa",
     "navarre beach": "santa_rosa", "gulf breeze": "santa_rosa", "jay": "santa_rosa", "bagdad": "santa_rosa",
     "holley": "santa_rosa",
+    "sebring": "highlands", "avon park": "highlands", "lake placid": "highlands", "lorida": "highlands",
+    "venus": "highlands", "sun n lake": "highlands",
+    "arcadia": "desoto", "nocatee": "desoto", "fort ogden": "desoto", "southeast arcadia": "desoto",
     "bristol": "liberty", "hosford": "liberty", "sumatra": "liberty", "telogia": "liberty",
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
@@ -473,6 +489,8 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "walton county so": "walton", "defuniak springs pd": "walton", "de funiak springs pd": "walton",
     "santa rosa county so": "santa_rosa", "milton pd": "santa_rosa", "gulf breeze pd": "santa_rosa",
     "jay pd": "santa_rosa",
+    "highlands county so": "highlands", "sebring pd": "highlands", "avon park pd": "highlands",
+    "lake placid pd": "highlands", "desoto county so": "desoto", "de soto county so": "desoto", "arcadia pd": "desoto",
     "pasco so": "pasco", "pasco county so": "pasco", "new port richey pd": "pasco", "port richey pd": "pasco",
     "zephyrhills pd": "pasco", "dade city pd": "pasco",
     "seminole county so": "seminole",

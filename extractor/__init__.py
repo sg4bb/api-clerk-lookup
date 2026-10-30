@@ -339,6 +339,7 @@ def _county_key(value: Optional[str]) -> Optional[str]:
     v = normalize(value)
     v = re.sub(r"\b(county|parish)\b", "", v).strip().replace("-", " ")
     v = re.sub(r"\bsaint\b", "st", v)
+    v = re.sub(r"\bde soto\b", "desoto", v)      # "De Soto County" también se escribe así
     return re.sub(r"\s+", "_", v) or None
 
 

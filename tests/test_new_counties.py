@@ -69,7 +69,8 @@ class ConfigTest(unittest.TestCase):
                           ("gulf", "23"), ("union", "63"), ("jefferson", "33"), ("hamilton", "24"),
                           ("calhoun", "07"), ("franklin", "19"), ("glades", "22"),
                           ("lafayette", "34"), ("liberty", "39"), ("pasco", "51"),
-                          ("walton", "66"), ("santa_rosa", "57")):
+                          ("walton", "66"), ("santa_rosa", "57"),
+                          ("highlands", "28"), ("desoto", "14")):
             county = get_county(key, "FL")
             self.assertEqual(county.base_url, f"https://www.civitekflorida.com/ocrs/county/{code}/")
             self.assertEqual(county.platform, "civitek_ocrs")
@@ -95,6 +96,8 @@ class ConfigTest(unittest.TestCase):
                             ("Franklin County Sheriff's Office", "franklin"), ("Apalachicola Police Department", "franklin"),
                             ("Glades County Sheriff's Office", "glades"), ("Moore Haven Police Department", "glades"),
                             ("Lafayette County Sheriff's Office", "lafayette"), ("Liberty County Sheriff's Office", "liberty"),
+                            ("Highlands County Sheriff's Office", "highlands"), ("Sebring Police Department", "highlands"),
+                            ("DeSoto County Sheriff's Office", "desoto"), ("Arcadia Police Department", "desoto"),
                             ("Santa Rosa County Sheriff's Office", "santa_rosa"),
                             ("Milton Police Department", "santa_rosa"), ("Gulf Breeze Police Department", "santa_rosa"),
                             ("Walton County Sheriff's Office", "walton"),
@@ -193,7 +196,9 @@ class LocationTest(unittest.TestCase):
                                      ("DeFuniak Springs", None, "walton"), ("Santa Rosa Beach", None, "walton"),
                                      ("Miramar Beach", None, "walton"), ("Freeport", None, "walton"),
                                      ("Milton", None, "santa_rosa"), ("Navarre", None, "santa_rosa"),
-                                     ("Gulf Breeze", None, "santa_rosa"), ("Pace", None, "santa_rosa")):
+                                     ("Gulf Breeze", None, "santa_rosa"), ("Pace", None, "santa_rosa"),
+                                     ("Sebring", None, "highlands"), ("Avon Park", None, "highlands"),
+                                     ("Lake Placid", None, "highlands"), ("Arcadia", None, "desoto")):
             aq = build_query(extraction(county=None, city=city, agency=agency), ARTICLE)
             self.assertEqual(aq.query.county, county, (city, agency))
 
@@ -904,6 +909,48 @@ class LafayetteTest(unittest.TestCase):
         from core.lookup import agency_case_number
         from tests.test_civitek import details_with_docket
         self.assertEqual(agency_case_number(details_with_docket(self.BLAKE)), "24OFF000119")
+
+
+class HighlandsTest(unittest.TestCase):
+    # Conklin (26000840CFAXMX): arresto en el momento. Zeledon (25001153CFAXMX): arresto con orden.
+    CONKLIN = [(14, "09/09/2026", "ORDER FOLLOWING 1ST APPEARANCE HEARING ON 9-5-2026"), (13, "09/09/2026", "BOOKING SHEET"),
+               (12, "09/09/2026", "ARREST AFFIDAVIT"), (3, "09/09/2026", "Agency Case Number: H26OFF006629")]
+    ZELEDON = [(10, "10/31/2025", "ORDER FOLLOWING 1ST APPEARANCE HEARING"), (9, "10/29/2025", "WARRANT COPY"),
+               (8, "10/29/2025", "WARRANT AFFIDAVIT"), (3, "10/29/2025", "Agency Case Number: H25OFF006633")]
+
+    def test_generic_names_are_enough(self):
+        self.assertEqual(choose("highlands", self.CONKLIN), ([12], []))
+        self.assertEqual(choose("highlands", self.ZELEDON), ([], [8]))
+
+    def test_agency_number(self):
+        from core.lookup import agency_case_number
+        from tests.test_civitek import details_with_docket
+        self.assertEqual(agency_case_number(details_with_docket(self.CONKLIN)), "H26OFF006629")
+
+
+class DeSotoTest(unittest.TestCase):
+    # Rohena Perez (2026CF000348AXMA) y Daniels (2026CF000068AXMA).
+    ROHENA = [(8, "10/26/2026", "CRIMINAL UNIFORM TRAFFIC CITATION FILED AQUDF5E & AQUDF4E CC: SAO"),
+              (7, "10/26/2026", "BOOKING OFFICER'S REPORT, OFFICER'S ARREST REPORT FILED"),
+              (4, "10/26/2026", "Agency Case Number: 2026-01906-1")]
+
+    def test_booking_and_arrest_report(self):
+        self.assertEqual(choose("desoto", self.ROHENA), ([7], []))
+        self.assertEqual(choose("desoto", [(3, "02/27/2026", "OFFICER'S ARREST REPORT")]), ([3], []))
+
+    def test_agency_number(self):
+        from core.lookup import agency_case_number
+        from tests.test_civitek import details_with_docket
+        self.assertEqual(agency_case_number(details_with_docket(self.ROHENA)), "2026-01906-1")
+
+    def test_county_name_spellings(self):
+        from extractor import _county_key
+        self.assertEqual(_county_key("DeSoto County"), "desoto")
+        self.assertEqual(_county_key("De Soto County"), "desoto")
+        self.assertEqual(case_number({"local": "[2026CF000348AXMA]", "ucn": "x"}), "2026CF000348AXMA")
+
+    def test_stays_in_desoto(self):
+        self.assertEqual(choose("marion", self.ROHENA), ([], []))
 
 
 class SantaRosaTest(unittest.TestCase):
