@@ -160,7 +160,15 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
         warnings.append("El artículo no da fecha del incidente ni del arresto: busco en el mes previo a la publicación"
                         if approx else "Sin ninguna fecha: la búsqueda puede toparse con el límite de 500 resultados")
 
-    county = resolve_county(extraction)
+    warrant = warrant_county(f"{article.title}\n{article.text}")
+    county = resolve_county(extraction, warrant)
+    agency = extraction.agency
+    if warrant and agency and florida.AGENCY_TO_COUNTY.get(normalize_agency(agency)) != warrant:
+        # Lo detuvo otra agencia con la orden de este condado: el caso es de la agencia que
+        # investigó, así que la que lo arrestó no cuenta (ni suma ni resta).
+        notes.append(f"agencia: lo detuvo {agency} con una orden de {florida.ALL_COUNTIES[warrant]} County; "
+                     "no la uso para comparar")
+        agency = None
 
     query = LookupQuery(
         first_name=person.first_name.strip(),
@@ -172,7 +180,7 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
         arrest_date=arrest,
         court_dates=court,
         age=person.age,
-        agency=extraction.agency,
+        agency=agency,
         charges=extraction.charges,
         approx_date=approx,
         date_from=date_from,
@@ -354,8 +362,35 @@ def _county_key(value: Optional[str]) -> Optional[str]:
     return re.sub(r"\s+", "_", v) or None
 
 
-def resolve_county(extraction: Extraction) -> str:
-    """Clave del condado soportado ('orange') o OutOfScope con un mensaje claro."""
+# "arrested in Broward County on a warrant out of Osceola County", "an Osceola County warrant":
+# el caso está en el condado de la orden, no en el de la agencia que lo detuvo
+# (Peters, Fort Lauderdale PD con orden de Osceola, 02/11/2026).
+_COUNTY_NAME = r"((?:[A-Z][a-zA-Z.'-]+\s){0,2}?[A-Z][a-zA-Z.'-]+)\s+County"
+# Solo "on a warrant ...": arrestado CON esa orden. "He also had a warrant out of Polk County"
+# es otra orden pendiente, no el caso de la nota.
+_WARRANT_COUNTY_RES = (
+    re.compile(r"\bon\s+(?:an?|the)\s+(?:[a-z-]+\s+){0,2}warrants?\s+(?:out\s+of|from|issued\s+(?:in|by|out\s+of))"
+               r"\s+(?:the\s+)?" + _COUNTY_NAME),
+    re.compile(r"\bon\s+(?:an?|the)\s+" + _COUNTY_NAME + r"\s+(?:arrest\s+|capias\s+)?warrants?\b"),
+)
+
+
+def warrant_county(text: Optional[str]) -> Optional[str]:
+    """Condado de Florida de la orden con la que lo detuvieron, si la nota lo dice. Si nombra
+    órdenes de dos condados distintos, None (no se sabe cuál es el caso de la nota)."""
+    found = set()
+    for regex in _WARRANT_COUNTY_RES:
+        for m in regex.finditer(text or ""):
+            key = _county_key(m.group(1))
+            if key in florida.ALL_COUNTIES:
+                found.add(key)
+    return found.pop() if len(found) == 1 else None
+
+
+def resolve_county(extraction: Extraction, warrant: Optional[str] = None) -> str:
+    """Clave del condado soportado ('orange') o OutOfScope con un mensaje claro.
+
+    `warrant`: condado de la orden con la que lo detuvieron (warrant_county); va primero."""
     state = _state_code(extraction.state)
     city = (extraction.city or "").strip() or None
     place = ", ".join(p for p in (city, state) if p) or "an unknown location"
@@ -380,7 +415,10 @@ def resolve_county(extraction: Extraction) -> str:
         log.warning("La IA dijo condado %s, pero la agencia (%s) es de %s: uso %s",
                     florida.ALL_COUNTIES[by_model], extraction.agency,
                     florida.ALL_COUNTIES[by_agency], florida.ALL_COUNTIES[by_agency])
-    candidates = [by_agency, by_model, florida.CITY_TO_COUNTY.get(normalize(city))]
+    if warrant and by_agency and by_agency != warrant:
+        log.warning("La agencia (%s) es de %s, pero la orden es de %s: uso %s", extraction.agency,
+                    florida.ALL_COUNTIES[by_agency], florida.ALL_COUNTIES[warrant], florida.ALL_COUNTIES[warrant])
+    candidates = [warrant, by_agency, by_model, florida.CITY_TO_COUNTY.get(normalize(city))]
     county = next((c for c in candidates if c in florida.ALL_COUNTIES), None)
 
     if county is None:

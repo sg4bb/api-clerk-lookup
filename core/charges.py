@@ -36,6 +36,9 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     # Encubrir a otro ("accessory after the fact"): no es el homicidio que encubre.
     "accessory": ("accessory after", "accessory to", "accessory before"),
     "fleeing": ("flee", "elud"),
+    # "CRIMINAL CONSPIRACY MISDEMEANOR SECOND" (Peters, Osceola): el portal no dice qué delito;
+    # la nota, "conspiracy to commit battery".
+    "conspiracy": ("conspir",),
     "fraud": ("fraud", "forg", "counterfeit", "uttering", "identity"),
     # "Obscene communication - use computer to seduce/solicit/lure a child" (Johnson, Santa Rosa,
     # 19001033CFMXAX): el portal corta en "LURE CH" y quedaba "no comparables" (53 %). "Solicit" no
