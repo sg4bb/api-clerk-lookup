@@ -301,6 +301,40 @@ LIBERTY = civitek(
     documents=(r"^\s*probable cause\s*$",),
 )
 
+# BenchmarkWeb (Pioneer / Catalis): un portal por condado, con la misma aplicación.
+# Osceola (01/11/2026), sin CAPTCHA ni cuenta:
+#   - Arresto sin orden: "BOOKING DOCUMENT" = Osceola County Uniform Charging Affidavit, con la
+#     narración del agente (McMillian, 2026 CF 003435, Seq 2; Jeanbaptiste, 2026 CF 003434, Seq 2).
+#   - Arresto con orden: "CRIMINAL CASE OPENED - ARREST WARRANT FILED MEMORANDUM FILED AFFIDAVIT OF
+#     ARREST WARRANT" = la orden con la declaración del agente (Garcia, 2026 CF 003520, Seq 2). El
+#     "CRIMINAL CASE - BOOKING REPORT FILED..." de ese arresto solo dice "arrestada por orden": de apoyo.
+#   - Arresto sin orden, otro nombre: "CRIMINAL CASE OPENED - BOOKING REPORT FILED ADVICED TO DEFENDANT
+#     FIRST APPEARANCE" = el Uniform Charging Affidavit con la narración (Carlos Moises Garcia,
+#     2026 CF 001491, Seq 4). Con "OPENED" es el principal; sin "OPENED", el de la orden (apoyo).
+#   - El "Agency Report Number" está en el resumen del caso (vacío en los del Sheriff: su número
+#     solo aparece dentro del PDF, "Case# 26I104605").
+OSCEOLA = CountyConfig(
+    key="osceola",
+    name="Osceola County",
+    state="FL",
+    platform="benchmark_web",
+    base_url="https://courts.osceolaclerk.com/BenchmarkWeb/Home.aspx/Search",
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+    document_priority=[
+        r"^\s*booking document\b",
+        r"^\s*criminal case opened\s*-\s*booking report filed\b",
+        r"\baffidavit of arrest warrant\b",
+        r"affidavit (?:for|to issue) (?:arrest )?warrant",
+        r"\barrest affidavit\b",
+        r"probable cause affidavit",
+        r"charging affidavit",
+    ],
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b"],
+    support_documents=[r"^\s*criminal case\s*-\s*booking report filed\b", r"\bwarrant returned executed\b"],
+    captcha="none",
+    throttle_s=2.0,
+)
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -336,6 +370,7 @@ COUNTIES: dict[str, CountyConfig] = {
     SANTA_ROSA.key: SANTA_ROSA,
     HIGHLANDS.key: HIGHLANDS,
     DESOTO.key: DESOTO,
+    OSCEOLA.key: OSCEOLA,
 }
 
 
@@ -438,6 +473,8 @@ CITY_TO_COUNTY: dict[str, str] = {
     "sanford": "seminole", "altamonte springs": "seminole", "oviedo": "seminole", "lake mary": "seminole",
     "casselberry": "seminole", "longwood": "seminole", "winter springs": "seminole",
     "kissimmee": "osceola", "st cloud": "osceola", "saint cloud": "osceola", "poinciana": "osceola",
+    "celebration": "osceola", "buenaventura lakes": "osceola", "campbell": "osceola", "harmony": "osceola",
+    "narcoossee": "osceola", "kenansville": "osceola", "yeehaw junction": "osceola", "intercession city": "osceola",
     "clermont": "lake", "leesburg": "lake", "eustis": "lake", "tavares": "lake", "mount dora": "lake",
     "daytona beach": "volusia", "deltona": "volusia", "deland": "volusia", "orange city": "volusia",
     "port orange": "volusia", "new smyrna beach": "volusia", "ormond beach": "volusia",
@@ -495,6 +532,7 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "zephyrhills pd": "pasco", "dade city pd": "pasco",
     "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
+    "st cloud pd": "osceola", "saint cloud pd": "osceola",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",
     "jacksonville so": "duval", "miami dade pd": "miami_dade", "miami pd": "miami_dade",

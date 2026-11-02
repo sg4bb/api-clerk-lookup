@@ -101,6 +101,9 @@ class CaseDetails:
     # El portal mostró el caso pero no su docket ("Dockets are currently unavailable",
     # Gulf, 24/10/2026): sin docket no hay documentos ni número de reporte que leer.
     docket_unavailable: bool = False
+    # Número de reporte que el portal muestra en el resumen del caso (BenchmarkWeb: "Agency
+    # Report Number"). Los demás portales lo anotan en el docket y lo dejan en None.
+    agency_report_number: Optional[str] = None
 
 
 @dataclass

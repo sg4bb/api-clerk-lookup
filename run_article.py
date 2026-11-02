@@ -9,6 +9,7 @@ Uso (con el entorno virtual activado):
     python run_article.py mues --dry-run --model google/gemma-4-31b-it   # probar otro modelo
     python run_article.py mues --reuse           # reusa la extracción guardada (sin volver a llamar a NVIDIA)
     python run_article.py -i                     # modo interactivo: pega links uno tras otro (simula el worker)
+    python run_article.py https://... --local    # con el Chrome de esta PC, aunque .env diga browserbase
 
 Resultados en output/<id>/: article.txt, extraction.json, query.json,
 result.json y el PDF. Conviene correr primero --dry-run y revisar
@@ -182,9 +183,13 @@ def main() -> int:
                         help="pedir links por consola, uno tras otro, hasta dejarlo vacío")
     parser.add_argument("--reuse", action="store_true",
                         help="reusar el artículo y la extracción guardados en output/<id>/ (no llama a NVIDIA)")
+    parser.add_argument("--local", action="store_true",
+                        help="usar el Chrome de esta PC en vez de Browserbase (no gasta minutos)")
     args = parser.parse_args()
 
     load_dotenv()
+    if args.local:
+        os.environ["BROWSER_PROVIDER"] = "local"
     if args.model:
         os.environ["NVIDIA_MODEL"] = args.model
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",

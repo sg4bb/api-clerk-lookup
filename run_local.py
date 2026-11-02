@@ -4,6 +4,7 @@ Uso (con el entorno virtual activado):
     python run_local.py              # corre todos los casos (salvo los "skip")
     python run_local.py ward         # corre solo los casos indicados por id
     python run_local.py --check      # valida el JSON sin abrir el navegador
+    python run_local.py --local ward # con el Chrome de esta PC, aunque .env diga browserbase
 
 Cada caso abre su propio Chrome y pide su propio CAPTCHA. Los resultados
 quedan en output/<id>/ (PDF + result.json).
@@ -108,9 +109,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Pruebas locales de clerk-lookup")
     parser.add_argument("ids", nargs="*", help="ids de test_cases.json a correr (por defecto, todos)")
     parser.add_argument("--check", action="store_true", help="solo validar el JSON")
+    parser.add_argument("--local", action="store_true",
+                        help="usar el Chrome de esta PC en vez de Browserbase (no gasta minutos)")
     args = parser.parse_args()
 
     load_dotenv()
+    if args.local:
+        os.environ["BROWSER_PROVIDER"] = "local"
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",

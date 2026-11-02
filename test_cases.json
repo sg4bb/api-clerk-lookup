@@ -249,6 +249,57 @@
     "expected_case": "25000038CFAXMX"
   },
   {
+    "id": "garcia_kathryn",
+    "notes": "Osceola (BenchmarkWeb), 2026 CF 003520. Arresto con orden de St. Cloud PD: 'AFFIDAVIT OF ARREST WARRANT' (Seq 2); reporte 26004685.",
+    "first_name": "Kathryn",
+    "middle_name": null,
+    "last_name": "Garcia",
+    "county": "osceola",
+    "state": "FL",
+    "incident_date": "2026-10-01",
+    "arrest_date": "2026-10-02",
+    "age": 59,
+    "agency": "St. Cloud Police Department",
+    "charges": [
+      "child abuse"
+    ],
+    "expected_case": "2026 CF 003520"
+  },
+  {
+    "id": "mcmillian_stacia",
+    "notes": "Osceola, 2026 CF 003435. Arresto sin orden del Sheriff: 'BOOKING DOCUMENT' (Seq 2). Un solo caso: el portal va directo a la página del caso.",
+    "first_name": "Stacia",
+    "middle_name": null,
+    "last_name": "McMillian",
+    "county": "osceola",
+    "state": "FL",
+    "incident_date": "2026-09-26",
+    "arrest_date": "2026-09-27",
+    "age": null,
+    "agency": "Osceola County Sheriff's Office",
+    "charges": [
+      "child neglect"
+    ],
+    "expected_case": "2026 CF 003435"
+  },
+  {
+    "id": "jeanbaptiste_johnny",
+    "notes": "Osceola, 2026 CF 003434. Mismo hecho que McMillian; también tiene un caso de tránsito (2026 TR 045106) que debe quedar fuera.",
+    "first_name": "Johnny",
+    "middle_name": null,
+    "last_name": "Jeanbaptiste",
+    "county": "osceola",
+    "state": "FL",
+    "incident_date": "2026-09-26",
+    "arrest_date": "2026-09-27",
+    "age": null,
+    "agency": "Osceola County Sheriff's Office",
+    "charges": [
+      "child neglect"
+    ],
+    "expected_case": "2026 CF 003434"
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",

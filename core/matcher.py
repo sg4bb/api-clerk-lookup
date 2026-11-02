@@ -641,6 +641,13 @@ def same_incident(a: CaseDetails, b: CaseDetails) -> bool:
     ka, kb = key(a), key(b)
     if bool(ka[0]) and bool(ka[1]) and ka == kb:
         return True
+    # Mismo acusado con la misma fecha de arresto que da el portal: una sola detención, aunque
+    # los hechos sean de días distintos. Jones (Osceola, 02/11/2026): 2026 CF 001741 (huida al
+    # detenerlo) y 2026 CF 001685 (la agresión sexual de enero), ambos "DATE OF ARREST 05/21/2026".
+    # Con agencias distintas son dos detenciones del mismo día (Clarkerosen, Orange: OPD y OCSO).
+    if (ka[1] and ka[1] == kb[1] and normalize(a.candidate.defendant) == normalize(b.candidate.defendant)
+            and (not ka[2] or not kb[2] or ka[2] == kb[2])):
+        return True
     if any(c.control_number or c.arrest_date or c.agency for c in a.charges + b.charges):
         return False                     # el portal sí trae esos datos y no coinciden
     if normalize(a.candidate.defendant) != normalize(b.candidate.defendant):
@@ -656,25 +663,29 @@ def same_incident(a: CaseDetails, b: CaseDetails) -> bool:
 
 
 def _offense_to_initial(details: CaseDetails) -> int:
-    """Días entre la ofensa y la fecha "Initial" (el arresto). Grande si no se sabe.
+    """Días entre la ofensa y el arresto (la fecha de arresto del portal o, si no hay, la
+    "Initial" de Civitek). Grande si no se sabe.
 
     Entre casos del mismo arresto, el que tiene la ofensa más cerca del arresto es el que
     abrió esa detención; los demás son órdenes viejas servidas ese día. Callahan (DeSoto):
     el 2024MM000053 (parafernalia del 13/09/2023) tiene "Initial: 01/10/2025" como los del
     tráfico, pero su declaración jurada es del hecho de 2023, no del arresto de 2025.
     """
-    gaps = [abs((c.initial_date - c.offense_date).days) for c in details.charges
-            if getattr(c, "initial_date", None) and c.offense_date]
+    gaps = [abs(((c.arrest_date or c.initial_date) - c.offense_date).days) for c in details.charges
+            if (c.arrest_date or getattr(c, "initial_date", None)) and c.offense_date]
     return min(gaps) if gaps else 10**6
 
 
-def _preference(details: CaseDetails, has_document: Callable[[CaseDetails], bool]):
+def _preference(details: CaseDetails, has_document: Callable[[CaseDetails], bool],
+                match_score: Optional[MatchScore] = None):
     match = _CASE_TYPE_RE.match(details.candidate.case_number)
     rank = _TYPE_RANK.get(match.group(1) if match else "", 9)
     filed = details.candidate.filed_date or date.max
-    # Con documento primero; después el caso principal (no el consolidado en otro); después
-    # el de la ofensa más cercana al arresto (solo Civitek trae "Initial"; en los demás es igual).
-    return (0 if has_document(details) else 1, 1 if details.consolidated else 0, rank,
+    # Con documento primero; después el caso principal (no el consolidado en otro); después el
+    # que tiene los cargos de la nota (no otro caso servido en el mismo arresto); después el de
+    # la ofensa más cercana al arresto. Lo que no se sabe vale igual para todos.
+    charges = 0 if match_score is not None and match_score.charges_match else 1
+    return (0 if has_document(details) else 1, 1 if details.consolidated else 0, charges, rank,
             _offense_to_initial(details), filed)
 
 
@@ -696,7 +707,7 @@ def resolve_same_incident(
         close = _drop_consolidated(close)
         if not close or not all(same_incident(close[0][1], s[1]) for s in close[1:]):
             return None
-    return min(close, key=lambda s: _preference(s[1], has_document))
+    return min(close, key=lambda s: _preference(s[1], has_document, s[0]))
 
 
 def related_cases(winner: CaseDetails, scored: list[tuple[MatchScore, CaseDetails]]) -> list[str]:

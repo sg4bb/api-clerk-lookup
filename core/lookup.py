@@ -491,7 +491,10 @@ def agency_case_number(details: CaseDetails) -> Optional[str]:
     """El número de reporte que el portal anota en el docket ("Agency Case Number: 13OFF005652").
 
     Si hay varios, el de la entrada más antigua: la que se cargó al abrir el caso.
+    Si el portal lo muestra en el resumen del caso (BenchmarkWeb), ese.
     """
+    if details.agency_report_number:
+        return details.agency_report_number
     for pattern in (_AGENCY_NUMBER_RE, _AGENCY_CITATION_RE, _ARREST_REPORT_NUMBER_RE):   # en ese orden
         found = [(e.date or date.max, m.group(1).upper()) for e in details.docket
                  if (m := pattern.search(e.description or ""))]
