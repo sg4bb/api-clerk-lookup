@@ -141,7 +141,7 @@ la plataforma.
 | Bay | 196.112 | court.baycoclerk.com/BenchmarkWeb2 | No visto | Sin verificar | Anónimo: solo nombre y número |
 | Indian River | 171.029 | court.indian-river.org/BenchmarkWeb | No mencionado | Sí, según el clerk | |
 | Martin | 164.853 | court.martinclerk.com | Texto | Probable | |
-| Flagler | 136.310 | cases.flaglerclerk.gov | Sin verificar | En parte (affidavits incluidos según nota de 2015) | |
+| Flagler | 136.310 | cases.flaglerclerk.gov/Home.aspx/Search | hCaptcha (imágenes; lo resuelve una persona; solo la primera búsqueda de la sesión) | Sí, salvo algunos con candado | Hecho (02/11/2026). La aplicación está en la raíz del dominio (no en /BenchmarkWeb/) y las fechas de apertura son campos visibles. Con orden: "SWORN COMPLAINT" (narración) y "ARRESTING AFFIDAVIT" de apoyo (Moraitis, 2026 CF 000915); sin orden: "ARRESTING AFFIDAVIT". El docket anota "REARRESTED ON 10/24/2026"; el resumen trae "Agency Report Number" (202500033875) Probado (con hCaptcha en la live view, enfocado como en Orange): Moraitis (100 %, sworn complaint + arresting affidavit), Lee (caballo desnutrido, 2026 CF 000828, 100 %, categoría "animal"), Curley (2026 CF 000710, 100 %: la detuvo Seminole con la orden de Flagler; con la regla de la agencia que investigó va a Flagler), Walker (2026 CF 000665, Bunnell PD, 71 %: el modelo puso el Sheriff de Flagler) |
 
 ### Lote 3 — Centro de Florida
 

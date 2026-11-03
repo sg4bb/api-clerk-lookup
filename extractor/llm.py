@@ -57,9 +57,16 @@ the store ... taken into custody" means the same day as the incident); otherwise
 (e.g. "was convicted on June 30" -> that day; "was sentenced today" -> the publication date). \
 A court date is NEVER the incident_date or the arrest_date: in an article about a conviction or a sentence \
 that does not say when the crime happened, incident_date is null. Empty list if the article reports none.
-5. agency: the agency that made the arrest (e.g. "Orlando Police Department").
+5. agency: the police department or sheriff's office that INVESTIGATED and charged the case \
+(e.g. "Orlando Police Department"); the court case is filed under its report. If another agency only \
+caught the person on that agency's warrant (e.g. "arrested in Geneva by the Seminole County Sheriff's Office \
+with help from the Flagler County Sheriff's Office ... Flagler deputies obtained an arrest warrant" -> \
+"Flagler County Sheriff's Office"), use the investigating agency, not the one that made the arrest. \
+A city's police chief speaks for that city's police department ("Bunnell police chief" -> \
+"Bunnell Police Department"). Never a prosecutor, court, jail, or the Attorney General's office.
 6. city: where the crime happened (datelines like "ORLANDO, Fla. -" count). state: two letters ("FL"). \
-county: if not stated, use the county of that city (Orlando -> Orange).
+county: the county where the crime happened and the case was filed, not where the person was caught; \
+if not stated, use the county of that city (Orlando -> Orange).
 7. charges: list each charge as the article words it.
 8. Never guess. Use null or an empty list when the article does not say it.
 

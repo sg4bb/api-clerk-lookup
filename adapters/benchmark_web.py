@@ -46,6 +46,8 @@ RESULTS_TIMEOUT_MS = 30_000
 _RESULTS_STATE_JS = r"""
 () => {
   if (location.href.indexOf('/CourtCase.aspx/Details/') >= 0) return 'case';
+  // Flagler: sin CAPTCHA resuelto vuelve al formulario con "?error=Invalid Captcha".
+  if (/home\.aspx\/search/i.test(location.pathname) && /captcha/i.test(decodeURIComponent(location.search))) return 'captcha';
   // De nuevo en el formulario (página nueva, sin la marca que se pone al enviar).
   if (location.href.toLowerCase().indexOf('/home.aspx/search') >= 0 && !window.__clerkSubmitted && document.querySelector('#name')) return 'form';
   const box = Array.from(document.querySelectorAll("iframe[src*='recaptcha']"))
@@ -78,6 +80,11 @@ _READ_ROWS_JS = """
       thumb: expand ? expand.getAttribute('onclick') : '',
     };
   })
+"""
+
+_CAPTCHA_KIND_JS = """
+() => (document.querySelector("iframe[src*='hcaptcha'], .h-captcha, [name='h-captcha-response']") ? 'hcaptcha'
+       : document.querySelector("iframe[src*='recaptcha'], .g-recaptcha") ? 'recaptcha' : null)
 """
 
 # Firma de las filas visibles: cambia cuando la tabla se vuelve a dibujar (el portal no
@@ -306,13 +313,32 @@ def docket_from_case(rows: list[dict]) -> list[DocketEntry]:
     return docket
 
 
+def site_root(base_url: str) -> str:
+    """'https://x/BenchmarkWeb/Home.aspx/Search' -> 'https://x/BenchmarkWeb/'; 'https://y/Home.aspx/Search' -> 'https://y/'."""
+    path = urlparse(base_url).path
+    i = path.lower().find("/home.aspx")
+    return urljoin(base_url, path[:i + 1] if i >= 0 else "/")
+
+
 def arrest_date_from_docket(docket: list[DocketEntry]) -> Optional[date]:
-    """La entrada "DATE OF ARREST" (la primera, si hay varias)."""
-    dates = [e.date for e in docket if e.date and re.match(r"^\s*date of arrest\b", e.description, re.I)]
+    """La fecha de arresto del docket (la primera, si hay varias): "DATE OF ARREST" (Osceola) o
+    "ARRESTED ON 10/24/2026" / "REARRESTED ON 10/24/2026" (Flagler)."""
+    dates = []
+    for e in docket:
+        said = re.match(r"^\s*(?:re)?arrested on\s+(\d{1,2}/\d{1,2}/\d{4})", e.description, re.I)
+        if said:
+            dates.append(_date(said.group(1)))
+        elif e.date and re.match(r"^\s*date of arrest\b", e.description, re.I):
+            dates.append(e.date)
+    dates = [d for d in dates if d]
     return min(dates) if dates else None
 
 
 class BenchmarkWebAdapter(ClerkAdapter):
+
+    def site_root(self) -> str:
+        """Raíz de la aplicación: ".../BenchmarkWeb/" (Osceola) o "/" (Flagler, en su propio dominio)."""
+        return site_root(self.county.base_url)
 
     # --- 1. Búsqueda --------------------------------------------------------
 
@@ -328,6 +354,8 @@ class BenchmarkWebAdapter(ClerkAdapter):
         for attempt in (1, 2):
             self._submit_search(name, dates)
             state = self._wait_results()
+            if state == "captcha":
+                state = self._search_with_captcha(name, dates)
             if state != "form":
                 break
             # El portal devolvió el formulario vacío (01/11/2026, Chrome local: el nombre se
@@ -335,10 +363,6 @@ class BenchmarkWebAdapter(ClerkAdapter):
             log.warning("El portal volvió al formulario sin resultados (intento %d de 2)", attempt)
         if state == "form":
             raise SearchError("The court portal returned the empty search form instead of results")
-        if state == "captcha":
-            log.info("El portal pide un CAPTCHA; se pide a la persona")
-            self.captcha.solve(page, timeout_s=self.county.captcha_timeout_s, kind="recaptcha")
-            state = self._wait_results()
         if state == "case":
             candidate = self._candidate_from_case_page()
             log.info("Un solo caso: el portal fue directo a %s", candidate.case_number if candidate else page.url)
@@ -360,7 +384,12 @@ class BenchmarkWebAdapter(ClerkAdapter):
         return candidates
 
     def _submit_search(self, name: str, dates: dict) -> None:
-        """Llena y envía el formulario cuando la página ya está lista.
+        self._open_form()
+        self._fill_form(name, dates)
+        self._click_search()
+
+    def _open_form(self) -> None:
+        """La página de búsqueda, con sus scripts listos.
 
         Los scripts del portal (search.js) eligen la opción "Name" al cargar y eso vacía el
         campo: si se escribe antes, se envía el formulario sin nombre y el portal vuelve a él.
@@ -373,24 +402,53 @@ class BenchmarkWebAdapter(ClerkAdapter):
         except PlaywrightTimeout:
             log.warning("Los scripts del portal tardan en cargar; sigo igual")
         page.wait_for_timeout(1000)
+
+    def _fill_form(self, name: str, dates: dict) -> None:
+        page = self.page
         if page.locator("#radio_0").count():
             page.locator("#radio_0").check()
         page.fill("#name", name)
         page.wait_for_timeout(300)
         if page.input_value("#name") != name:
             page.fill("#name", name)
-        # Las fechas van en los campos ocultos del formulario; el portal las respeta (Jones,
-        # James: 369 casos sin fechas, 1 con 2026). Sin campos visibles, search.js no las pisa.
-        # Se fijan también al enviar, por si algún script las limpia antes.
+        # Fechas de apertura. Osceola: solo hay campos ocultos, y el portal los respeta (Jones,
+        # James: 369 casos sin fechas, 1 con 2026). Flagler: también hay campos visibles
+        # (#openedFrom / #openedTo) y search.js copia esos sobre los ocultos al enviar: se
+        # llenan los dos.
         page.evaluate("""(h) => {
+            for (const id of ['openedFrom', 'openedTo']) {
+                const box = document.getElementById(id);
+                if (box) { box.value = h[id]; box.dispatchEvent(new Event('change', {bubbles: true})); }
+            }
             const form = document.querySelector('form.searchform');
             const put = () => { for (const [k, v] of Object.entries(h)) {
-                const el = form.querySelector('[name="' + k + '"]'); if (el) el.value = v; } };
+                const el = form.querySelector('input[type=hidden][name="' + k + '"]'); if (el) el.value = v; } };
             put();
-            form.addEventListener('submit', put, true);
+            if (!window.__clerkListener) { form.addEventListener('submit', put, true); window.__clerkListener = true; }
             window.__clerkSubmitted = true;
         }""", dates)
-        page.get_by_role("button", name=re.compile(r"^\s*search\s*$", re.I)).first.click()
+
+    def _click_search(self) -> None:
+        self.page.get_by_role("button", name=re.compile(r"^\s*search\s*$", re.I)).first.click()
+
+    def _search_with_captcha(self, name: str, dates: dict) -> str:
+        """El portal pidió el CAPTCHA (Flagler: hCaptcha, "Invalid Captcha" si se busca sin él).
+
+        Solo la primera búsqueda de la sesión lo pide: las siguientes pasan sin él (Flagler,
+        02/11/2026). Lo resuelve una persona; después se vuelve a buscar.
+        """
+        page = self.page
+        if not page.locator("#name").count():
+            self._open_form()
+        self._fill_form(name, dates)
+        kind = page.evaluate(_CAPTCHA_KIND_JS) or "recaptcha"
+        log.info("El portal pide un CAPTCHA (%s); se pide a la persona", kind)
+        self.captcha.solve(page, timeout_s=self.county.captcha_timeout_s, kind=kind)
+        self._click_search()
+        state = self._wait_results()
+        if state == "captcha":
+            raise SearchError("The court portal didn't accept the CAPTCHA")
+        return state
 
     def _wait_results(self) -> str:
         try:
@@ -475,7 +533,7 @@ class BenchmarkWebAdapter(ClerkAdapter):
             thumb_data = {}
             if thumb:
                 try:
-                    thumb_data = tab.evaluate(_THUMB_JS, urljoin(url, "/BenchmarkWeb/" + thumb.lstrip("/")))
+                    thumb_data = tab.evaluate(_THUMB_JS, urljoin(self.site_root(), thumb.lstrip("/")))
                 except PlaywrightError as exc:
                     log.warning("%s: no pude leer el resumen de cargos (%s)", candidate.case_number, exc)
             summary = data.get("summary", {})
@@ -513,7 +571,7 @@ class BenchmarkWebAdapter(ClerkAdapter):
         if not entry.doc_ref or "|" not in entry.doc_ref:
             raise DownloadError(f"'{entry.description}' has no document link")
         cid, digest = entry.doc_ref.split("|", 1)
-        base = urljoin(self.county.base_url, "/BenchmarkWeb/")
+        base = self.site_root()
         result = self.page.evaluate(_PDF_JS, {"base": base, "cid": cid, "digest": digest})
         if result.get("error"):
             raise DownloadError(f"The court portal didn't hand over '{entry.description}': {result['error']}")

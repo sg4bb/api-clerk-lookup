@@ -335,6 +335,32 @@ OSCEOLA = CountyConfig(
     throttle_s=2.0,
 )
 
+# Flagler (02/11/2026): BenchmarkWeb en su propio dominio, con hCaptcha (lo resuelve una persona;
+# solo la primera búsqueda de la sesión lo pide). Fechas de apertura en campos visibles.
+#   - Arresto con orden: "SWORN COMPLAINT" = la declaración del agente con la narración, para pedir
+#     la orden; el "ARRESTING AFFIDAVIT" de la captura solo dice que se ejecutó la orden (Moraitis,
+#     2026 CF 000915: Seq 2 y Seq 12). Va primero el que entró antes (Seq).
+#   - Arresto sin orden: "ARRESTING AFFIDAVIT" con la narración.
+#   - El docket anota la fecha de arresto como "REARRESTED ON 10/24/2026" (o "ARRESTED ON").
+FLAGLER = CountyConfig(
+    key="flagler",
+    name="Flagler County",
+    state="FL",
+    platform="benchmark_web",
+    base_url="https://cases.flaglerclerk.gov/Home.aspx/Search",
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+    document_priority=[
+        r"^\s*arresting affidavit\b",
+        r"^\s*sworn complaint\s*$",
+        r"\barrest affidavit\b",
+        r"probable cause affidavit",
+    ],
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b"],
+    support_documents=[r"^\s*arresting affidavit\b"],
+    captcha="hcaptcha",
+    throttle_s=2.0,
+)
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -371,6 +397,7 @@ COUNTIES: dict[str, CountyConfig] = {
     HIGHLANDS.key: HIGHLANDS,
     DESOTO.key: DESOTO,
     OSCEOLA.key: OSCEOLA,
+    FLAGLER.key: FLAGLER,
 }
 
 
@@ -488,7 +515,8 @@ CITY_TO_COUNTY: dict[str, str] = {
     "jacksonville": "duval", "tallahassee": "leon", "gainesville": "alachua", "pensacola": "escambia",
     "fort myers": "lee", "cape coral": "lee", "naples": "collier", "sarasota": "sarasota",
     "bradenton": "manatee", "port st lucie": "st_lucie", "fort pierce": "st_lucie", "key west": "monroe",
-    "panama city": "bay", "mexico beach": "bay", "palm coast": "flagler", "st augustine": "st_johns", "spring hill": "hernando",
+    "panama city": "bay", "mexico beach": "bay", "palm coast": "flagler", "bunnell": "flagler", "flagler beach": "flagler", "beverly beach": "flagler",
+    "espanola": "flagler", "hammock": "flagler", "st augustine": "st_johns", "spring hill": "hernando",
     "the villages": "sumter",
 }
 
@@ -533,6 +561,7 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "seminole county so": "seminole",
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "st cloud pd": "osceola", "saint cloud pd": "osceola",
+    "flagler county so": "flagler", "bunnell pd": "flagler", "flagler beach pd": "flagler",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",
     "jacksonville so": "duval", "miami dade pd": "miami_dade", "miami pd": "miami_dade",

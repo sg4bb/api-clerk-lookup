@@ -39,6 +39,9 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     # "CRIMINAL CONSPIRACY MISDEMEANOR SECOND" (Peters, Osceola): el portal no dice qué delito;
     # la nota, "conspiracy to commit battery".
     "conspiracy": ("conspir",),
+    # Maltrato o abandono de animales (Flagler: el caballo desnutrido, los animales abandonados).
+    # Sin "dog" ni "cat" sueltos: "cat" es prefijo de "catalytic" o "category".
+    "animal": ("animal", "livestock", "equine", "horse", "canine", "dogfight", "dog fight", "cockfight"),
     "fraud": ("fraud", "forg", "counterfeit", "uttering", "identity"),
     # "Obscene communication - use computer to seduce/solicit/lure a child" (Johnson, Santa Rosa,
     # 19001033CFMXAX): el portal corta en "LURE CH" y quedaba "no comparables" (53 %). "Solicit" no

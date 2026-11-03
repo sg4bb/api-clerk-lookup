@@ -383,6 +383,12 @@ class StageNameRuleTest(unittest.TestCase):
         self.assertIn("use the LEGAL name", SYSTEM_PROMPT)
         self.assertIn("Never use the stage name or nickname", SYSTEM_PROMPT)
 
+    def test_prompt_asks_for_the_investigating_agency(self):
+        """Curley (Flagler, 02/11/2026): la detuvo el Sheriff de Seminole con la orden de Flagler."""
+        from extractor.llm import SYSTEM_PROMPT
+        self.assertIn("INVESTIGATED and charged the case", SYSTEM_PROMPT)
+        self.assertIn("not where the person was caught", SYSTEM_PROMPT)
+
 
 class FacebookFetchTest(unittest.TestCase):
     def test_filler_date_is_dropped_before_the_model_reads_it(self):

@@ -7,7 +7,7 @@ HTML real del portal (exploración con probe_benchmark.py).
 import unittest
 from datetime import date
 
-from adapters.benchmark_web import (BenchmarkWebAdapter, arrest_date_from_docket, candidates_from_rows, case_from_title,
+from adapters.benchmark_web import (BenchmarkWebAdapter, arrest_date_from_docket, candidates_from_rows, case_from_title, site_root,
                                     charges_from_case, clean_name, court_code, docket_from_case,
                                     normalize_agency_name, split_ref, thumb_from_details, thumb_url)
 from core.lookup import agency_case_number
@@ -175,6 +175,54 @@ class BookingReportTest(unittest.TestCase):
         self.assertEqual(adapter.find_support_documents(d), [])
         # Sin "OPENED" (la ficha de un arresto con orden) sigue de apoyo.
         self.assertEqual([e.number for e in adapter.find_support_documents(garcia_details())], [6, 10])
+
+
+# Moraitis (Flagler, 2026 CF 000915): arresto con orden. La narración está en el "SWORN COMPLAINT"
+# (Seq 2); el "ARRESTING AFFIDAVIT" (Seq 12) solo dice que se ejecutó la orden.
+MORAITIS_DOCKET = [
+    {"seq": "15", "date": "10/26/2026", "text": "ORIGINAL WARRANT RETURNED SERVED", "cid": None, "digest": None},
+    {"seq": "13", "date": "10/26/2026", "text": "BOOKING CARD", "cid": "13", "digest": "c"},
+    {"seq": "12", "date": "10/26/2026", "text": "ARRESTING AFFIDAVIT", "cid": "12", "digest": "b"},
+    {"seq": "10", "date": "10/24/2026", "text": "REARRESTED ON 10/24/2026: OBTS # 1803006523", "cid": None, "digest": None},
+    {"seq": "2", "date": "10/16/2026", "text": "SWORN COMPLAINT", "cid": "2", "digest": "a"},
+    {"seq": "1", "date": "10/16/2026", "text": "SWORN COMPLAINT COUNT: 1 - (800.04(4)(A)(1)) LEWD OR LASCIVIOUS BATTERY "
+                                               "VICTIM AGE 12 TO 16", "cid": None, "digest": None},
+]
+
+
+class FlaglerTest(unittest.TestCase):
+    def adapter(self):
+        return BenchmarkWebAdapter(page=None, county=get_county("flagler"), captcha=None)
+
+    def test_site_root(self):
+        self.assertEqual(site_root("https://cases.flaglerclerk.gov/Home.aspx/Search"), "https://cases.flaglerclerk.gov/")
+        self.assertEqual(site_root("https://courts.osceolaclerk.com/BenchmarkWeb/Home.aspx/Search"),
+                         "https://courts.osceolaclerk.com/BenchmarkWeb/")
+
+    def test_rearrested_on(self):
+        self.assertEqual(arrest_date_from_docket(docket_from_case(MORAITIS_DOCKET)), date(2026, 10, 24))
+
+    def test_warrant_case_documents(self):
+        d = CaseDetails(garcia_details().candidate, [], docket_from_case(MORAITIS_DOCKET))
+        self.assertEqual([e.description for e in self.adapter().find_documents(d)],
+                         ["SWORN COMPLAINT", "ARRESTING AFFIDAVIT"])
+        self.assertEqual([e.number for e in self.adapter().find_support_documents(d)], [12])
+
+    def test_warrantless_case_documents(self):
+        rows = [r for r in MORAITIS_DOCKET if r["seq"] != "2"]
+        d = CaseDetails(garcia_details().candidate, [], docket_from_case(rows))
+        self.assertEqual([e.number for e in self.adapter().find_documents(d)], [12])
+
+    def test_hcaptcha_is_known(self):
+        from core.captcha import SOLVED_JS
+        self.assertIn("h-captcha-response", SOLVED_JS["hcaptcha"])
+        self.assertEqual(get_county("flagler").captcha, "hcaptcha")
+
+    def test_animal_category(self):
+        from core.charges import categorize
+        self.assertEqual(categorize(["CRUELTY TO ANIMALS (828.12 1)"]), {"animal"})
+        self.assertIn("animal", categorize(["animal cruelty", "abandonment of an animal"]))
+        self.assertNotIn("animal", categorize(["GRAND THEFT CATALYTIC CONVERTER"]))
 
 
 if __name__ == "__main__":

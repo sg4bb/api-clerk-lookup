@@ -33,7 +33,25 @@ TURNSTILE_SOLVED_JS = """
 }
 """
 
-SOLVED_JS = {"recaptcha": RECAPTCHA_SOLVED_JS, "turnstile": TURNSTILE_SOLVED_JS}
+# hCaptcha (Flagler, BenchmarkWeb): llena h-captcha-response al resolverse (también g-recaptcha-response).
+HCAPTCHA_SOLVED_JS = """
+() => {
+  const t = document.querySelector('textarea[name="h-captcha-response"], [name="h-captcha-response"]');
+  const f = document.querySelector('iframe[data-hcaptcha-response]');
+  return !!((t && t.value && t.value.length > 0) || (f && f.getAttribute('data-hcaptcha-response')));
+}
+"""
+
+SOLVED_JS = {"recaptcha": RECAPTCHA_SOLVED_JS, "turnstile": TURNSTILE_SOLVED_JS, "hcaptcha": HCAPTCHA_SOLVED_JS}
+
+# hCaptcha en Chrome local: se centra la casilla (en la ventana remota se usa FOCUS_CAPTCHA_JS).
+FOCUS_HCAPTCHA_JS = """
+() => {
+  const w = document.querySelector('iframe[src*="hcaptcha"][src*="checkbox"], .h-captcha, iframe[src*="hcaptcha"]');
+  if (w) w.scrollIntoView({block: 'center', inline: 'center'});
+  return !!w;
+}
+"""
 
 # Respaldo para Turnstile: si no se puede tapar la página, al menos se centra la casilla.
 FOCUS_TURNSTILE_JS = """
@@ -83,6 +101,13 @@ FOCUS_CAPTCHA_JS = r"""
         if (w >= 200 && w <= 500) el = wide;
       }
     }
+  } else if (kind === 'hcaptcha') {
+    // hCaptcha (Flagler): la casilla es un iframe "#frame=checkbox" (~300x78); el cuadro de
+    // imágenes es otro iframe ("#frame=challenge") que se abre aparte (ver raiseChallenge).
+    all = [...document.querySelectorAll('iframe[src*="hcaptcha"], .h-captcha')];
+    const ok = (e) => shown(e) && sized(e) && !(e.src || '').includes('challenge');
+    const frames = all.filter(e => e.tagName === 'IFRAME' && ok(e));
+    el = frames.find(f => f.src.includes('checkbox')) || frames[0];
   } else {
     all = [...document.querySelectorAll('iframe[src*="recaptcha"], .g-recaptcha')];
     const ok = (e) => shown(e) && sized(e) && !e.closest('.grecaptcha-badge') && !(e.src || '').includes('bframe');
@@ -96,10 +121,11 @@ FOCUS_CAPTCHA_JS = r"""
   const unnarrow = () => { for (const [node, css] of narrowed) node.style.cssText = css; };
   if (!el) { unnarrow(); return info; }   // sin casilla visible no se tapa nada
 
-  // Cloudflare suele estar al final del formulario: un espacio temporal abajo
-  // deja subir la casilla hasta arriba, como en Orange. Se quita al terminar.
+  // Cloudflare y hCaptcha (Flagler) suelen estar al final del formulario: un espacio
+  // temporal abajo deja subir la casilla hasta arriba, como en Orange. Se quita al terminar.
+  // Con la casilla arriba, el cuadro de imágenes de hCaptcha se abre debajo de ella.
   const padBefore = document.body.style.paddingBottom;
-  if (kind === 'turnstile') document.body.style.paddingBottom = innerHeight + 'px';
+  if (kind === 'turnstile' || kind === 'hcaptcha') document.body.style.paddingBottom = innerHeight + 'px';
   el.style.scrollMarginTop = '70px';
   // Si se angostó, la casilla queda al medio de un formulario más ancho que la ventana.
   el.scrollIntoView({block: 'start', inline: narrowed.length ? 'center' : 'nearest'});
@@ -112,7 +138,8 @@ FOCUS_CAPTCHA_JS = r"""
     if (c.position === 'fixed' && parseInt(c.zIndex, 10) >= 1000000) floating.push(node);
   }
   for (const node of new Set(floating)) {
-    if (node.contains(el) || node.querySelector?.('iframe[src*="recaptcha"]') || (node.src || '').includes('recaptcha')) continue;
+    if (node.contains(el) || node.querySelector?.('iframe[src*="recaptcha"], iframe[src*="hcaptcha"]')
+        || /recaptcha|hcaptcha/.test(node.src || '')) continue;
     hidden.push([node, node.style.getPropertyValue('visibility'), node.style.getPropertyPriority('visibility')]);
     node.style.setProperty('visibility', 'hidden', 'important');
   }
@@ -146,9 +173,21 @@ FOCUS_CAPTCHA_JS = r"""
   bars.textContent = '*::-webkit-scrollbar{width:0!important;height:0!important}';
   document.head.appendChild(bars);
 
+  // hCaptcha: el cuadro de imágenes debe quedar por encima de los paneles. Se sube el
+  // contenedor del iframe "challenge" (el hijo directo de body) al máximo.
+  const raiseChallenge = () => {
+    if (kind !== 'hcaptcha') return;
+    for (const f of document.querySelectorAll('iframe[src*="hcaptcha"][src*="challenge"]')) {
+      let top = f;
+      while (top.parentElement && top.parentElement !== document.body) top = top.parentElement;
+      if (top.style.zIndex !== '2147483647') top.style.zIndex = '2147483647';
+    }
+  };
+
   let covered = false;
   const place = () => {
     hideFloating();
+    raiseChallenge();
     if (covered) return true;
     // Turnstile: el hueco es la casilla justa, para que no asomen Search ni Reset debajo.
     const r = el.getBoundingClientRect(), pad = kind === 'turnstile' ? 0 : 10;
@@ -233,7 +272,7 @@ class CaptchaHandler(Protocol):
     def solve(self, page: Page, timeout_s: int, kind: str = "recaptcha") -> None:
         """Bloquea hasta que el CAPTCHA esté resuelto o vence el tiempo.
 
-        kind: "recaptcha" (Orange) o "turnstile" (Cloudflare, Civitek).
+        kind: "recaptcha" (Orange), "turnstile" (Cloudflare, Civitek) o "hcaptcha" (Flagler).
         """
         ...
 
@@ -290,6 +329,13 @@ class ManualLocalCaptcha:
                 page.evaluate(FOCUS_TURNSTILE_JS)
                 print("\n  CAPTCHA: marca 'Verify you are human' en la ventana de Chrome que se abrió.\n")
                 wait_until_solved(page, timeout_s, TURNSTILE_SOLVED_JS)
+                return
+            if kind == "hcaptcha":
+                page.bring_to_front()
+                page.evaluate(FOCUS_HCAPTCHA_JS)
+                print("\n  CAPTCHA: marca 'I am human' en la ventana de Chrome y resuelve las imágenes que pida.")
+                print("  No pulses Search: el script busca solo cuando el CAPTCHA queda resuelto.\n")
+                wait_until_solved(page, timeout_s, HCAPTCHA_SOLVED_JS)
                 return
             self._solve(page, timeout_s)
         finally:
@@ -397,7 +443,7 @@ class LiveViewCaptcha:
     def _focus_on_captcha(self, page: Page, kind: str = "recaptcha"):
         """Achica la ventana remota y deja a la vista solo la casilla mientras se espera.
 
-        Sirve para reCAPTCHA (Orange) y Cloudflare Turnstile (Civitek). Impide el
+        Sirve para reCAPTCHA (Orange), Cloudflare Turnstile (Civitek) y hCaptcha (Flagler). Impide el
         desplazamiento y tapa el resto del portal, así el usuario no puede moverse
         por el sitio ni pulsar nada más. Al resolverse se restaura todo.
         Guarda un diagnóstico (captura y datos) en la carpeta debug.

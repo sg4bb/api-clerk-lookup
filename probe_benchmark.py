@@ -36,6 +36,7 @@ from urllib.parse import urljoin
 
 from dotenv import load_dotenv
 
+from adapters.benchmark_web import site_root
 from probe_civitek import INVENTORY_JS, _safe
 
 BASE = "https://courts.osceolaclerk.com/BenchmarkWeb/Home.aspx/Search"
@@ -178,7 +179,7 @@ def run(args) -> int:
             # 1. Búsqueda del caso conocido.
             search(page, probe, args.url, args.name, "principal")
             for script in SCRIPTS:
-                probe.fetch_text("/BenchmarkWeb/" + script, "script_" + script.split("/")[-1])
+                probe.fetch_text(site_root(args.url) + script, "script_" + script.split("/")[-1])
 
             # 2. Resumen desplegable del caso (lo que trae el "+" de la fila).
             link = page.locator(f"a[title='View Case Details for {args.case}']").first
@@ -190,7 +191,7 @@ def run(args) -> int:
             probe.notes["desplegable_onclick"] = onclick
             m = re.search(r"details\((\d+),\s*'([^']+)',\s*'([^']+)'", onclick or "")
             if m:
-                probe.fetch_text(f"/BenchmarkWeb/{m.group(2)}{m.group(1)}{m.group(3)}", "resumen_desplegable.html")
+                probe.fetch_text(f"{site_root(args.url)}{m.group(2)}{m.group(1)}{m.group(3)}", "resumen_desplegable.html")
 
             # 3. El caso, sus cargos y el documento.
             link.click()

@@ -300,6 +300,23 @@
     "expected_case": "2026 CF 003434"
   },
   {
+    "id": "moraitis_william",
+    "notes": "Flagler (BenchmarkWeb con hCaptcha), 2026 CF 000915. Arresto con orden: 'SWORN COMPLAINT' (Seq 2) con la narración; 'ARRESTING AFFIDAVIT' (Seq 12) de apoyo.",
+    "first_name": "William",
+    "middle_name": null,
+    "last_name": "Moraitis",
+    "county": "flagler",
+    "state": "FL",
+    "incident_date": null,
+    "arrest_date": "2026-10-24",
+    "age": null,
+    "agency": "Flagler County Sheriff's Office",
+    "charges": [
+      "lewd or lascivious battery"
+    ],
+    "expected_case": "2026 CF 000915"
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",
