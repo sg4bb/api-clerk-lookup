@@ -150,7 +150,7 @@ def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | Non
     if page.locator("iframe[src*='recaptcha']:visible").count():
         probe.notes[f"captcha_{tag}"] = True
         print("\n  >>> Hay un CAPTCHA: resuélvelo en la ventana. Espero 2 minutos.")
-        page.wait_for_url(re.compile(r"(?i)CaseSearch"), timeout=120_000)
+        page.wait_for_url(re.compile(r"(?i)CaseSearch|/Details/"), timeout=120_000)
         page.wait_for_timeout(3000)
     text = _safe(lambda: page.inner_text("body"), "")
     found = re.search(r"Name\s+(.+?)\s+(\d+)\s+[\d.]+\s*seconds", text)

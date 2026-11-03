@@ -317,6 +317,27 @@
     "expected_case": "2026 CF 000915"
   },
   {
+    "id": "matthew_jake",
+    "notes": "St. Johns (BenchmarkWeb con hCaptcha). 26001446CFMA (animal fighting, ARREST REPORT Seq 5), unido a 26001422CFMA (el principal; sus ARREST COUNT tienen fechas distintas y no cuentan como fecha de arresto).",
+    "first_name": "Jake",
+    "middle_name": null,
+    "last_name": "Matthew",
+    "county": "st_johns",
+    "state": "FL",
+    "incident_date": null,
+    "arrest_date": "2026-09-17",
+    "age": null,
+    "agency": "St. Johns County Sheriff's Office",
+    "charges": [
+      "animal cruelty",
+      "possession of a firearm by a convicted felon"
+    ],
+    "expected_case": [
+      "26001422CFMA",
+      "26001446CFMA"
+    ]
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",

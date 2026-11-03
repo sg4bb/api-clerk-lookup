@@ -8,6 +8,7 @@ import unittest
 from datetime import date
 
 from adapters.benchmark_web import (BenchmarkWebAdapter, arrest_date_from_docket, candidates_from_rows, case_from_title, site_root,
+                                    consolidated_into,
                                     charges_from_case, clean_name, court_code, docket_from_case,
                                     normalize_agency_name, split_ref, thumb_from_details, thumb_url)
 from core.lookup import agency_case_number
@@ -225,5 +226,87 @@ class FlaglerTest(unittest.TestCase):
         self.assertNotIn("animal", categorize(["GRAND THEFT CATALYTIC CONVERTER"]))
 
 
+# Matthew (St. Johns, 26001446CFMA): arresto sin orden del Sheriff, unido después a 26001422CFMA.
+MATTHEW_DOCKET = [
+    {"seq": "11", "date": "10/6/2026", "text": "CONSOLIDATED TO 26001422CFMA - ADD ON CHARGE", "cid": None, "digest": None},
+    {"seq": "8", "date": "9/24/2026", "text": "APPLICATION FOR INDIGENT STATUS (APPROVAL PENDING)", "cid": "8", "digest": "c"},
+    {"seq": "6", "date": "9/24/2026", "text": "FIRST APPEARANCE FORM", "cid": "6", "digest": "b"},
+    {"seq": "5", "date": "9/24/2026", "text": "ARREST REPORT", "cid": "5", "digest": "a"},
+    {"seq": "2", "date": "9/24/2026", "text": "CASE FILED 09/24/2026 CASE NUMBER 26001446CFMA", "cid": None, "digest": None},
+    {"seq": "1", "date": "9/17/2026", "text": "ARREST COUNT: 1 - (828.122 3A) ANIMAL FIGHTING", "cid": None, "digest": None},
+]
+
+
+class StJohnsTest(unittest.TestCase):
+    def test_case_number_formats(self):
+        for number, code in (("26001446CFMA", "CF"), ("26009995TR", "TR"), ("99007733CTMA", "CT"),
+                             ("CC26-5468", "CC"), ("2026CF000052AXMA", "CF"), ("2026 MM 000546", "MM")):
+            self.assertEqual(court_code(number), code, number)
+        self.assertEqual(case_from_title("26001446CFMA - STATE OF FLORIDA vs. MATTHEW, JAKE CAMERON"),
+                         ("26001446CFMA", "MATTHEW, JAKE CAMERON"))
+        rows = [{"case": n, "href": "/x", "name": "MATTHEW, JAKE CAMERON", "nameCell": "MATTHEW, JAKE CAMERON",
+                 "party": p, "status": "OPEN", "thumb": ""}
+                for n, p in (("26001446CFMA", "DEFENDANT"), ("26009995TR", "DEFENDANT"), ("CC26-5468", "DEFENDANT"),
+                             ("DR26-2231", "RESPONDENT"), ("22001414MMMA", "DEFENDANT"))]
+        self.assertEqual([c.case_number for c in candidates_from_rows(rows, ["CF", "MM", "CT"])],
+                         ["26001446CFMA", "22001414MMMA"])
+
+    def test_docket(self):
+        docket = docket_from_case(MATTHEW_DOCKET)
+        self.assertEqual(arrest_date_from_docket(docket), date(2026, 9, 17))
+        self.assertEqual(consolidated_into(docket), "26001422CFMA")
+        adapter = BenchmarkWebAdapter(page=None, county=get_county("st_johns"), captcha=None)
+        d = CaseDetails(garcia_details().candidate, [], docket)
+        self.assertEqual([e.description for e in adapter.find_documents(d)], ["ARREST REPORT"])
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+def matthew_case(number, filed, charges, docket, consolidated=False):
+    """Cargos (descripción, ofensa, Initial); el arresto sale del docket como en open_case."""
+    candidate = CaseCandidate(number, "MATTHEW, JAKE CAMERON", "CF", "OPEN", None, filed, "x")
+    docket = docket_from_case(docket)
+    arrest = arrest_date_from_docket(docket)
+    return CaseDetails(candidate, [Charge(offense, text, None, arrest, "ST JOHNS COUNTY SHERIFF'S OFFICE",
+                                          "26OFF008738", initial_date=initial) for text, offense, initial in charges],
+                       docket, consolidated=consolidated)
+
+
+class StJohnsArrestCountTest(unittest.TestCase):
+    """Matthew (St. Johns): 26001422CFMA anota un "ARREST COUNT" por cargo, con fechas distintas
+    (07/30 a 09/17); no es la fecha del arresto y no debe castigarlo frente a 26001446CFMA."""
+
+    MAIN_DOCKET = [{"seq": str(i), "date": d, "text": f"ARREST COUNT: {i} - (828.12 2) CRUELTY TO ANIMALS",
+                    "cid": None, "digest": None}
+                   for i, d in enumerate(("8/25/2026", "8/25/2026", "7/30/2026", "8/23/2026", "8/25/2026",
+                                          "9/17/2026"), start=1)] + [
+        {"seq": "9", "date": "9/24/2026", "text": "ARREST REPORT", "cid": "9", "digest": "a"}]
+    MAIN = matthew_case("26001422CFMA", date(2026, 9, 22), [
+        ("CRUELTY TO ANIMALS (828.12 2)", date(2026, 8, 25), date(2026, 8, 25)),
+        ("CRUELTY TO ANIMALS (828.12 2)", date(2026, 8, 25), date(2026, 8, 25)),
+        ("CRUELTY TO ANIMALS (828.12 2)", date(2026, 7, 30), date(2026, 7, 30)),
+        ("CRUELTY TO ANIMALS (828.12 2)", date(2026, 8, 23), date(2026, 8, 23)),
+        ("CRUELTY TO ANIMALS (828.12 2)", date(2026, 8, 25), date(2026, 8, 25)),
+        ("POSSESSION OF FIREARM BY CONVICTED FELON (790.23 1a)", date(2026, 9, 17), date(2026, 9, 17))],
+        MAIN_DOCKET)
+    ADD_ON = matthew_case("26001446CFMA", date(2026, 9, 24), [
+        ("ANIMAL FIGHTING (828.122 3A)", date(2026, 9, 17), date(2026, 9, 17))], MATTHEW_DOCKET, consolidated=True)
+
+    def test_several_arrest_count_dates_are_not_the_arrest(self):
+        self.assertIsNone(arrest_date_from_docket(docket_from_case(self.MAIN_DOCKET)))
+        self.assertEqual(arrest_date_from_docket(docket_from_case(MATTHEW_DOCKET)), date(2026, 9, 17))
+
+    def test_main_case_wins(self):
+        q = LookupQuery(first_name="Jake", last_name="Matthew", county="st_johns", arrest_date=date(2026, 9, 17),
+                        agency="St. Johns County Sheriff's Office",
+                        charges=["animal cruelty", "possession of a firearm by a convicted felon"],
+                        published_date=date(2026, 9, 18))
+        scored = [(score_case(q, d), d) for d in (self.ADD_ON, self.MAIN)]
+        main = next(s for s, d in scored if d is self.MAIN)
+        self.assertFalse(any("lejana" in r for r in main.reasons), main.reasons)
+        self.assertTrue(same_incident(self.MAIN, self.ADD_ON))
+        winner = resolve_same_incident(scored, lambda d: True)
+        self.assertEqual(winner[1].candidate.case_number, "26001422CFMA", [(s.score, s.reasons) for s, _ in scored])
+        self.assertEqual(related_cases(winner[1], scored), ["26001446CFMA"])

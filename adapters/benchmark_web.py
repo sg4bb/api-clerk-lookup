@@ -38,6 +38,15 @@ log = logging.getLogger(__name__)
 # "2026 CF 003520" o "2021 CC 002132 EV": año, tipo de corte, número y, a veces, división
 # (cualquier sufijo: no se usa).
 _CASE_RE = re.compile(r"^\s*(\d{4})\s+([A-Z]{2})\s+(\d{6})\b")
+# Otros formatos de número de caso según el condado, todos con el tipo de corte:
+#   St. Johns: "26001446CFMA" (año de 2 cifras + 6 cifras + tipo + división), "26009995TR",
+#              "CC26-5468" / "CA11-1911" (civiles);  formato Civitek: "2026CF000052AXMA".
+_CASE_FORMATS = (
+    _CASE_RE,
+    re.compile(r"^\s*()\d{8}([A-Z]{2})"),
+    re.compile(r"^\s*()\d{4}([A-Z]{2})\d{6}"),
+    re.compile(r"^\s*()([A-Z]{2})\d{2}-\d+"),
+)
 _BIRTH_YEAR_RE = re.compile(r"\((\d{4})\)")
 _DATE = r"(\d{1,2}/\d{1,2}/\d{4})"
 MAX_PAGES = 5            # de 100 filas; con el rango de fechas casi nunca pasa de una
@@ -202,9 +211,13 @@ def _date(text: Optional[str]) -> Optional[date]:
 
 
 def court_code(case_number: str) -> str:
-    """'2026 CF 003520' -> 'CF'."""
-    m = _CASE_RE.match(case_number or "")
-    return m.group(2) if m else ""
+    """Tipo de corte del número de caso: '2026 CF 003520' -> 'CF', '26001446CFMA' -> 'CF',
+    'CC26-5468' -> 'CC'. Vacío si el número no tiene una forma conocida."""
+    for regex in _CASE_FORMATS:
+        m = regex.match(case_number or "")
+        if m:
+            return m.group(2)
+    return ""
 
 
 def clean_name(name_cell: str) -> str:
@@ -223,7 +236,7 @@ def case_from_title(title: str) -> tuple[str, str]:
     """'2026 CF 003520 - STATE OF FLORIDA vs. GARCIA, KATHRYN' -> ('2026 CF 003520', 'GARCIA, KATHRYN')."""
     title = re.sub(r"\s+", " ", title or "").strip()
     number, _, rest = title.partition(" - ")
-    if not _CASE_RE.match(number):
+    if not court_code(number):
         return "", ""
     m = re.search(r"\bvs?\.?\s+(.+)$", rest, re.I)
     return number.strip(), (m.group(1).strip() if m else "")
@@ -313,6 +326,15 @@ def docket_from_case(rows: list[dict]) -> list[DocketEntry]:
     return docket
 
 
+def consolidated_into(docket: list[DocketEntry]) -> Optional[str]:
+    """El caso al que la fiscalía unió este: "CONSOLIDATED TO 26001422CFMA - ADD ON CHARGE" (St. Johns)."""
+    for e in docket:
+        m = re.match(r"^\s*consolidated\s+(?:to|into|with)\s+(\S+)", e.description, re.I)
+        if m:
+            return m.group(1)
+    return None
+
+
 def site_root(base_url: str) -> str:
     """'https://x/BenchmarkWeb/Home.aspx/Search' -> 'https://x/BenchmarkWeb/'; 'https://y/Home.aspx/Search' -> 'https://y/'."""
     path = urlparse(base_url).path
@@ -321,15 +343,23 @@ def site_root(base_url: str) -> str:
 
 
 def arrest_date_from_docket(docket: list[DocketEntry]) -> Optional[date]:
-    """La fecha de arresto del docket (la primera, si hay varias): "DATE OF ARREST" (Osceola) o
-    "ARRESTED ON 10/24/2026" / "REARRESTED ON 10/24/2026" (Flagler)."""
-    dates = []
+    """La fecha de arresto del docket (la primera, si hay varias): "DATE OF ARREST" (Osceola),
+    "ARRESTED ON 10/24/2026" / "REARRESTED ON 10/24/2026" (Flagler) o "ARREST COUNT: ..." (St. Johns).
+
+    St. Johns anota un "ARREST COUNT" por cargo; si tienen fechas distintas (cargos añadidos al caso
+    en otros días) no hay una fecha de arresto fiable y se usan las fechas Initial de los cargos."""
+    dates, counts = [], set()
     for e in docket:
         said = re.match(r"^\s*(?:re)?arrested on\s+(\d{1,2}/\d{1,2}/\d{4})", e.description, re.I)
         if said:
             dates.append(_date(said.group(1)))
-        elif e.date and re.match(r"^\s*date of arrest\b", e.description, re.I):
+        elif e.date and re.match(r"^\s*date of arrest", e.description, re.I):
             dates.append(e.date)
+        elif e.date and re.match(r"^\s*arrest count\b", e.description, re.I):
+            # St. Johns: "ARREST COUNT: 1 - (828.122 3A) ANIMAL FIGHTING", con la fecha del arresto.
+            counts.add(e.date)
+    if len(counts) == 1:
+        dates.extend(counts)
     dates = [d for d in dates if d]
     return min(dates) if dates else None
 
@@ -545,7 +575,8 @@ class BenchmarkWebAdapter(ClerkAdapter):
             charges = charges_from_case(summary, thumb_data, arrest)
             report = (summary.get("agencyreportnumber") or "").strip() or None
             details = CaseDetails(candidate=candidate, charges=charges, docket=docket, source_url=tab.url,
-                                  docket_unavailable=bool(data.get("unavailable")), agency_report_number=report)
+                                  docket_unavailable=bool(data.get("unavailable")), agency_report_number=report,
+                                  consolidated=consolidated_into(docket) is not None)
             log.info("%s: %d cargo(s), %d entrada(s) de docket, agencia %s, reporte %s, arresto %s",
                      candidate.case_number, len(charges), len(docket), charges[0].agency if charges else None,
                      report, arrest)
