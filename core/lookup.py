@@ -149,7 +149,8 @@ def _combine(attempts: list[tuple[LookupQuery, LookupResult, list]]) -> LookupRe
     result = attempts[index][1]
     result.person_index = index
     result.people_searched = [
-        {"name": _full_name(q), "status": r.status, "cases_checked": len(scored)}
+        {"name": _full_name(q), "status": r.status, "cases_checked": len(scored),
+         "county": get_county(q.county, q.state).name}
         for q, r, scored in attempts
     ]
     if len(attempts) > 1:

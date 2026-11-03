@@ -96,7 +96,8 @@ class SeveralPeopleTest(unittest.TestCase):
     def test_single_query_still_works(self):
         result, _ = run(query("Mark", "Jones"), {"Jones": [JONES_FOUND]})
         self.assertEqual(result.status, "found")
-        self.assertEqual(result.people_searched, [{"name": "Mark Jones", "status": "found", "cases_checked": 1}])
+        self.assertEqual(result.people_searched, [{"name": "Mark Jones", "status": "found", "cases_checked": 1,
+                                                  "county": "Hernando County"}])
 
 
 class ClosestCaseTest(unittest.TestCase):

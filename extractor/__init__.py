@@ -26,7 +26,7 @@ from .schema import Extraction, Person
 log = logging.getLogger(__name__)
 
 __all__ = ["Article", "Extraction", "ExtractionError", "NoSuspect", "OutOfScope", "FetchError", "ArticleQuery",
-           "fetch_article", "extract", "build_query", "query_from_url"]
+           "fetch_article", "extract", "build_query", "query_from_url", "mentioned_counties", "query_for_county"]
 
 class NoSuspect(ExtractionError):
     """La nota no nombra a ningún arrestado o acusado: el portal se busca por
@@ -60,6 +60,11 @@ class ArticleQuery:
     notes: list[str] = field(default_factory=list)   # correcciones hechas sobre la respuesta del modelo
     # Nombres que la IA copió con una letra de más o de menos -> como los escribe la nota.
     name_fixes: dict[str, str] = field(default_factory=dict)
+    # Otros condados con cobertura que nombra la nota, en orden: se buscan si en el
+    # principal no aparece el caso (ver other_counties).
+    other_counties: list[str] = field(default_factory=list)
+    # Condado de la nota que no tiene cobertura, si se buscó en otro que la nota también nombra.
+    uncovered_county: Optional[str] = None
 
 
 def query_from_url(url: str, suspect_index: int = 0) -> tuple[Article, ArticleQuery]:
@@ -161,7 +166,19 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
                         if approx else "Sin ninguna fecha: la búsqueda puede toparse con el límite de 500 resultados")
 
     warrant = warrant_county(f"{article.title}\n{article.text}")
-    county = resolve_county(extraction, warrant)
+    named = mentioned_counties(f"{article.title}\n{article.text}")
+    uncovered = None
+    try:
+        county = resolve_county(extraction, warrant)
+    except OutOfScope as exc:
+        # El condado de la nota no tiene cobertura, pero la nota nombra otro que sí
+        # (perros de Palm Coast abandonados en St. Johns, 03/11/2026): se busca en ese.
+        covered = [c for c in named if is_supported(c, "FL")] if exc.reason == "county" else []
+        if not covered:
+            raise
+        county, uncovered = covered[0], exc.county
+        notes.append(f"condado: la nota es de {uncovered} County (sin cobertura) y también nombra "
+                     f"{florida.ALL_COUNTIES[county]} County; busco ahí")
     agency = extraction.agency
     if warrant and agency and florida.AGENCY_TO_COUNTY.get(normalize_agency(agency)) != warrant:
         # Lo detuvo otra agencia con la orden de este condado: el caso es de la agencia que
@@ -188,9 +205,15 @@ def build_query(extraction: Extraction, article: Article, suspect_index: int = 0
         age_as_of=article.published if person.age is not None else None,
         published_date=article.published,
     )
+    if uncovered:
+        query, note = query_for_county(query, county)
+        if note:
+            notes.append(note)
     others = [p for p in ranked if p is not person]
     return ArticleQuery(query=query, person=person, others=others, extraction=extraction,
-                        warnings=warnings, notes=notes, name_fixes=name_fixes)
+                        warnings=warnings, notes=notes, name_fixes=name_fixes,
+                        other_counties=other_counties(extraction, named, county),
+                        uncovered_county=uncovered)
 
 
 def _period(day: date, precision: str) -> tuple[date, date]:
@@ -385,6 +408,82 @@ def warrant_county(text: Optional[str]) -> Optional[str]:
             if key in florida.ALL_COUNTIES:
                 found.add(key)
     return found.pop() if len(found) == 1 else None
+
+
+# --- Notas que involucran a más de un condado ---------------------------------
+# "deputies learned the suspects were wanted out of St. Johns County" (Flagler), "took the dogs
+# from Palm Coast ... abandoned them in St. Johns County": el caso puede estar en cualquiera de
+# los dos. Se busca primero en el condado de la nota y, si ahí no aparece, en los otros.
+MAX_OTHER_COUNTIES = 2
+
+# Lo que va antes de "County": hasta tres palabras ("Palm Beach", "St. Johns", "Miami-Dade").
+_COUNTY_WORD_RE = re.compile(r"\b([Cc]ount(?:y|ies))\b")
+# "Orange County, Calif.": un condado de otro estado con el mismo nombre.
+_OTHER_STATE_AFTER_RE = re.compile(
+    r"\s*,\s*(?:Georgia|Ga\.|Alabama|Ala\.|California|Calif\.|Texas|Tex\.|New York|N\.Y\.|"
+    r"North Carolina|South Carolina|N\.C\.|S\.C\.|Virginia|Va\.|(?!FL\b)[A-Z]{2}\b)")
+
+
+def _county_before(words: list[str]) -> Optional[str]:
+    """El condado de Florida que forman las últimas palabras (la frase más larga que lo sea)."""
+    for n in (3, 2, 1):
+        if len(words) < n or not words[-n][:1].isupper():
+            continue
+        key = _county_key(" ".join(words[-n:]))
+        if key in florida.ALL_COUNTIES:
+            return key
+    return None
+
+
+def mentioned_counties(text: Optional[str]) -> list[str]:
+    """Condados de Florida que la nota nombra como "X County" (o "X and Y counties"), en orden."""
+    text = text or ""
+    found: list[str] = []
+    for m in _COUNTY_WORD_RE.finditer(text):
+        if _OTHER_STATE_AFTER_RE.match(text, m.end()):
+            continue
+        before = text[max(0, m.start() - 80):m.start()]
+        if m.group(1).lower() == "counties":
+            # "Flagler and St. Johns counties", "Clay, Putnam and St. Johns counties"
+            pieces = re.split(r",|\band\b|&", before)[-4:]
+        else:
+            pieces = [before]
+        for piece in pieces:
+            key = _county_before(piece.split())
+            if key and key not in found:
+                found.append(key)
+    return found
+
+
+def other_counties(extraction: Extraction, named: list[str], county: str) -> list[str]:
+    """Los otros condados con cobertura donde puede estar el caso: el que dijo el modelo o el de la
+    ciudad (si la agencia o la orden llevaron la búsqueda a otro) y los que nombra la nota."""
+    by_model = _county_key(extraction.county)
+    by_city = florida.CITY_TO_COUNTY.get(normalize(extraction.city))
+    found = []
+    for key in (by_model, by_city, *named):
+        if key and key != county and key not in found and key in florida.ALL_COUNTIES:
+            found.append(key)
+    skipped = [florida.ALL_COUNTIES[k] for k in found if not is_supported(k, "FL")]
+    if skipped:
+        log.info("La nota también nombra condados sin cobertura: %s", ", ".join(skipped))
+    covered = [k for k in found if is_supported(k, "FL")]
+    if len(covered) > MAX_OTHER_COUNTIES:
+        log.info("La nota nombra %d condados más; solo se buscará en %s", len(covered),
+                 ", ".join(florida.ALL_COUNTIES[k] for k in covered[:MAX_OTHER_COUNTIES]))
+    return covered[:MAX_OTHER_COUNTIES]
+
+
+def query_for_county(query: LookupQuery, county: str) -> tuple[LookupQuery, Optional[str]]:
+    """La misma búsqueda en otro condado. Una agencia de otro condado (el Sheriff de Flagler
+    buscando en St. Johns) no cuenta ahí: ni suma ni resta. Devuelve (consulta, nota)."""
+    agency, note = query.agency, None
+    home = florida.AGENCY_TO_COUNTY.get(normalize_agency(agency)) if agency else None
+    if home and home != county:
+        note = (f"agencia: {agency} es de {florida.ALL_COUNTIES[home]} County; "
+                f"no la uso para comparar en {florida.ALL_COUNTIES[county]} County")
+        agency = None
+    return replace(query, county=county, agency=agency), note
 
 
 def resolve_county(extraction: Extraction, warrant: Optional[str] = None) -> str:

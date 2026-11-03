@@ -126,6 +126,8 @@ def process(case: dict[str, Any], base_output: Path, dry_run: bool, suspect: int
     if q.court_dates:
         print(f"  Condena:    {', '.join(map(str, q.court_dates))}")
     print(f"  Agencia:    {q.agency}   Condado: {q.county}")
+    if aq.other_counties:
+        print(f"  Otros:      {', '.join(aq.other_counties)} (el worker busca ahí si en {q.county} no hay caso)")
     print(f"  Cargos:     {'; '.join(q.charges) or '-'}")
     for other in aq.others:
         print(f"  Otro:       {other.first_name} {other.last_name} [{other.role}] (usa --suspect para elegirlo)")

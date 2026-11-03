@@ -138,7 +138,82 @@ def run_article(
         # El resultado salió con otra persona del artículo: lo buscado fue eso.
         used = people[lookup.person_index]
         result.query, result.warnings = _jsonable(asdict(used.query)), used.warnings
+    if lookup.status == "not_found" and aq.other_counties:
+        _search_other_counties(result, aq, people, output_dir, on_status, on_captcha_waiting, on_captcha_done)
+    elif lookup.status == "not_found" and aq.uncovered_county:
+        result.message = _uncovered_message(aq, [aq.query.county])
     return result
+
+
+# Con estos el caso existe en ese condado: no se busca en los demás.
+_SETTLED = ("found", "no_document", "ambiguous")
+
+
+def _search_other_counties(result: PipelineResult, aq, people: list, output_dir: Path,
+                           on_status, on_captcha_waiting, on_captcha_done) -> None:
+    """La nota nombra otros condados con cobertura y en el principal no apareció el caso: se busca
+    en cada uno, en orden, hasta dar con él. Cada condado abre su propia sesión del portal (y puede
+    pedir otro CAPTCHA). Si no aparece en ninguno, queda el resultado del primero."""
+    from counties import florida, get_county
+    from extractor import query_for_county
+
+    first = result.lookup
+    searched_people = list(first.people_searched)
+    searched = [aq.query.county]
+    skipped: list[str] = []
+    for county in aq.other_counties:
+        name = florida.ALL_COUNTIES[county]
+        limit = get_county(county).max_people
+        queries, notes = [], []
+        for person in people[:limit]:
+            q, note = query_for_county(person.query, county)
+            queries.append(q)
+            if note and note not in notes:
+                notes.append(note)
+        log.info("Sin caso en %s County; la nota también nombra %s County: busco ahí",
+                 florida.ALL_COUNTIES[searched[-1]], name)
+        try:
+            lookup = run_lookup(queries, output_dir / county, on_status=on_status,
+                                on_captcha_waiting=on_captcha_waiting, on_captcha_done=on_captcha_done)
+        except Exception as exc:   # p. ej. no se pudo abrir el navegador: queda el resultado anterior
+            log.exception("No se pudo buscar en %s County", name)
+            lookup = None
+        if lookup is None or lookup.status in ("captcha_timeout", "error"):
+            skipped.append(name)
+            result.warnings.append(f"No se pudo buscar en {name} County"
+                                   + (f" ({lookup.status})" if lookup else ""))
+            continue
+        searched.append(county)
+        searched_people += lookup.people_searched
+        if lookup.status in _SETTLED:
+            used = queries[lookup.person_index] if lookup.person_index < len(queries) else queries[0]
+            result.notes.append(f"condado: sin caso en {florida.ALL_COUNTIES[aq.query.county]} County; "
+                                f"busco en {name} County, que la nota también nombra")
+            result.notes.extend(notes)
+            result.query = _jsonable(asdict(used))
+            if result.extraction is not None:
+                result.extraction["county"] = name
+            lookup.people_searched = searched_people
+            result.lookup, result.status, result.message = lookup, lookup.status, lookup.message
+            return
+        if not first.closest and lookup.closest:
+            first.closest = lookup.closest
+    first.people_searched = searched_people
+    if aq.uncovered_county:
+        result.message = _uncovered_message(aq, searched)
+    if skipped:
+        note = (f"{' and '.join(skipped)} County {'was' if len(skipped) == 1 else 'were'} not searched "
+                "(the portal session ended before the search). Try again to include "
+                f"{'it' if len(skipped) == 1 else 'them'}.")
+        result.message = f"{result.message} {note}" if result.message else note
+
+
+def _uncovered_message(aq, searched: list[str]) -> str:
+    """not_found cuando el condado de la nota no tiene cobertura y se buscó en otro que la nota nombra."""
+    from counties import florida
+    names = " or ".join(f"{florida.ALL_COUNTIES[c]} County" for c in searched)
+    return (f"The story is about {aq.uncovered_county} County, which is not covered yet. "
+            f"It also names {names}, but no case there matches the story.")
 
 
 def _other_people(build_query, extraction, article, first) -> list:
