@@ -125,10 +125,46 @@ FOCUS_CAPTCHA_JS = r"""
   // temporal abajo deja subir la casilla hasta arriba, como en Orange. Se quita al terminar.
   // Con la casilla arriba, el cuadro de imágenes de hCaptcha se abre debajo de ella.
   const padBefore = document.body.style.paddingBottom;
-  if (kind === 'turnstile' || kind === 'hcaptcha') document.body.style.paddingBottom = innerHeight + 'px';
+  if (kind === 'turnstile') document.body.style.paddingBottom = innerHeight + 'px';
+  // Flagler anula el padding de body desde su CSS (quedaba en 0px, 03/11/2026): con hCaptcha
+  // el espacio es un bloque vacío al final de la página.
+  let spacer = null;
+  if (kind === 'hcaptcha') {
+    spacer = document.createElement('div');
+    spacer.id = '__cl_spacer';
+    spacer.style.cssText = 'display:block;height:' + innerHeight + 'px;width:1px;';
+    document.body.appendChild(spacer);
+  }
   el.style.scrollMarginTop = '70px';
   // Si se angostó, la casilla queda al medio de un formulario más ancho que la ventana.
   el.scrollIntoView({block: 'start', inline: narrowed.length ? 'center' : 'nearest'});
+  // hCaptcha (Flagler): la página no se desplazó (la casilla siguió en top 424 con el espacio
+  // de abajo puesto, 03/11/2026). Se prueba el desplazamiento del documento y, si tampoco
+  // alcanza, se sube el contenido con un margen negativo en body. Los paneles son "fixed":
+  // no se mueven con el margen. Se quita al terminar.
+  const marginBefore = document.body.style.marginTop;
+  const lift = {};
+  if (kind === 'hcaptcha') {
+    const extra = () => Math.round(el.getBoundingClientRect().top - 70);
+    const scroller = document.scrollingElement || document.documentElement;
+    let fixedParent = null;
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      const pos = getComputedStyle(n).position;
+      if (pos === 'fixed' || pos === 'sticky') { fixedParent = n.tagName + '#' + n.id + '.' + n.className; break; }
+    }
+    Object.assign(lift, {afterScrollIntoView: extra(), scrollHeight: scroller.scrollHeight,
+                         clientHeight: scroller.clientHeight, scrollTop: scroller.scrollTop,
+                         spacer: spacer ? spacer.getBoundingClientRect().height : null, fixedParent});
+    if (extra() > 40) {
+      scroller.scrollTop += extra();
+      lift.afterScrollTop = extra();
+    }
+    if (extra() > 40) {
+      const current = parseFloat(getComputedStyle(document.body).marginTop) || 0;
+      document.body.style.setProperty('margin-top', (current - extra()) + 'px', 'important');
+      lift.afterMargin = extra();
+    }
+  }
 
   // Botones flotantes del portal (accesibilidad, etc.) que quedarían por encima.
   const hidden = [];
@@ -238,10 +274,14 @@ FOCUS_CAPTCHA_JS = r"""
     el.style.scrollMarginTop = '';
     unnarrow();
     document.body.style.paddingBottom = padBefore;
+    document.body.style.removeProperty('margin-top');
+    if (marginBefore) document.body.style.marginTop = marginBefore;
+    spacer?.remove();
     delete window.__clUnfocus;
   };
   info.ok = place();
   info.box = rectOf(el);
+  info.lift = lift;
   info.hidden = hidden.length;
   return info;
 }
