@@ -126,11 +126,26 @@ class Probe:
                                                    encoding="utf-8")
 
 
-def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | None = None) -> bool:
-    """Búsqueda por nombre ("Apellido, Nombre"). `hidden`: valores para los campos ocultos."""
-    page.goto(url, wait_until="domcontentloaded")
-    page.wait_for_timeout(2500)
+# CAPTCHA del formulario (Charlotte: reCAPTCHA; Flagler y St. Johns: hCaptcha) y si ya se resolvió.
+HAS_CAPTCHA_JS = """() => !!document.querySelector("iframe[src*='recaptcha/api2/anchor'], iframe[src*='recaptcha/enterprise/anchor'], iframe[src*='hcaptcha']")"""
+CAPTCHA_FILLED_JS = """() => { const f = document.querySelector("[name='g-recaptcha-response'], [name='h-captcha-response']");
+                              return !!(f && f.value); }"""
+RESULTS_JS = """() => !!document.querySelector('#gridSearchResults, .caseFoundFilter') || location.href.indexOf('/Details/') >= 0"""
+COURT_TYPE_RE = re.compile(r"Court Type:\s*</td>\s*<td[^>]*>\s*([^<]+)", re.I)
+
+
+def fill(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | None) -> None:
+    """Abre el formulario, elige "Name" y escribe el nombre (y los campos ocultos)."""
+    page.goto(url, wait_until="load")
+    _safe(lambda: page.wait_for_function("() => !!(window.jQuery && jQuery.isReady)", timeout=15_000))
+    page.wait_for_timeout(1500)
     _safe(lambda: page.locator("#radio_0").check())
+    # Charlotte abre en "All": hay que elegir "Name" o search.js envía la búsqueda de "All".
+    radio = page.locator("input.radioButton[searchtype='Name']")
+    if radio.count() and not _safe(lambda: radio.first.is_checked(), True):
+        radio.first.check()
+        page.wait_for_timeout(700)
+        probe.notes["opcion_name_elegida"] = True
     page.fill("#name", name)
     if hidden:
         # search.js copia los valores al enviar; se fijan en el formulario y, por si los
@@ -141,23 +156,80 @@ def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | Non
                 const el = form.querySelector('[name="' + k + '"]'); if (el) el.value = v; } };
             put();
             form.addEventListener('submit', put, true);
+            // Flagler y Charlotte tienen además los campos visibles, y search.js los copia encima.
+            for (const id of ['openedFrom', 'openedTo']) {
+                const box = document.getElementById(id);
+                if (box && h[id] !== undefined) box.value = h[id];
+            }
         }""", hidden)
         probe.notes[f"ocultos_{tag}"] = hidden
     page.wait_for_timeout(500)
-    page.get_by_role("button", name=re.compile(r"^\s*search\s*$", re.I)).first.click()
-    page.wait_for_load_state("domcontentloaded")
+
+
+def click_search(page) -> None:
+    button = page.locator("#searchButton")
+    if button.count():
+        button.first.click()
+    else:
+        page.get_by_role("button", name=re.compile(r"^\s*search\s*$", re.I)).first.click()
+    _safe(lambda: page.wait_for_load_state("domcontentloaded"))
     page.wait_for_timeout(4000)
-    if page.locator("iframe[src*='recaptcha']:visible").count():
-        probe.notes[f"captcha_{tag}"] = True
-        print("\n  >>> Hay un CAPTCHA: resuélvelo en la ventana. Espero 2 minutos.")
-        page.wait_for_url(re.compile(r"(?i)CaseSearch|/Details/"), timeout=120_000)
-        page.wait_for_timeout(3000)
+
+
+def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | None = None) -> bool:
+    """Búsqueda por nombre ("Apellido, Nombre"). `hidden`: valores para los campos ocultos.
+
+    Si el formulario trae un CAPTCHA, primero se busca sin resolverlo (para ver qué responde el
+    portal: en Flagler solo la primera búsqueda lo exige) y, si no da resultados, se pide a la
+    persona que lo resuelva y se vuelve a buscar.
+    """
+    fill(page, probe, url, name, tag, hidden)
+    on_form = bool(_safe(lambda: page.evaluate(HAS_CAPTCHA_JS), False))
+    probe.notes[f"captcha_en_formulario_{tag}"] = on_form
+    click_search(page)
+    if not _safe(lambda: page.evaluate(RESULTS_JS), False):
+        probe.notes[f"sin_captcha_{tag}"] = page.url
+        probe.save(f"sin_captcha_{tag}")
+        if on_form or _safe(lambda: page.evaluate(HAS_CAPTCHA_JS), False):
+            if not page.locator("#name").count():
+                fill(page, probe, url, name, tag, hidden)
+            elif page.input_value("#name") != name:
+                fill(page, probe, url, name, tag, hidden)
+            probe.notes[f"captcha_{tag}"] = True
+            print("\n  >>> CAPTCHA: resuélvelo en la ventana (NO pulses Search). Espero hasta 4 minutos.")
+            page.wait_for_function(CAPTCHA_FILLED_JS, timeout=240_000, polling=500)
+            print("  CAPTCHA resuelto; busco.")
+            click_search(page)
+    _safe(lambda: page.wait_for_function(RESULTS_JS, timeout=30_000, polling=500))
+    page.wait_for_timeout(2000)
     text = _safe(lambda: page.inner_text("body"), "")
     found = re.search(r"Name\s+(.+?)\s+(\d+)\s+[\d.]+\s*seconds", text)
     probe.notes[f"casos_encontrados_{tag}"] = found.group(2) if found else None
     probe.save(f"resultados_{tag}")
     print(f"  {tag}: {probe.notes[f'casos_encontrados_{tag}']} casos")
     return True
+
+
+def court_types_by_suffix(page, probe: Probe, url: str) -> None:
+    """Qué tipo de corte es cada terminación de número de caso (Charlotte: "26001343F" = FELONY):
+    abre el resumen desplegable de una fila por terminación."""
+    rows = _safe(lambda: page.evaluate("""() => Array.from(document.querySelectorAll('#gridSearchResults tbody tr'))
+        .map(tr => [ (tr.querySelector("a[title^='View Case Details for']") || {}).innerText,
+                     (tr.querySelector("img[onclick*='details(']") || {getAttribute: () => ''}).getAttribute('onclick') ])
+        .filter(r => r[0])"""), []) or []
+    seen: dict = {}
+    for number, onclick in rows:
+        number = (number or "").strip()
+        suffix = re.sub(r"[\d\s-]", "", number)        # "26001343F" -> "F", "2026 CF 003520" -> "CF"
+        m = re.search(r"details\((\d+),\s*'([^']+)',\s*'([^']+)'", onclick or "")
+        if suffix in seen or not m or len(seen) >= 8:
+            continue
+        thumb = probe.fetch_text(f"{site_root(url)}{m.group(2)}{m.group(1)}{m.group(3)}",
+                                 f"resumen_{re.sub(r'[^A-Za-z0-9]', '_', number)}.html")
+        kind = COURT_TYPE_RE.search(thumb or "")
+        seen[suffix] = {"ejemplo": number, "tipo": kind.group(1).strip() if kind else None}
+    probe.notes["tipos_por_terminacion"] = seen
+    print(f"  tipos de caso: {seen}")
 
 
 def run(args) -> int:
@@ -178,6 +250,7 @@ def run(args) -> int:
         try:
             # 1. Búsqueda del caso conocido.
             search(page, probe, args.url, args.name, "principal")
+            court_types_by_suffix(page, probe, args.url)
             for script in SCRIPTS:
                 probe.fetch_text(site_root(args.url) + script, "script_" + script.split("/")[-1])
 
@@ -233,12 +306,17 @@ def run(args) -> int:
                     " e.getAttribute('href')]).filter(x => /download|print|pdf|save|image/i.test(x.join(' ')))"), [])
 
             # 4. Nombre común: normal y con fechas de apertura en los campos ocultos.
+            # Con CAPTCHA, una sola búsqueda más: dice si el portal lo vuelve a pedir y si respeta las
+            # fechas (las otras dos ya se vieron en Osceola y cada CAPTCHA cuesta tiempo).
             if args.name2:
-                search(page, probe, args.url, args.name2, "comun")
+                captcha = any(k.startswith("captcha_") and v for k, v in probe.notes.items()
+                              if not k.startswith("captcha_en_formulario"))
                 search(page, probe, args.url, args.name2, "comun_fechas",
                        {"openedFrom": args.opened_from, "openedTo": args.opened_to})
-                search(page, probe, args.url, args.name2, "comun_tipos",
-                       {"courtTypes": args.court_types, "partyTypes": "DEFENDANT"})
+                if not captcha:
+                    search(page, probe, args.url, args.name2, "comun")
+                    search(page, probe, args.url, args.name2, "comun_tipos",
+                           {"courtTypes": args.court_types, "partyTypes": "DEFENDANT"})
             print("\nListo.")
             return 0
         except Exception as exc:

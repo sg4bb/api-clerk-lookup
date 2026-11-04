@@ -310,3 +310,64 @@ class StJohnsArrestCountTest(unittest.TestCase):
         winner = resolve_same_incident(scored, lambda d: True)
         self.assertEqual(winner[1].candidate.case_number, "26001422CFMA", [(s.score, s.reasons) for s, _ in scored])
         self.assertEqual(related_cases(winner[1], scored), ["26001446CFMA"])
+
+
+# Charlotte (03/11/2026): Byrne-Levy, 26001343F. Docket real (DIN, fecha, entrada).
+BYRNE_DOCKET = [
+    {"seq": "18", "date": "11/3/2026", "text": "APPLICATION FOR INDIGENT STATUS - INCAPABLE OF SCREENING - DISORDERLY",
+     "cid": "39273501", "digest": "l"},
+    {"seq": "16", "date": "11/3/2026", "text": "RECORD OF FIRST APPEARANCE HEARING", "cid": "39273110", "digest": "z"},
+    {"seq": "11", "date": "10/31/2026", "text": "CCSO MEMORANDUM - REFUSAL TO PROCESS", "cid": "39266695", "digest": "m"},
+    {"seq": "10", "date": "10/31/2026", "text": "BOOKING REPORT FILED", "cid": "39266641", "digest": "b"},
+    {"seq": "9", "date": "10/31/2026", "text": "JESSICA LUNSFORD CERTIFICATE", "cid": None, "digest": None},
+    {"seq": "7", "date": "10/31/2026", "text": "AFFIDAVIT OF PROBABLE CAUSE", "cid": "39266638", "digest": "a"},
+    {"seq": "4", "date": "10/31/2026",
+     "text": "ARREST SEQ: 1 -  (316.1935 3A) FLEE/ELUDE POLICE FLEE W DISREGARD OF SAFETY TO PERSONS OR PROP 4096",
+     "cid": None, "digest": None},
+    {"seq": "3", "date": "10/31/2026", "text": "ARREST SEQ: 2 -  (843.02) RESIST/OBSTRUCT/OPPOSE OFFICER WITHOUT VIOLENCE 3143",
+     "cid": None, "digest": None},
+    {"seq": "1", "date": "10/31/2026", "text": "CASE FILED 10/31/2026 CASE NUMBER 26001343F", "cid": None, "digest": None},
+]
+
+
+class CharlotteTest(unittest.TestCase):
+    def setUp(self):
+        self.county = get_county("charlotte")
+
+    def test_case_numbers(self):
+        from adapters.benchmark_web import case_type
+        codes = self.county.case_type_codes
+        self.assertEqual([court_code(n) for n in ("26001343F", "22001059CC", "21007084TR", "26001446CFMA")],
+                         ["F", "CC", "TR", "CF"])
+        self.assertEqual(case_type("26001343F", codes), "CF")
+        self.assertEqual(case_type("26001343F"), "F")                 # sin la tabla del condado, tal cual
+        rows = [{"case": n, "href": "/x", "name": "BYRNE LEVY, MAURIN", "nameCell": "BYRNE LEVY, MAURIN (2000)",
+                 "party": "DEFENDANT", "status": "OPEN", "thumb": ""}
+                for n in ("26001343F", "22001059CC", "21007084TR", "26000945T", "26000149O")]
+        found = candidates_from_rows(rows, ["CF", "MM", "CT"], codes)
+        # "T" = TRAFFIC (DUI de Clemens): penal. "TR" (infracción), "CC" (civil) y "O" (ordenanza), fuera.
+        self.assertEqual([(c.case_number, c.case_type) for c in found], [("26001343F", "CF"), ("26000945T", "CT")])
+        self.assertEqual(case_from_title("26001343F - STATE OF FLORIDA vs. BYRNE LEVY, MAURIN"),
+                         ("26001343F", "BYRNE LEVY, MAURIN"))
+
+    def test_docket(self):
+        docket = docket_from_case(BYRNE_DOCKET)
+        self.assertEqual(arrest_date_from_docket(docket), date(2026, 10, 31))
+        adapter = BenchmarkWebAdapter(page=None, county=self.county, captcha=None)
+        d = CaseDetails(garcia_details().candidate, [], docket)
+        self.assertEqual([e.description for e in adapter.find_documents(d)], ["AFFIDAVIT OF PROBABLE CAUSE"])
+        self.assertEqual([e.description for e in adapter.find_support_documents(d)], ["BOOKING REPORT FILED"])
+
+    def test_agency_matches_the_story(self):
+        from core.matcher import normalize_agency
+        name = normalize_agency_name("SHERIFF'S OFFICE - CHARLOTTE COUNTY")
+        self.assertEqual(name, "CHARLOTTE COUNTY SHERIFF'S OFFICE")
+        self.assertEqual(normalize_agency(name), normalize_agency("Charlotte County Sheriff's Office"))
+        self.assertEqual(normalize_agency_name("ST JOHNS COUNTY SHERIFFS OFFICE"), "ST JOHNS COUNTY SHERIFFS OFFICE")
+        self.assertEqual(normalize_agency_name("OSCEOLA CO SHERIFF'S OFFICE"), "OSCEOLA COUNTY SHERIFF'S OFFICE")
+
+    def test_places(self):
+        from counties import florida
+        self.assertEqual(florida.CITY_TO_COUNTY["punta gorda"], "charlotte")
+        self.assertEqual(florida.CITY_TO_COUNTY["port charlotte"], "charlotte")
+        self.assertEqual(florida.AGENCY_TO_COUNTY["charlotte county so"], "charlotte")

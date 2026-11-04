@@ -386,6 +386,38 @@ ST_JOHNS = CountyConfig(
     throttle_s=2.0,
 )
 
+# Charlotte (03/11/2026): BenchmarkWeb en /Benchmark/, como St. Johns, con reCAPTCHA solo en la primera
+# búsqueda de la sesión (sin resolverlo vuelve a "?error=Invalid Captcha"). El formulario abre con
+# "All" marcado. Los números de caso terminan en el tipo: "26001343F" (felony), "22001059CC" (county
+# civil), "21007084TR" (traffic infraction), "26000945T" (traffic penal: DUI). Documento: el "AFFIDAVIT OF PROBABLE CAUSE" del Sheriff
+# (narración, hora y lugar del arresto); el "BOOKING REPORT FILED" va de apoyo. El docket anota el
+# arresto como "ARREST SEQ: 1 - ...".
+CHARLOTTE = CountyConfig(
+    key="charlotte",
+    name="Charlotte County",
+    state="FL",
+    platform="benchmark_web",
+    base_url="https://courts.charlotteclerk.com/Benchmark/Home.aspx/Search",
+    # Terminación del número de caso -> tipo del worker. "F" = FELONY y "T" = TRAFFIC (penal: DUI,
+    # licencia suspendida; Clemens 26000945T, Portillo 26002193T) confirmados; "M" por confirmar.
+    # Quedan fuera "TR" (traffic infraction, civil), "CC" (county civil) y "O" (ordinance).
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT", "F": "CF", "M": "MM", "T": "CT"},
+    document_priority=[
+        r"affidavit of probable cause",
+        r"probable cause affidavit",
+        r"\barrest(?:ing)? affidavit\b",
+        r"^\s*arrest report\b",
+        r"affidavit (?:of|for|to issue) (?:an? )?(?:arrest )?warrant",
+        r"^\s*sworn complaint\b",
+        r"complaint affidavit",
+    ],
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b"],
+    support_documents=[r"^\s*booking report\b", r"\bwarrant (?:returned )?(?:served|executed)\b",
+                       r"\bcapias (?:returned )?served\b"],
+    captcha="recaptcha_v2",
+    throttle_s=2.0,
+)
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -424,6 +456,7 @@ COUNTIES: dict[str, CountyConfig] = {
     OSCEOLA.key: OSCEOLA,
     FLAGLER.key: FLAGLER,
     ST_JOHNS.key: ST_JOHNS,
+    CHARLOTTE.key: CHARLOTTE,
 }
 
 
@@ -545,7 +578,11 @@ CITY_TO_COUNTY: dict[str, str] = {
     "espanola": "flagler", "hammock": "flagler", "st augustine": "st_johns", "st augustine beach": "st_johns", "saint augustine": "st_johns",
     "ponte vedra": "st_johns", "ponte vedra beach": "st_johns", "fruit cove": "st_johns", "hastings": "st_johns",
     "world golf village": "st_johns", "vilano beach": "st_johns", "palm valley": "st_johns", "elkton": "st_johns",
-    "flagler estates": "st_johns", "switzerland": "st_johns", "spring hill": "hernando",
+    "flagler estates": "st_johns", "switzerland": "st_johns",
+    "punta gorda": "charlotte", "port charlotte": "charlotte", "rotonda west": "charlotte", "rotonda": "charlotte",
+    "placida": "charlotte", "babcock ranch": "charlotte", "murdock": "charlotte", "harbour heights": "charlotte",
+    "charlotte harbor": "charlotte", "grove city": "charlotte", "deep creek": "charlotte", "solana": "charlotte",
+    "punta gorda isles": "charlotte", "burnt store": "charlotte", "spring hill": "hernando",
     "the villages": "sumter",
 }
 
@@ -591,6 +628,7 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "sanford pd": "seminole", "osceola county so": "osceola", "kissimmee pd": "osceola",
     "st cloud pd": "osceola", "saint cloud pd": "osceola",
     "flagler county so": "flagler", "bunnell pd": "flagler", "flagler beach pd": "flagler",
+    "charlotte county so": "charlotte", "punta gorda pd": "charlotte",
     "st johns county so": "st_johns", "st augustine pd": "st_johns", "st augustine beach pd": "st_johns",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",

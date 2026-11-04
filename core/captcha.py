@@ -166,6 +166,35 @@ FOCUS_CAPTCHA_JS = r"""
     }
   }
 
+  // reCAPTCHA (Charlotte, 03/11/2026): la página es más ancha que la ventana (body min-width 990 px)
+  // y la casilla quedaba lejos del borde izquierdo; el cuadro de imágenes (400 px) se abría a su
+  // izquierda, cortado, aun después de desplazar la página. Se deja la página sin desplazamiento
+  // horizontal y la casilla fija arriba a la izquierda, como queda en Orange (x ~80), donde el
+  // cuadro se abre completo. En Orange la casilla ya está a la izquierda y esto no hace nada.
+  const moved = [];   // [nodo, estilo original]
+  if (kind !== 'turnstile' && kind !== 'hcaptcha' && el.getBoundingClientRect().left > innerWidth - 420) {
+    lift.left = Math.round(el.getBoundingClientRect().left);
+    const box = el.closest('.g-recaptcha') || el.parentElement || el;
+    for (const node of [document.documentElement, document.body, box]) moved.push([node, node.style.cssText]);
+    document.body.style.setProperty('min-width', '0', 'important');
+    document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
+    (document.scrollingElement || document.documentElement).scrollLeft = 0;
+    const r = el.getBoundingClientRect();
+    box.style.setProperty('position', 'fixed', 'important');
+    // Fondo blanco con 10 px alrededor: tapa el hueco que dejan los paneles junto a la casilla, por
+    // donde asomaba el logo del portal (Charlotte, 04/11/2026). La casilla queda en (10, 90).
+    box.style.setProperty('left', '0', 'important');
+    box.style.setProperty('top', '80px', 'important');
+    box.style.setProperty('width', Math.round(r.width) + 'px', 'important');
+    box.style.setProperty('margin', '0', 'important');
+    box.style.setProperty('padding', '10px', 'important');
+    box.style.setProperty('box-sizing', 'content-box', 'important');
+    box.style.setProperty('background', '#fff', 'important');
+    box.style.setProperty('z-index', '1999999995', 'important');
+    lift.fixedAt = rectOf(el);
+    lift.scrollWidth = (document.scrollingElement || document.documentElement).scrollWidth;
+  }
+
   // Botones flotantes del portal (accesibilidad, etc.) que quedarían por encima.
   const hidden = [];
   const floating = [...document.querySelectorAll('[class*="userway" i], [id*="userway" i], .uwy, iframe[title*="accessib" i]')];
@@ -276,6 +305,7 @@ FOCUS_CAPTCHA_JS = r"""
     document.body.style.paddingBottom = padBefore;
     document.body.style.removeProperty('margin-top');
     if (marginBefore) document.body.style.marginTop = marginBefore;
+    for (const [node, css] of moved) node.style.cssText = css;
     spacer?.remove();
     delete window.__clUnfocus;
   };

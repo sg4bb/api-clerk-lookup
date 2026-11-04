@@ -338,6 +338,24 @@
     ]
   },
   {
+    "id": "byrne_levy_maurin",
+    "notes": "Charlotte (BenchmarkWeb con reCAPTCHA en la primera búsqueda). 26001343F: AFFIDAVIT OF PROBABLE CAUSE (DIN 7), BOOKING REPORT FILED de apoyo; reporte 2610020561.",
+    "first_name": "Maurin",
+    "middle_name": null,
+    "last_name": "Byrne-Levy",
+    "county": "charlotte",
+    "state": "FL",
+    "incident_date": "2026-10-31",
+    "arrest_date": "2026-10-31",
+    "age": 26,
+    "agency": "Charlotte County Sheriff's Office",
+    "charges": [
+      "fleeing and eluding",
+      "resisting an officer without violence"
+    ],
+    "expected_case": "26001343F"
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",

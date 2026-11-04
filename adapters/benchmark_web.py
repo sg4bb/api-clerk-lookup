@@ -44,6 +44,7 @@ _CASE_RE = re.compile(r"^\s*(\d{4})\s+([A-Z]{2})\s+(\d{6})\b")
 _CASE_FORMATS = (
     _CASE_RE,
     re.compile(r"^\s*()\d{8}([A-Z]{2})"),
+    re.compile(r"^\s*()\d{8}([A-Z])(?![A-Z])"),   # Charlotte: 26001343F (F = felony)
     re.compile(r"^\s*()\d{4}([A-Z]{2})\d{6}"),
     re.compile(r"^\s*()([A-Z]{2})\d{2}-\d+"),
 )
@@ -248,7 +249,15 @@ def thumb_url(onclick: str) -> Optional[str]:
     return f"{m.group(2)}{m.group(1)}{m.group(3)}" if m else None
 
 
-def candidates_from_rows(rows: list[dict], case_types: list[str]) -> list[CaseCandidate]:
+def case_type(case_number: str, codes: Optional[dict[str, str]] = None) -> str:
+    """Tipo de caso con los códigos del worker (CF, MM, CT). `codes` traduce las terminaciones
+    propias del condado (Charlotte: "F" -> "CF"); sin traducción queda la del número."""
+    code = court_code(case_number)
+    return (codes or {}).get(code, code)
+
+
+def candidates_from_rows(rows: list[dict], case_types: list[str],
+                         codes: Optional[dict[str, str]] = None) -> list[CaseCandidate]:
     """Solo los casos penales en los que la persona es la acusada; uno por caso (los
     alias repiten la fila: se guardan como otros nombres del mismo caso)."""
     wanted = {t.upper() for t in case_types}
@@ -257,7 +266,7 @@ def candidates_from_rows(rows: list[dict], case_types: list[str]) -> list[CaseCa
     ordered = sorted(rows, key=lambda r: "(alias)" in (r.get("nameCell") or "").lower())
     for row in ordered:
         number = re.sub(r"\s+", " ", row.get("case", "")).strip()
-        if row.get("party", "").upper() != "DEFENDANT" or court_code(number) not in wanted:
+        if row.get("party", "").upper() != "DEFENDANT" or case_type(number, codes) not in wanted:
             continue
         name = clean_name(row.get("nameCell") or row.get("name", ""))
         if number in by_case:
@@ -265,7 +274,7 @@ def candidates_from_rows(rows: list[dict], case_types: list[str]) -> list[CaseCa
                 by_case[number].aliases.append(name)
             continue
         by_case[number] = CaseCandidate(
-            case_number=number, defendant=name, case_type=court_code(number), status=row.get("status", ""),
+            case_number=number, defendant=name, case_type=case_type(number, codes), status=row.get("status", ""),
             dob=birth_date(row.get("nameCell", "")), filed_date=None, detail_ref=row.get("href", ""),
         )
         # El enlace del resumen desplegable va junto al del caso (mismo id y digest).
@@ -293,9 +302,15 @@ def thumb_from_details(href: str) -> Optional[str]:
     return f"CourtCase.aspx/CaseThumbnail/{m.group(1)}?digest={quote(digest, safe='')}"
 
 
+_AGENCY_PLACE_LAST_RE = re.compile(r"^((?:SHERIFF'?S?|POLICE)\b[^-]*?)\s+-\s+(.+)$", re.I)
+
+
 def normalize_agency_name(text: str) -> str:
-    """'OSCEOLA CO SHERIFF'S OFFICE' -> 'OSCEOLA COUNTY SHERIFF'S OFFICE' (solo para comparar con la nota)."""
-    return re.sub(r"\bCO\b(?=\.?\s+SHERIFF)", "COUNTY", text or "", flags=re.I).strip()
+    """'OSCEOLA CO SHERIFF'S OFFICE' -> 'OSCEOLA COUNTY SHERIFF'S OFFICE' y "SHERIFF'S OFFICE -
+    CHARLOTTE COUNTY" -> "CHARLOTTE COUNTY SHERIFF'S OFFICE" (solo para comparar con la nota)."""
+    text = re.sub(r"\bCO\b(?=\.?\s+SHERIFF)", "COUNTY", text or "", flags=re.I).strip()
+    flipped = _AGENCY_PLACE_LAST_RE.match(text)
+    return f"{flipped.group(2).strip()} {flipped.group(1).strip()}" if flipped else text
 
 
 def charges_from_case(summary: dict, thumb: dict, arrest: Optional[date]) -> list[Charge]:
@@ -344,7 +359,8 @@ def site_root(base_url: str) -> str:
 
 def arrest_date_from_docket(docket: list[DocketEntry]) -> Optional[date]:
     """La fecha de arresto del docket (la primera, si hay varias): "DATE OF ARREST" (Osceola),
-    "ARRESTED ON 10/24/2026" / "REARRESTED ON 10/24/2026" (Flagler) o "ARREST COUNT: ..." (St. Johns).
+    "ARRESTED ON 10/24/2026" / "REARRESTED ON 10/24/2026" (Flagler), "ARREST COUNT: ..." (St. Johns)
+    o "ARREST SEQ: ..." (Charlotte).
 
     St. Johns anota un "ARREST COUNT" por cargo; si tienen fechas distintas (cargos añadidos al caso
     en otros días) no hay una fecha de arresto fiable y se usan las fechas Initial de los cargos."""
@@ -355,8 +371,9 @@ def arrest_date_from_docket(docket: list[DocketEntry]) -> Optional[date]:
             dates.append(_date(said.group(1)))
         elif e.date and re.match(r"^\s*date of arrest", e.description, re.I):
             dates.append(e.date)
-        elif e.date and re.match(r"^\s*arrest count\b", e.description, re.I):
+        elif e.date and re.match(r"^\s*arrest (?:count|seq)\b", e.description, re.I):
             # St. Johns: "ARREST COUNT: 1 - (828.122 3A) ANIMAL FIGHTING", con la fecha del arresto.
+            # Charlotte: "ARREST SEQ: 1 - (316.1935 3A) FLEE/ELUDE POLICE ...".
             counts.add(e.date)
     if len(counts) == 1:
         dates.extend(counts)
@@ -404,7 +421,7 @@ class BenchmarkWebAdapter(ClerkAdapter):
             raise SearchError("The court portal didn't show the search results")
 
         rows = self._read_all_rows()
-        candidates = candidates_from_rows(rows, query.case_types)
+        candidates = candidates_from_rows(rows, query.case_types, self.county.case_type_codes)
         log.info("%d fila(s) en resultados, %d caso(s) penal(es) como acusado", len(rows), len(candidates))
         kept = {c.case_number for c in candidates}
         others = [f"{r.get('case')} ({r.get('party')}, {clean_name(r.get('nameCell') or r.get('name', ''))})"
@@ -426,8 +443,17 @@ class BenchmarkWebAdapter(ClerkAdapter):
         """
         page = self.page
         page.goto(self.county.base_url, wait_until="load")
-        page.wait_for_selector("#name", timeout=25_000)
+        # "attached", no "visible": Charlotte abre en "All" y el campo del nombre está oculto hasta
+        # elegir "Name" (_fill_form lo elige).
+        page.wait_for_selector("#name", state="attached", timeout=25_000)
+        self._wait_scripts()
+
+    def _wait_scripts(self) -> None:
+        """Espera a que search.js termine de preparar el formulario. Al cargar, marca la opción por
+        defecto: en Charlotte ("All") deshace la elección de "Name" si se hizo antes."""
+        page = self.page
         try:
+            page.wait_for_load_state("load", timeout=15_000)
             page.wait_for_function("() => !!(window.jQuery && jQuery.isReady)", timeout=15_000, polling=300)
         except PlaywrightTimeout:
             log.warning("Los scripts del portal tardan en cargar; sigo igual")
@@ -437,6 +463,11 @@ class BenchmarkWebAdapter(ClerkAdapter):
         page = self.page
         if page.locator("#radio_0").count():
             page.locator("#radio_0").check()
+        # Charlotte abre con "All" marcado y search.js envía la opción marcada: hay que elegir "Name".
+        # En los demás ya viene marcada y esto no hace nada.
+        radio = page.locator("input.radioButton[searchtype='Name']")
+        if radio.count() and not radio.first.is_checked():
+            self._choose_name_option(radio.first)
         page.fill("#name", name)
         page.wait_for_timeout(300)
         if page.input_value("#name") != name:
@@ -458,8 +489,35 @@ class BenchmarkWebAdapter(ClerkAdapter):
             window.__clerkSubmitted = true;
         }""", dates)
 
+    def _choose_name_option(self, radio) -> None:
+        """Marca "Name" y deja visible su campo (Charlotte). Si los scripts del portal lo desmarcan
+        o no muestran el campo, se marca desde la página y se muestra el campo a mano."""
+        page = self.page
+        for _ in range(2):
+            radio.click()
+            try:
+                page.wait_for_selector("#name", state="visible", timeout=4000)
+                if radio.is_checked():
+                    return
+            except PlaywrightTimeout:
+                pass
+            page.wait_for_timeout(1000)
+        log.warning("La opción Name no quedó marcada con un clic; la marco desde la página")
+        page.evaluate("""() => {
+            const r = document.querySelector("input.radioButton[searchtype='Name']");
+            r.checked = true;
+            r.dispatchEvent(new Event('change', {bubbles: true}));
+            const box = document.getElementById('name');
+            if (box && getComputedStyle(box).display === 'none') box.style.display = 'inline-block';
+        }""")
+        page.wait_for_timeout(300)
+
     def _click_search(self) -> None:
-        self.page.get_by_role("button", name=re.compile(r"^\s*search\s*$", re.I)).first.click()
+        button = self.page.get_by_role("button", name=re.compile(r"^\s*search\s*$", re.I))
+        if not button.count() and self.page.locator("#searchButton").count():
+            # Charlotte: el ícono del botón entra en su nombre accesible y "Search" ya no queda solo.
+            button = self.page.locator("#searchButton")
+        button.first.click()
 
     def _search_with_captcha(self, name: str, dates: dict) -> str:
         """El portal pidió el CAPTCHA (Flagler: hCaptcha, "Invalid Captcha" si se busca sin él).
@@ -470,6 +528,8 @@ class BenchmarkWebAdapter(ClerkAdapter):
         page = self.page
         if not page.locator("#name").count():
             self._open_form()
+        else:
+            self._wait_scripts()     # la página del "Invalid Captcha" acaba de cargar
         self._fill_form(name, dates)
         kind = page.evaluate(_CAPTCHA_KIND_JS) or "recaptcha"
         log.info("El portal pide un CAPTCHA (%s); se pide a la persona", kind)
@@ -544,7 +604,7 @@ class BenchmarkWebAdapter(ClerkAdapter):
             log.warning("No pude leer el caso al que saltó el portal: %r", data.get("title"))
             return None
         href = urlparse(self.page.url)
-        return CaseCandidate(case_number=number, defendant=defendant, case_type=court_code(number),
+        return CaseCandidate(case_number=number, defendant=defendant, case_type=case_type(number, self.county.case_type_codes),
                              status=data.get("summary", {}).get("status", ""), dob=None,
                              filed_date=_date(data.get("summary", {}).get("clerkfiledate")),
                              detail_ref=href.path + ("?" + href.query if href.query else ""))
