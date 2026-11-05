@@ -132,12 +132,16 @@ _READ_CASE_JS = """
     const a = tds[1] ? tds[1].querySelector("a[title^='View Party Details for']") : null;
     return {type: text(tds[0]), name: a ? text(a) : text(tds[1])};
   });
+  // Columna del número de entrada: la primera en casi todos; Indian River pone antes la de la
+  // imagen ("Image | DIN | Date | Entry") y ahí la primera celda es la cantidad de páginas.
+  const heads = Array.from(document.querySelectorAll('#gridDockets thead th')).map(th => text(th).toUpperCase());
+  const din = Math.max(0, heads.findIndex(h => h === 'DIN' || h === 'SEQ' || h === 'SEQ #'));
   const docket = Array.from(document.querySelectorAll('#gridDockets tbody tr')).map(tr => {
     const tds = tr.querySelectorAll(':scope > td');
     const img = tr.querySelector('a.casedocketimage');
     const entry = tr.querySelector("td[id^='text_']");
     return {
-      seq: text(tds[0]), date: tds.length > 3 ? text(tds[tds.length - 2]) : '',
+      seq: text(tds[din]), date: tds.length > 3 ? text(tds[tds.length - 2]) : '',
       text: entry ? text(entry) : text(tds[tds.length - 1]),
       cid: img ? img.getAttribute('rel') || img.id : null, digest: img ? img.getAttribute('digest') : null,
     };

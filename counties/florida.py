@@ -418,6 +418,35 @@ CHARLOTTE = CountyConfig(
     throttle_s=2.0,
 )
 
+# Indian River (05/11/2026): BenchmarkWeb 2.9.10 en /BenchmarkWeb/, sin CAPTCHA (al menos en las
+# pruebas). Números de caso como Osceola con la división al final: "2026 CF 001193 A" (CRIMINAL
+# FELONY), "1989 CT 012742 A" (CRIMINAL TRAFFIC), "2013 TR 008812 A" (civil traffic, fuera). El docket
+# pone la columna de la imagen antes del número de entrada (DIN). Documento: el "ARREST AFFIDAVIT" del
+# Sheriff (en los arrestos con orden es el de la entrega de la orden); el "LIVE WARRANT ISSUED: LIVE
+# WARRANT" (la orden con el affidavit de la agencia que investigó) va de apoyo. Arresto en el docket
+# como "REARRESTED ON 10/27/2026" y "ARREST SEQ: ...".
+INDIAN_RIVER = CountyConfig(
+    key="indian_river",
+    name="Indian River County",
+    state="FL",
+    platform="benchmark_web",
+    base_url="https://court.indian-river.org/BenchmarkWeb/Home.aspx/Search",
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+    document_priority=[
+        r"^\s*arrest affidavit\b",
+        r"probable cause affidavit",
+        r"affidavit of probable cause",
+        r"^\s*arrest report\b",
+        r"complaint affidavit",
+        r"^\s*sworn complaint\b",
+    ],
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b"],
+    support_documents=[r"^\s*live warrant issued\b", r"\bwarrant (?:returned )?(?:served|executed)\b",
+                       r"\bcapias (?:returned )?served\b"],
+    captcha="none",
+    throttle_s=2.0,
+)
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -457,6 +486,7 @@ COUNTIES: dict[str, CountyConfig] = {
     FLAGLER.key: FLAGLER,
     ST_JOHNS.key: ST_JOHNS,
     CHARLOTTE.key: CHARLOTTE,
+    INDIAN_RIVER.key: INDIAN_RIVER,
 }
 
 
@@ -582,7 +612,11 @@ CITY_TO_COUNTY: dict[str, str] = {
     "punta gorda": "charlotte", "port charlotte": "charlotte", "rotonda west": "charlotte", "rotonda": "charlotte",
     "placida": "charlotte", "babcock ranch": "charlotte", "murdock": "charlotte", "harbour heights": "charlotte",
     "charlotte harbor": "charlotte", "grove city": "charlotte", "deep creek": "charlotte", "solana": "charlotte",
-    "punta gorda isles": "charlotte", "burnt store": "charlotte", "spring hill": "hernando",
+    "punta gorda isles": "charlotte", "burnt store": "charlotte",
+    "vero beach": "indian_river", "sebastian": "indian_river", "fellsmere": "indian_river",
+    "indian river shores": "indian_river", "orchid": "indian_river", "wabasso": "indian_river",
+    "roseland": "indian_river", "gifford": "indian_river", "florida ridge": "indian_river",
+    "vero lake estates": "indian_river", "winter beach": "indian_river", "vero beach south": "indian_river", "spring hill": "hernando",
     "the villages": "sumter",
 }
 
@@ -629,6 +663,9 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "st cloud pd": "osceola", "saint cloud pd": "osceola",
     "flagler county so": "flagler", "bunnell pd": "flagler", "flagler beach pd": "flagler",
     "charlotte county so": "charlotte", "punta gorda pd": "charlotte",
+    "indian river county so": "indian_river", "vero beach pd": "indian_river", "sebastian pd": "indian_river",
+    "fellsmere pd": "indian_river", "indian river shores pd": "indian_river",
+    "indian river shores public safety": "indian_river",
     "st johns county so": "st_johns", "st augustine pd": "st_johns", "st augustine beach pd": "st_johns",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",

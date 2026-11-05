@@ -115,13 +115,21 @@ class MatcherTest(unittest.TestCase):
         self.assertEqual(pick_best([(match, ward_details())])[1], "found")
 
     def test_wrong_agency_lowers_confidence(self):
-        # Nombre y fecha exactos pero otra agencia: baja mucho la confianza
-        # pero sigue en el umbral (los artículos a veces citan otra agencia).
+        # Nombre y fecha exactos pero una agencia de otro condado (o estatal): baja mucho la
+        # confianza pero sigue en el umbral (los artículos a veces citan otra agencia).
         wrong = LookupQuery(first_name="Darrica", last_name="Ward", county="orange",
-                            incident_date=date(2024, 9, 4), agency="Orange County Sheriff's Office")
+                            incident_date=date(2024, 9, 4), agency="Florida Highway Patrol")
         match = score_case(wrong, ward_details())
         self.assertEqual(match.score, 60, match.reasons)
         self.assertIn("agencia distinta (orlando pd)", match.reasons)
+
+    def test_other_agency_of_the_same_county_does_not_count(self):
+        # El Sheriff de Orange y la policía de Orlando (05/11/2026): ni suma ni resta.
+        other = LookupQuery(first_name="Darrica", last_name="Ward", county="orange",
+                            incident_date=date(2024, 9, 4), agency="Orange County Sheriff's Office")
+        match = score_case(other, ward_details())
+        self.assertIn("agencia distinta del mismo condado (orlando pd; no resta)", match.reasons)
+        self.assertGreater(match.score, 60)
 
     def test_other_first_name_is_discarded(self):
         details = ward_details()

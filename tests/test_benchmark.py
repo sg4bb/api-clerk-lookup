@@ -371,3 +371,57 @@ class CharlotteTest(unittest.TestCase):
         self.assertEqual(florida.CITY_TO_COUNTY["punta gorda"], "charlotte")
         self.assertEqual(florida.CITY_TO_COUNTY["port charlotte"], "charlotte")
         self.assertEqual(florida.AGENCY_TO_COUNTY["charlotte county so"], "charlotte")
+
+
+# Indian River (05/11/2026): Ruma, 2026 CF 001179 A (orden de Vero Beach PD entregada por el Sheriff).
+# Filas como las devuelve _READ_CASE_JS (con la columna DIN, que aquí va después de la imagen).
+RUMA_DOCKET = [
+    {"seq": "54", "date": "11/4/2026", "text": "ARRAIGNMENT SET FOR 12/09/2026 AT 9:00 AM IN 5/ , JDG: NORMAN, ANASTASIA",
+     "cid": None, "digest": None},
+    {"seq": "50", "date": "10/30/2026", "text": "PUBLIC DEFENDER GRANTED", "cid": "20923507", "digest": "t"},
+    {"seq": "33", "date": "10/28/2026", "text": "ARREST SEQ: 30 - (784.048(2)) STALKING", "cid": None, "digest": None},
+    {"seq": "3", "date": "10/28/2026",
+     "text": "ARREST SEQ: 1 - (836.13(2)) SEX OFFENSE PROMOTE ALTERD SEX DEPICTION PERSON WO CONSENT",
+     "cid": None, "digest": None},
+    {"seq": "48", "date": "10/28/2026", "text": "ARREST AFFIDAVIT", "cid": "20915447", "digest": "a"},
+    {"seq": "47", "date": "10/28/2026", "text": "LIVE WARRANT STATUS CHANGED TO SERVED", "cid": None, "digest": None},
+    {"seq": "46", "date": "10/27/2026", "text": "REARRESTED ON 10/27/2026: OBTS # 3101163630", "cid": None, "digest": None},
+    {"seq": "36", "date": "10/27/2026", "text": "LIVE WARRANT ISSUED: LIVE WARRANT", "cid": "20912000", "digest": "w"},
+    {"seq": "31", "date": "10/27/2026",
+     "text": "SWORN COMPLAINT SEQ: 28 - (836.13(4)) SEX OFFENSE - PROMOTE ALTERD SEX DEPICTION PERSON WO CONSENT",
+     "cid": None, "digest": None},
+    {"seq": "1", "date": "10/27/2026", "text": "CASE FILED 10/27/2026 CASE NUMBER 2026 CF 001179 A", "cid": None, "digest": None},
+]
+
+
+class IndianRiverTest(unittest.TestCase):
+    def setUp(self):
+        self.county = get_county("indian_river")
+
+    def test_case_numbers(self):
+        self.assertEqual([court_code(n) for n in ("2026 CF 001193 A", "1989 CT 012742 A", "2013 TR 008812 A")],
+                         ["CF", "CT", "TR"])
+        self.assertEqual(case_from_title("2026 CF 001193 A - STATE OF FLORIDA vs. FINNEGAN, JOHN ERIC"),
+                         ("2026 CF 001193 A", "FINNEGAN, JOHN ERIC"))
+        rows = [{"case": n, "href": "/x", "name": "RUMA, PETER SOLOMON", "nameCell": "RUMA, PETER SOLOMON",
+                 "party": "DEFENDANT", "status": "OPEN", "thumb": ""}
+                for n in ("2026 CF 001179 A", "2018 TR 008619 A", "2023 SC 002216")]
+        found = candidates_from_rows(rows, ["CF", "MM", "CT"], self.county.case_type_codes)
+        self.assertEqual([c.case_number for c in found], ["2026 CF 001179 A"])
+
+    def test_docket(self):
+        docket = docket_from_case(RUMA_DOCKET)
+        self.assertEqual(arrest_date_from_docket(docket), date(2026, 10, 27))
+        adapter = BenchmarkWebAdapter(page=None, county=self.county, captcha=None)
+        d = CaseDetails(garcia_details().candidate, [], docket)
+        self.assertEqual([e.description for e in adapter.find_documents(d)], ["ARREST AFFIDAVIT"])
+        self.assertEqual([e.description for e in adapter.find_support_documents(d)],
+                         ["LIVE WARRANT ISSUED: LIVE WARRANT"])
+
+    def test_agency_and_places(self):
+        from core.matcher import normalize_agency
+        from counties import florida
+        self.assertEqual(normalize_agency(normalize_agency_name("INDIAN RIVER COUNTY - SHERIFF")),
+                         normalize_agency("Indian River County Sheriff's Office"))
+        self.assertEqual(florida.CITY_TO_COUNTY["vero beach"], "indian_river")
+        self.assertEqual(florida.AGENCY_TO_COUNTY[normalize_agency("Vero Beach Police Department")], "indian_river")

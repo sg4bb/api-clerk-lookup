@@ -121,6 +121,9 @@ class MatchScore:
     # Cargos del caso contra los de la nota: True coinciden, False distintos o no
     # comparables, None si no hay con qué comparar (la nota no trae cargos reconocibles).
     charges_match: Optional[bool] = None
+    # La nota no da fechas: True si el caso registra el arresto después de publicada la nota
+    # (no puede ser el arresto que cuenta), False si antes, None si no se puede saber.
+    after_publication: Optional[bool] = None
 
 
 @dataclass

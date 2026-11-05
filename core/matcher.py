@@ -253,6 +253,9 @@ def max_points(query: LookupQuery, details: CaseDetails) -> int:
     total += W_OFFENSE if query.incident_date and any(x.offense_date for x in details.charges) else 0
     total += W_OFFENSE if _offense_on_arrest_day(query, details) is not None else 0
     total += W_ARREST if _arrest_gap(query, details)[0] is not None else 0
+    # Una agencia distinta del mismo condado no resta, pero sigue contando aquí: si otro caso
+    # tiene la agencia de la nota, ese queda por encima (Clarkerosen, Orange: OPD y OCSO el
+    # mismo día).
     total += W_AGENCY if query.agency and any(x.agency for x in details.charges) else 0
     anchor = query.age_as_of or query.incident_date or query.arrest_date
     total += W_AGE if query.age is not None and c.dob and anchor else 0
@@ -435,16 +438,17 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
 
     # Agencia que arrestó.
     agencies = {normalize_agency(c.agency) for c in details.charges if c.agency}
-    if query.agency and agencies:
-        q_agency = normalize_agency(query.agency)
-        if any(q_agency == a or _similar(q_agency, a) >= 0.8 for a in agencies):
-            score += W_AGENCY
-            reasons.append("agencia coincide")
-            checks.append({"ok": True, "text": "Same arresting agency"})
-        else:
-            score -= 10
-            reasons.append(f"agencia distinta ({', '.join(sorted(agencies))})")
-            checks.append({"ok": False, "text": "Different arresting agency"})
+    verdict = _agency_verdict(query, details)
+    if verdict == "match":
+        score += W_AGENCY
+        reasons.append("agencia coincide")
+        checks.append({"ok": True, "text": "Same arresting agency"})
+    elif verdict == "same_county":
+        reasons.append(f"agencia distinta del mismo condado ({', '.join(sorted(agencies))}; no resta)")
+    elif verdict == "different":
+        score -= 10
+        reasons.append(f"agencia distinta ({', '.join(sorted(agencies))})")
+        checks.append({"ok": False, "text": "Different arresting agency"})
 
     # Edad reportada contra fecha de nacimiento.
     dob = details.candidate.dob
@@ -488,10 +492,48 @@ def score_case(query: LookupQuery, details: CaseDetails) -> MatchScore:
     # Lo que coincide primero, después lo que no (así se lee en la web).
     checks = [c for c in checks if c["ok"]] + [c for c in checks if not c["ok"]]
     return MatchScore(min(confidence, 100), reasons, checks=checks, offense_gap=offense_gap,
-                      initial_gap=initial_gap, charges_match=charges_match)
+                      initial_gap=initial_gap, charges_match=charges_match,
+                      after_publication=_after_publication(query, details))
+
+
+def _agency_verdict(query: LookupQuery, details: CaseDetails) -> Optional[str]:
+    """match | same_county | different | None (falta la agencia en la nota o en el caso).
+
+    same_county: no coinciden, pero las dos son del mismo condado (el Sheriff y la policía de
+    una ciudad de ese condado, o dos policías del condado). La diferencia suele tener
+    explicación: una orden que entregó el Sheriff (Ruma, Indian River: la investigó Vero Beach
+    PD), un operativo conjunto o una nota que nombra a la agencia que ayudó. No suma ni resta
+    (pero cuenta en los puntos posibles: el caso con la agencia de la nota queda por encima).
+    Una agencia estatal (FHP) o de otro condado sigue restando.
+    """
+    agencies = {normalize_agency(c.agency) for c in details.charges if c.agency}
+    if not query.agency or not agencies:
+        return None
+    q_agency = normalize_agency(query.agency)
+    if any(q_agency == a or _similar(q_agency, a) >= 0.8 for a in agencies):
+        return "match"
+    from counties.florida import AGENCY_TO_COUNTY     # aquí: counties importa core
+    home = AGENCY_TO_COUNTY.get(q_agency)
+    if home and all(AGENCY_TO_COUNTY.get(a) == home for a in agencies):
+        return "same_county"
+    return "different"
 
 
 INITIAL_NEAR_DAYS = 7
+PUBLICATION_SLACK_DAYS = 1   # una nota de la noche puede salir con la fecha del día anterior al registro
+
+
+def _after_publication(query: LookupQuery, details: CaseDetails) -> Optional[bool]:
+    """Solo si la nota no da fecha de arresto ni del incidente: ¿el caso registra el arresto
+    después de publicada la nota? Fecha de arresto del caso o, si no hay, su primera "Initial"."""
+    if query.arrest_date or query.incident_date or not query.published_date:
+        return None
+    dates = [c.arrest_date for c in details.charges if c.arrest_date]
+    if not dates:
+        dates = [c.initial_date for c in details.charges if getattr(c, "initial_date", None)]
+    if not dates:
+        return None
+    return min(dates) > query.published_date + timedelta(days=PUBLICATION_SLACK_DAYS)
 
 
 def _initial_gap(query: LookupQuery, details: CaseDetails) -> Optional[int]:
@@ -555,12 +597,15 @@ def resolve_by_arrest_date(
     scored: list[tuple[MatchScore, CaseDetails]],
     min_score: int = MIN_SCORE,
     min_margin: int = MIN_MARGIN,
+    has_document: Optional[Callable[[CaseDetails], bool]] = None,
 ) -> Optional[tuple[MatchScore, CaseDetails]]:
     """Desempata cuando solo uno de los casos empatados registra el arresto en la fecha de la nota.
 
     Gana si su "Initial" está a ARREST_NEAR_DAYS días o menos y la de todos los demás
-    empatados está a más de ARREST_FAR_DAYS. Si a algún otro le falta la fecha, o hay
-    dos cerca, sigue el empate. None si no aplica.
+    empatados está a más de ARREST_FAR_DAYS. Si a algún otro le falta la fecha, sigue el
+    empate. Si son varios los que están cerca pero todos del mismo arresto (Ruma, Indian
+    River, 05/11/2026: dos casos de la orden del 27/10 con el mismo reporte, contra los de
+    sus arrestos del 2 y el 13 de octubre), gana el preferido de ellos. None si no aplica.
     """
     valid = sorted((s for s in scored if not s[0].disqualified), key=lambda s: s[0].score, reverse=True)
     if not valid or valid[0][0].score < min_score:
@@ -570,12 +615,45 @@ def resolve_by_arrest_date(
     if len(close) < 2:
         return None
     near = [s for s in close if s[0].initial_gap is not None and s[0].initial_gap <= ARREST_NEAR_DAYS]
-    if len(near) != 1 or near[0][0].score < min_score:
+    return _only_group(near, close, has_document, min_score,
+                       lambda s: s[0].initial_gap is not None and s[0].initial_gap > ARREST_FAR_DAYS)
+
+
+def _only_group(group, close, has_document, min_score, other_ok) -> Optional[tuple[MatchScore, CaseDetails]]:
+    """El ganador de `group` si todos los demás empatados cumplen `other_ok` y el grupo es un
+    solo caso o varios del mismo arresto (se elige el preferido)."""
+    if not group or len(group) == len(close) or max(s[0].score for s in group) < min_score:
         return None
-    others = [s for s in close if s is not near[0]]
-    if all(s[0].initial_gap is not None and s[0].initial_gap > ARREST_FAR_DAYS for s in others):
-        return near[0]
-    return None
+    if not all(other_ok(s) for s in close if s not in group):
+        return None
+    if len(group) == 1:
+        return group[0]
+    if not all(same_incident(group[0][1], s[1]) for s in group[1:]):
+        return None
+    pick = min(group, key=lambda s: _preference(s[1], has_document or (lambda d: True), s[0]))
+    return pick if pick[0].score >= min_score else None
+
+
+def resolve_by_publication(
+    scored: list[tuple[MatchScore, CaseDetails]],
+    has_document: Optional[Callable[[CaseDetails], bool]] = None,
+    min_score: int = MIN_SCORE,
+    min_margin: int = MIN_MARGIN,
+) -> Optional[tuple[MatchScore, CaseDetails]]:
+    """Desempata con la fecha de publicación cuando la nota no da fechas: un caso que registra
+    el arresto después de publicada la nota no es el que cuenta. Gana el único empatado
+    anterior a la nota (o el preferido, si son varios del mismo arresto). Ruma (Indian River,
+    05/11/2026): nota del 2/9; empataban su caso del 2/9 y el de su arresto del 9/9.
+    """
+    valid = sorted((s for s in scored if not s[0].disqualified), key=lambda s: s[0].score, reverse=True)
+    if not valid or valid[0][0].score < min_score:
+        return None
+    top = valid[0][0].score
+    close = [s for s in valid if top - s[0].score < min_margin]
+    if len(close) < 2:
+        return None
+    before = [s for s in close if s[0].after_publication is False]
+    return _only_group(before, close, has_document, min_score, lambda s: s[0].after_publication is True)
 
 
 def resolve_by_charges(

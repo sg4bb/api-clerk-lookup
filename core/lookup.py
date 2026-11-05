@@ -22,7 +22,8 @@ from .captcha import CaptchaHandler, CaptchaTimeout, LiveViewCaptcha, ManualLoca
 from .county import CountyConfig
 from .charges import categorize
 from .matcher import (INITIAL_NEAR_DAYS, pick_best, prelim_reasons, prelim_score, related_cases,
-                      resolve_by_arrest_date, resolve_by_charges, resolve_same_incident, score_case)
+                      resolve_by_arrest_date, resolve_by_charges, resolve_by_publication,
+                      resolve_same_incident, score_case)
 from .models import CaseDetails, LookupQuery, LookupResult
 from .utils import last_name_variants, portal_text, today
 
@@ -352,22 +353,30 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
     ]
     winner, status = pick_best(scored)
     if status == "ambiguous":
-        winner = resolve_same_incident(scored, lambda d: bool(adapter.find_documents(d)))
+        has_document = lambda d: bool(adapter.find_documents(d))
+        winner = resolve_same_incident(scored, has_document)
         if winner:
             status = "found"
             log.info("Los casos empatados son del mismo arresto; elijo %s",
                      winner[1].candidate.case_number)
         else:
-            winner = resolve_by_arrest_date(scored)
+            winner = resolve_by_arrest_date(scored, has_document=has_document)
             if winner:
                 status = "found"
                 log.info("Solo %s registra el arresto en la fecha de la nota (Initial); lo elijo",
                          winner[1].candidate.case_number)
             else:
-                winner = resolve_by_charges(scored)
+                winner = resolve_by_publication(scored, has_document)
                 if winner:
                     status = "found"
-                    log.info("Solo %s tiene los cargos de la nota; lo elijo", winner[1].candidate.case_number)
+                    log.info("Los otros casos registran el arresto después de publicada la nota; elijo %s",
+                             winner[1].candidate.case_number)
+                else:
+                    winner = resolve_by_charges(scored)
+                    if winner:
+                        status = "found"
+                        log.info("Solo %s tiene los cargos de la nota; lo elijo",
+                                 winner[1].candidate.case_number)
     if not winner:
         return scored, LookupResult(status, candidates=summary,
                             message="No case on the portal matches the article closely enough" if status == "not_found"

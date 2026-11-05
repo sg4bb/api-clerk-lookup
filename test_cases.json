@@ -356,6 +356,42 @@
     "expected_case": "26001343F"
   },
   {
+    "id": "finnegan_john",
+    "notes": "Indian River (BenchmarkWeb sin CAPTCHA). 2026 CF 001193 A: ARREST AFFIDAVIT (DIN 12), LIVE WARRANT ISSUED de apoyo; reporte 2026-92558. Ex sargento del Sheriff (Flock).",
+    "first_name": "John",
+    "middle_name": null,
+    "last_name": "Finnegan",
+    "county": "indian_river",
+    "state": "FL",
+    "incident_date": null,
+    "arrest_date": "2026-11-02",
+    "age": 41,
+    "agency": "Indian River County Sheriff's Office",
+    "charges": [
+      "offense against computer users"
+    ],
+    "expected_case": "2026 CF 001193 A"
+  },
+  {
+    "id": "ruma_peter",
+    "notes": "Indian River. 2026 CF 001179 A: orden de Vero Beach PD entregada por el Sheriff (el portal anota la agencia del Sheriff). ARREST AFFIDAVIT (DIN 48), LIVE WARRANT ISSUED (DIN 36) de apoyo.",
+    "first_name": "Peter",
+    "middle_name": "Solomon",
+    "last_name": "Ruma",
+    "county": "indian_river",
+    "state": "FL",
+    "incident_date": null,
+    "arrest_date": "2026-10-27",
+    "age": 37,
+    "agency": "Vero Beach Police Department",
+    "charges": [
+      "sexual cyberharassment",
+      "stalking",
+      "promotion of an altered sexual depiction"
+    ],
+    "expected_case": "2026 CF 001179 A"
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",
