@@ -447,6 +447,34 @@ INDIAN_RIVER = CountyConfig(
     throttle_s=2.0,
 )
 
+# Bay (06/11/2026): BenchmarkWeb2 (2.9.7) en /BenchmarkWeb2/, con reCAPTCHA solo en la primera
+# búsqueda ("?error=Invalid Captcha" sin él) y el formulario ya en "Name". Números como St. Johns:
+# "18005242CFMA" (CF, MM, CT; "TR" civil y "PK" parking fuera). La página del caso trae solo el marco:
+# el resumen y el docket llegan aparte (ver _BW2_LOAD_JS). El servidor responde con 522 de Cloudflare
+# de vez en cuando: se recarga y se repite. Documento: el affidavit de arresto ("PC Arrest") va como
+# imagen de la entrada "CASE FILED ... CASE NUMBER ..." (Drinkard, 18005242CFMA); muchas otras
+# entradas no tienen imagen pública (hay que pedirla: "Request"). Arresto: "ARREST SEQ: ...".
+BAY = CountyConfig(
+    key="bay",
+    name="Bay County",
+    state="FL",
+    platform="benchmark_web",
+    base_url="https://court.baycoclerk.com/BenchmarkWeb2/Home.aspx/Search",
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+    document_priority=[
+        r"^\s*case filed\b",
+        r"^\s*arrest(?:ing)? affidavit\b",
+        r"probable cause affidavit",
+        r"affidavit of probable cause",
+        r"^\s*arrest report\b",
+        r"complaint affidavit",
+    ],
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b"],
+    support_documents=[r"\bwarrant (?:returned )?(?:served|executed)\b", r"\bcapias (?:returned )?served\b"],
+    captcha="recaptcha_v2",
+    throttle_s=2.0,
+)
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -487,6 +515,7 @@ COUNTIES: dict[str, CountyConfig] = {
     ST_JOHNS.key: ST_JOHNS,
     CHARLOTTE.key: CHARLOTTE,
     INDIAN_RIVER.key: INDIAN_RIVER,
+    BAY.key: BAY,
 }
 
 
@@ -616,7 +645,10 @@ CITY_TO_COUNTY: dict[str, str] = {
     "vero beach": "indian_river", "sebastian": "indian_river", "fellsmere": "indian_river",
     "indian river shores": "indian_river", "orchid": "indian_river", "wabasso": "indian_river",
     "roseland": "indian_river", "gifford": "indian_river", "florida ridge": "indian_river",
-    "vero lake estates": "indian_river", "winter beach": "indian_river", "vero beach south": "indian_river", "spring hill": "hernando",
+    "vero lake estates": "indian_river", "winter beach": "indian_river", "vero beach south": "indian_river",
+    "panama city beach": "bay", "lynn haven": "bay", "callaway": "bay", "springfield": "bay", "parker": "bay",
+    "youngstown": "bay", "fountain": "bay", "southport": "bay", "bayou george": "bay", "hiland park": "bay",
+    "cedar grove": "bay", "laguna beach": "bay", "tyndall afb": "bay", "spring hill": "hernando",
     "the villages": "sumter",
 }
 
@@ -666,6 +698,8 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "indian river county so": "indian_river", "vero beach pd": "indian_river", "sebastian pd": "indian_river",
     "fellsmere pd": "indian_river", "indian river shores pd": "indian_river",
     "indian river shores public safety": "indian_river",
+    "bay county so": "bay", "panama city pd": "bay", "panama city beach pd": "bay", "lynn haven pd": "bay",
+    "springfield pd": "bay", "parker pd": "bay", "mexico beach pd": "bay",
     "st johns county so": "st_johns", "st augustine pd": "st_johns", "st augustine beach pd": "st_johns",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",

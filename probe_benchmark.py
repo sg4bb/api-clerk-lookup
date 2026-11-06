@@ -32,7 +32,7 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urlparse, urljoin
 
 from dotenv import load_dotenv
 
@@ -51,9 +51,36 @@ async (url) => {
 """
 
 
+# BenchmarkWeb2 (Bay): resumen y docket del caso abierto, pedidos como los pide casedetails.js; y
+# los deja en la página (#detailsContent / #courtCaseDockets) para buscar ahí el documento.
+BW2_PARTS_JS = """async (base) => {
+  const get = async (path) => {
+    try {
+      const r = await fetch(base + path + cid + '?digest=' + encodeURIComponent(caseDigest) + '&time=' + Date.now(),
+                            {credentials: 'include'});
+      return {status: r.status, html: await r.text()};
+    } catch (e) { return {status: String(e), html: ''}; }
+  };
+  const summary = await get('CourtCase.aspx/DetailsSummary/');
+  const dockets = await get('CourtCase.aspx/CaseDockets/');
+  const box = document.querySelector('#detailsContent');
+  if (box && summary.status === 200) {
+    box.innerHTML = summary.html;
+    const loading = document.querySelector('#loading'); if (loading) loading.style.display = 'none';
+  }
+  const holder = document.querySelector('#courtCaseDockets');
+  if (holder && dockets.status === 200) holder.innerHTML = dockets.html;
+  else if (box && dockets.status === 200) box.insertAdjacentHTML('beforeend', dockets.html);
+  return {summary, dockets};
+}"""
+
+
 class Probe:
-    def __init__(self, page, folder: Path):
+    def __init__(self, page, folder: Path, host: str = ""):
         self.page = page
+        # Solo se registra lo del portal: con BROWSER_EXTENSIONS=1 también pasan por aquí las
+        # llamadas de las extensiones (la VPN manda su usuario y clave), y eso no se guarda.
+        self.host = host.lower()
         self.folder = folder
         self.count = 0
         self.steps: list[dict] = []
@@ -67,6 +94,8 @@ class Probe:
     def _on_response(self, response) -> None:
         try:
             req = response.request
+            if self.host and (urlparse(response.url).hostname or "").lower() != self.host:
+                return
             ctype = response.headers.get("content-type", "")
             if "/Content/" in response.url or re.search(r"\.(css|woff2?|ttf|gif|png|ico)(\?|$)", response.url, re.I):
                 return
@@ -245,7 +274,7 @@ def run(args) -> int:
 
     with open_browser() as session:
         page = session.page
-        probe = Probe(page, folder)
+        probe = Probe(page, folder, urlparse(args.url).hostname or "")
         probe.notes.update(provider=session.provider, args=vars(args))
         try:
             # 1. Búsqueda del caso conocido.
@@ -270,6 +299,32 @@ def run(args) -> int:
             link.click()
             page.wait_for_load_state("domcontentloaded")
             page.wait_for_timeout(5000)
+            # BenchmarkWeb2 (Bay): el caso llega después, por partes, dentro de #detailsContent
+            # (pestañas "Summary" e "History"); el docket está en "History".
+            if page.locator("#detailsContent").count():
+                probe.notes["benchmarkweb2"] = True
+                loaded_js = "() => (document.querySelector('#detailsContent').innerText || '').trim().length > 50"
+                # Bay (06/11/2026): el script del caso (casedetails.js) volvía con 522 de Cloudflare y
+                # la página quedaba en el ícono de carga. Se recarga hasta dos veces.
+                for attempt in range(3):
+                    if _safe(lambda: page.wait_for_function(loaded_js, timeout=25_000, polling=500) or True, False):
+                        break
+                    probe.notes[f"caso_sin_cargar_{attempt + 1}"] = [
+                        (n["status"], n["url"][-80:]) for n in probe.network[-15:] if n["status"] >= 400]
+                    print(f"  el caso no terminó de cargar (intento {attempt + 1}); recargo")
+                    if attempt < 2:
+                        page.reload(wait_until="domcontentloaded")
+                page.wait_for_timeout(2000)
+            if probe.notes.get("benchmarkweb2"):
+                # El resumen sale de CourtCase.aspx/DetailsSummary/<cid> y el docket de
+                # CourtCase.aspx/CaseDockets/<cid> (casedetails.js). "History" son otros casos de la
+                # persona, no el docket. Se piden directo, por si casedetails.js no cargó (522).
+                parts = _safe(lambda: page.evaluate(BW2_PARTS_JS, site_root(args.url)), {}) or {}
+                for name in ("summary", "dockets"):
+                    part = parts.get(name) or {}
+                    (folder / f"bw2_{name}.html").write_text(part.get("html") or "", encoding="utf-8")
+                    print(f"  guardado bw2_{name}.html ({part.get('status')}, {len(part.get('html') or '')} caracteres)")
+                probe.notes["bw2"] = {k: (v or {}).get("status") for k, v in parts.items()}
             probe.save("caso")
             if page.locator("#tabCharges").count():
                 page.locator("#tabCharges").click()
@@ -282,13 +337,29 @@ def run(args) -> int:
             for i in range(icons.count()):
                 icon = icons.nth(i)
                 entry = _safe(lambda icon=icon: page.inner_text(f"#text_{icon.get_attribute('id')}"), "")
+                if not entry:   # BenchmarkWeb2: el texto de la fila entera
+                    entry = _safe(lambda icon=icon: icon.locator("xpath=ancestor::tr[1]").inner_text(), "")
                 if re.search(args.doc, entry or "", re.I):
                     target = icon
-                    probe.notes["documento"] = {"id": icon.get_attribute("id"), "digest": icon.get_attribute("digest"),
+                    probe.notes["documento"] = {"id": icon.get_attribute("rel") or icon.get_attribute("id"),
+                                                "digest": icon.get_attribute("digest"),
                                                 "entrada": re.sub(r"\s+", " ", entry).strip()}
                     break
             if target is None:
                 probe.errors.append(f"No hay en el docket un documento con '{args.doc}'")
+            elif probe.notes.get("benchmarkweb2"):
+                print(f"  documento: {probe.notes['documento']}")
+                from adapters.benchmark_web import _PDF_JS
+                doc = probe.notes["documento"]
+                result = _safe(lambda: page.evaluate(_PDF_JS, {"base": site_root(args.url), "cid": doc["id"],
+                                                               "digest": doc["digest"]}), {}) or {}
+                probe.notes["pdf_directo"] = {k: v for k, v in result.items() if k != "b64"}
+                if result.get("b64"):
+                    import base64
+                    data = base64.b64decode(result["b64"])
+                    ext = "pdf" if data[:4] == b"%PDF" else "txt"
+                    (folder / f"documento.{ext}").write_bytes(data)
+                    print(f"  documento.{ext}: {len(data) // 1024} KB ({result.get('type')})")
             else:
                 print(f"  documento: {probe.notes['documento']}")
                 before = len(probe.popups)
@@ -342,7 +413,12 @@ def main() -> int:
     parser.add_argument("--opened-to", default="10/31/2026")
     parser.add_argument("--court-types", default="CF,MM")
     parser.add_argument("--local", action="store_true", help="usar Chrome local en vez de Browserbase")
-    return run(parser.parse_args())
+    args = parser.parse_args()
+    # Copiados del navegador pueden traer espacios de más, incluso el "no separable" (\xa0):
+    # "18005242CFMA\xa0" no encontraba el caso en Bay (06/11/2026).
+    args.case = " ".join(args.case.split()) if args.case else args.case
+    args.name = " ".join(args.name.split()) if args.name else args.name
+    return run(args)
 
 
 if __name__ == "__main__":

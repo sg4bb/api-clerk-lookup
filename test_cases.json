@@ -392,6 +392,60 @@
     "expected_case": "2026 CF 001179 A"
   },
   {
+    "id": "drinkard_justin",
+    "notes": "Bay (BenchmarkWeb2 con reCAPTCHA; 522 de Cloudflare a ratos). 18005242CFMA: el affidavit de arresto es la imagen de 'CASE FILED' (DIN 3); reporte 2018096490.",
+    "first_name": "Justin",
+    "middle_name": "Isaac",
+    "last_name": "Drinkard",
+    "county": "bay",
+    "state": "FL",
+    "incident_date": "2018-11-25",
+    "arrest_date": "2018-11-25",
+    "age": null,
+    "agency": "Bay County Sheriff's Office",
+    "charges": [
+      "second-degree murder",
+      "armed burglary"
+    ],
+    "expected_case": "18005242CFMA"
+  },
+  {
+    "id": "mouser_shane",
+    "notes": "Bay. 24000293CFMA (persecución de FHP, 29/01/2024); el mismo día se abrieron 24000290-292CFMA. CASE FILED = Arrest Report de FHP (FHP24ON0049414).",
+    "first_name": "Shane",
+    "middle_name": null,
+    "last_name": "Mouser",
+    "county": "bay",
+    "state": "FL",
+    "incident_date": "2024-01-29",
+    "arrest_date": "2024-01-30",
+    "age": 35,
+    "agency": "Florida Highway Patrol",
+    "charges": [
+      "fleeing and eluding",
+      "reckless driving",
+      "resisting without violence"
+    ],
+    "expected_case": "24000293CFMA"
+  },
+  {
+    "id": "fallin_jeffery",
+    "notes": "Bay. 24003617CFMA, robo armado en Lynn Haven (06/11/2024).",
+    "first_name": "Jeffery",
+    "middle_name": "James",
+    "last_name": "Fallin",
+    "county": "bay",
+    "state": "FL",
+    "incident_date": "2024-11-06",
+    "arrest_date": null,
+    "age": null,
+    "agency": "Lynn Haven Police Department",
+    "charges": [
+      "armed robbery"
+    ],
+    "expected_case": "24003617CFMA"
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",

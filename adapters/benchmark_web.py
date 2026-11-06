@@ -55,6 +55,7 @@ RESULTS_TIMEOUT_MS = 30_000
 
 _RESULTS_STATE_JS = r"""
 () => {
+  if (/\|\s*52\d\s*:/.test(document.title) || /error code 52\d/i.test((document.body || {}).innerText || '')) return 'cf_error';
   if (location.href.indexOf('/CourtCase.aspx/Details/') >= 0) return 'case';
   // Flagler: sin CAPTCHA resuelto vuelve al formulario con "?error=Invalid Captcha".
   if (/home\.aspx\/search/i.test(location.pathname) && /captcha/i.test(decodeURIComponent(location.search))) return 'captcha';
@@ -76,7 +77,13 @@ _RESULTS_STATE_JS = r"""
 """
 
 _READ_ROWS_JS = """
-() => Array.from(document.querySelectorAll('#gridSearchResults tbody tr'))
+() => {
+  // Columnas por su clase en el encabezado: Bay (BenchmarkWeb2) agrega "PIN" antes de "Party Type"
+  // (06/11/2026: se leía el PIN como tipo de parte y quedaban todos fuera). Sin encabezado, las de siempre.
+  const heads = Array.from(document.querySelectorAll('#gridSearchResults thead th'));
+  const col = (cls, dflt) => { const i = heads.findIndex(th => th.classList.contains(cls)); return i >= 0 ? i : dflt; };
+  const nameCol = col('nameCol', 1), partyCol = col('partyTypeCol', 2), statusCol = col('statusCol', 4);
+  return Array.from(document.querySelectorAll('#gridSearchResults tbody tr'))
   .filter(tr => tr.querySelector("a[title^='View Case Details for']"))
   .map(tr => {
     const tds = tr.querySelectorAll(':scope > td');
@@ -85,11 +92,13 @@ _READ_ROWS_JS = """
     const expand = tr.querySelector("img[onclick*='details(']");
     return {
       case: link.innerText.trim(), href: link.getAttribute('href'),
-      name: name ? name.innerText.trim() : '', nameCell: tds[1] ? tds[1].innerText : '',
-      party: tds[2] ? tds[2].innerText.trim() : '', status: tds[4] ? tds[4].innerText.trim() : '',
+      name: name ? name.innerText.trim() : '', nameCell: tds[nameCol] ? tds[nameCol].innerText : '',
+      party: tds[partyCol] ? tds[partyCol].innerText.trim() : '',
+      status: tds[statusCol] ? tds[statusCol].innerText.trim() : '',
       thumb: expand ? expand.getAttribute('onclick') : '',
     };
-  })
+  });
+}
 """
 
 _CAPTCHA_KIND_JS = """
@@ -116,8 +125,46 @@ _CASE_READY_JS = """
 """
 
 _CASE_SUMMARY_JS = """
-() => !!(document.querySelector('#summaryAccordionCollapse dd.casenumber') &&
+() => !!(document.querySelector('#summaryAccordionCollapse dd.casenumber, #summaryAccordionCollapse .caseSummaryCol') &&
          document.querySelector('#gridParties tbody tr'))
+"""
+
+# Cloudflare sin respuesta del servidor del condado (Bay, 06/11/2026: "522: Connection timed out").
+_CF_ERROR_JS = r"""
+() => /\|\s*52\d\s*:/.test(document.title) || /error code 52\d/i.test((document.body || {}).innerText || '')
+"""
+
+# BenchmarkWeb2 (Bay, 2.9.7): la página del caso trae solo el marco; el resumen
+# (CourtCase.aspx/DetailsSummary/<cid>) y el docket (CourtCase.aspx/CaseDockets/<cid>) los pide
+# casedetails.js, que a veces vuelve con 522 y la página queda en el ícono de carga. Se piden
+# directo, con las mismas variables de la página (cid, caseDigest), y se dejan donde los pondría.
+_BW2_LOAD_JS = """
+async (base) => {
+  if (typeof cid === 'undefined' || typeof caseDigest === 'undefined') return {ok: false, why: 'sin cid'};
+  const get = async (path) => {
+    let r;
+    for (let i = 0; i < 3; i++) {
+      try {
+        r = await fetch(base + path + cid + '?digest=' + encodeURIComponent(caseDigest) + '&time=' + Date.now(),
+                        {credentials: 'include'});
+        if (r.status === 200) return await r.text();
+      } catch (e) {}
+      await new Promise(ok => setTimeout(ok, 2000));
+    }
+    return null;
+  };
+  const summary = await get('CourtCase.aspx/DetailsSummary/');
+  if (summary === null) return {ok: false, why: 'resumen'};
+  const box = document.querySelector('#detailsContent');
+  box.innerHTML = summary;
+  const loading = document.querySelector('#loading');
+  if (loading) loading.style.display = 'none';
+  const dockets = await get('CourtCase.aspx/CaseDockets/');
+  if (dockets === null) return {ok: false, why: 'docket'};
+  const holder = document.querySelector('#courtCaseDockets');
+  if (holder) holder.innerHTML = dockets; else box.insertAdjacentHTML('beforeend', dockets);
+  return {ok: true};
+}
 """
 
 _READ_CASE_JS = """
@@ -126,6 +173,14 @@ _READ_CASE_JS = """
   const summary = {};
   document.querySelectorAll('#summaryAccordionCollapse dd').forEach(dd => {
     summary[(dd.className || '').trim()] = text(dd);
+  });
+  // BenchmarkWeb2 (Bay): pares "Etiqueta:" / valor en .caseSummaryCol, sin <dd>. Se guardan con la
+  // misma clave que las clases de los <dd> ("Agency Report Number" -> "agencyreportnumber").
+  document.querySelectorAll('#summaryAccordionCollapse .caseSummaryCol > div').forEach(row => {
+    const cells = row.querySelectorAll(':scope > div');
+    if (cells.length < 2) return;
+    const key = text(cells[0]).toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (key && !(key in summary)) summary[key] = text(cells[cells.length - 1]);
   });
   const parties = Array.from(document.querySelectorAll('#gridParties tbody tr')).map(tr => {
     const tds = tr.querySelectorAll(':scope > td');
@@ -154,8 +209,14 @@ _READ_CASE_JS = """
 # Resumen desplegable: los cargos con sus fechas. Se pide como lo pide el "+" de la fila.
 _THUMB_JS = """
 async (url) => {
-  const r = await fetch(url, {credentials: 'include'});
-  const html = await r.text();
+  // Bay (06/11/2026): Cloudflare devuelve 522 de vez en cuando; se reintenta.
+  let r, html;
+  for (let i = 0; i < 3; i++) {
+    r = await fetch(url, {credentials: 'include'});
+    html = await r.text();
+    if (r.status < 520) break;
+    await new Promise(ok => setTimeout(ok, 2000));
+  }
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const text = el => el ? el.textContent.replace(/\\u00a0/g, ' ').replace(/\\s+/g, ' ').trim() : '';
   const summary = {};
@@ -402,16 +463,23 @@ class BenchmarkWebAdapter(ClerkAdapter):
                  "openedFrom": f"{date_from:%m/%d/%Y}" if date_from else "",
                  "openedTo": f"{date_to:%m/%d/%Y}" if date_to else ""}
         log.info("Buscando %s entre %s y %s (tipos %s)", name, date_from, date_to, query.case_types)
-        for attempt in (1, 2):
+        for attempt in (1, 2, 3):
             self._submit_search(name, dates)
             state = self._wait_results()
             if state == "captcha":
                 state = self._search_with_captcha(name, dates)
-            if state != "form":
+            if state == "cf_error":
+                # Bay (06/11/2026): Cloudflare no llegó al servidor del condado (522); se repite.
+                log.warning("El portal no respondió (Cloudflare 52x); repito la búsqueda (intento %d de 3)", attempt)
+                page.wait_for_timeout(3000)
+                continue
+            if state != "form" or attempt == 2:
                 break
             # El portal devolvió el formulario vacío (01/11/2026, Chrome local: el nombre se
             # escribió antes de que la página terminara de prepararse y se envió vacío).
             log.warning("El portal volvió al formulario sin resultados (intento %d de 2)", attempt)
+        if state == "cf_error":
+            raise SearchError("The court portal is not responding right now (Cloudflare 522). Try again in a few minutes.")
         if state == "form":
             raise SearchError("The court portal returned the empty search form instead of results")
         if state == "case":
@@ -446,7 +514,12 @@ class BenchmarkWebAdapter(ClerkAdapter):
         campo: si se escribe antes, se envía el formulario sin nombre y el portal vuelve a él.
         """
         page = self.page
-        page.goto(self.county.base_url, wait_until="load")
+        for attempt in range(3):
+            page.goto(self.county.base_url, wait_until="load")
+            if not page.evaluate(_CF_ERROR_JS):
+                break
+            log.warning("El portal no respondió (Cloudflare 52x); recargo (intento %d de 3)", attempt + 1)
+            page.wait_for_timeout(3000)
         # "attached", no "visible": Charlotte abre en "All" y el campo del nombre está oculto hasta
         # elegir "Name" (_fill_form lo elige).
         page.wait_for_selector("#name", state="attached", timeout=25_000)
@@ -596,7 +669,7 @@ class BenchmarkWebAdapter(ClerkAdapter):
         # El resumen y las partes llegan después de la página (otra consulta): se esperan.
         # Garcia, McMillian y Jeanbaptiste (01/11/2026): leídos al instante salían vacíos.
         try:
-            self.page.wait_for_function(_CASE_SUMMARY_JS, timeout=20_000, polling=500)
+            self._wait_case(self.page, _CASE_SUMMARY_JS, "caso único")
         except PlaywrightTimeout:
             log.warning("El resumen del caso no cargó; uso el título de la página")
         data = self.page.evaluate(_READ_CASE_JS)
@@ -622,7 +695,7 @@ class BenchmarkWebAdapter(ClerkAdapter):
         tab = self.page.context.new_page()
         try:
             tab.goto(url, wait_until="domcontentloaded")
-            tab.wait_for_function(_CASE_READY_JS, timeout=25_000, polling=500)
+            self._wait_case(tab, _CASE_READY_JS, candidate.case_number)
             data = tab.evaluate(_READ_CASE_JS)
             thumb_data = {}
             if thumb:
@@ -652,6 +725,27 @@ class BenchmarkWebAdapter(ClerkAdapter):
             raise SearchError(f"The case page for {candidate.case_number} did not load") from None
         finally:
             tab.close()
+
+    def _wait_case(self, tab, ready_js: str, label: str) -> None:
+        """Espera el caso. Si la página quedó en el error de Cloudflare se recarga; en BenchmarkWeb2
+        (Bay), si el caso no aparece solo, se piden el resumen y el docket directo (_BW2_LOAD_JS)."""
+        for attempt in range(3):
+            if not tab.evaluate(_CF_ERROR_JS):
+                break
+            log.warning("%s: el portal no respondió (Cloudflare 52x); recargo", label)
+            tab.wait_for_timeout(3000)
+            tab.reload(wait_until="domcontentloaded")
+        bw2 = tab.locator("#detailsContent").count() > 0
+        try:
+            tab.wait_for_function(ready_js, timeout=10_000 if bw2 else 25_000, polling=500)
+            return
+        except PlaywrightTimeout:
+            if not bw2:
+                raise
+        result = tab.evaluate(_BW2_LOAD_JS, self.site_root())
+        if not result.get("ok"):
+            log.warning("%s: no pude traer el caso (%s)", label, result.get("why"))
+        tab.wait_for_function(ready_js, timeout=15_000, polling=500)
 
     def find_documents(self, details: CaseDetails) -> list[DocketEntry]:
         """El primero que entró al expediente primero (por "Seq #")."""

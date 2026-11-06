@@ -425,3 +425,92 @@ class IndianRiverTest(unittest.TestCase):
                          normalize_agency("Indian River County Sheriff's Office"))
         self.assertEqual(florida.CITY_TO_COUNTY["vero beach"], "indian_river")
         self.assertEqual(florida.AGENCY_TO_COUNTY[normalize_agency("Vero Beach Police Department")], "indian_river")
+
+
+# Bay (06/11/2026): Drinkard, 18005242CFMA. BenchmarkWeb2: "Image | DIN | Date | Entry"; el affidavit
+# de arresto va como imagen de la entrada "CASE FILED"; muchas entradas sin imagen pública.
+DRINKARD_DOCKET = [
+    {"seq": "22", "date": "12/21/2018", "text": "EP - INFORMATION FILED", "cid": "40000022", "digest": "i"},
+    {"seq": "16", "date": "11/29/2018", "text": "AFFIDAVIT AND ORDER OF INSOLVENCY FILED", "cid": None, "digest": None},
+    {"seq": "3", "date": "11/28/2018", "text": "CASE FILED 11/28/2018 CASE NUMBER 18005242CFMA",
+     "cid": "40000003", "digest": "c"},
+    {"seq": "9", "date": "11/25/2018", "text": "ARREST SEQ: 1 - (78204 2) MURDER", "cid": None, "digest": None},
+]
+
+
+class BayTest(unittest.TestCase):
+    def setUp(self):
+        self.county = get_county("bay")
+
+    def test_case_numbers(self):
+        self.assertEqual([court_code(n) for n in ("18005242CFMA", "18002455MMMA", "15003444CTMA", "13029183TR",
+                                                  "08000292PKMA")], ["CF", "MM", "CT", "TR", "PK"])
+
+    def test_docket(self):
+        docket = docket_from_case(DRINKARD_DOCKET)
+        self.assertEqual(arrest_date_from_docket(docket), date(2018, 11, 25))
+        adapter = BenchmarkWebAdapter(page=None, county=self.county, captcha=None)
+        d = CaseDetails(garcia_details().candidate, [], docket)
+        self.assertEqual([e.description for e in adapter.find_documents(d)],
+                         ["CASE FILED 11/28/2018 CASE NUMBER 18005242CFMA"])
+
+    def test_agency_and_places(self):
+        from core.matcher import normalize_agency
+        from counties import florida
+        self.assertEqual(normalize_agency("BAY COUNTY SHERIFF"), normalize_agency("Bay County Sheriff's Office"))
+        self.assertEqual(florida.CITY_TO_COUNTY["lynn haven"], "bay")
+        self.assertEqual(florida.AGENCY_TO_COUNTY[normalize_agency("Panama City Police Department")], "bay")
+
+
+class CloudflareTest(unittest.TestCase):
+    """Bay (06/11/2026): "baycoclerk.com | 522: Connection timed out" no son "0 resultados"."""
+
+    def test_522_page(self):
+        from playwright.sync_api import sync_playwright
+        from adapters.benchmark_web import _CF_ERROR_JS, _RESULTS_STATE_JS
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.set_content("<title>baycoclerk.com | 522: Connection timed out</title>"
+                             "<body>Connection timed out Error code 522</body>")
+            self.assertTrue(page.evaluate(_CF_ERROR_JS))
+            self.assertEqual(page.evaluate(_RESULTS_STATE_JS), "cf_error")
+            page.set_content("<title>Search Results</title><body><div class='caseFoundFilter'>Cases Found 0</div></body>")
+            self.assertFalse(page.evaluate(_CF_ERROR_JS))
+            self.assertEqual(page.evaluate(_RESULTS_STATE_JS), "empty")
+            browser.close()
+
+
+class ResultColumnsTest(unittest.TestCase):
+    """Bay (06/11/2026): BenchmarkWeb2 agrega "PIN" antes de "Party Type"; se leía el PIN como tipo
+    de parte ("2280303") y todas las filas quedaban fuera."""
+
+    ROW = ("<tr><td><img onclick=\"javascript:details(1, 'CourtCase.aspx/CaseThumbnail/', '?digest=x');\"></td>"
+           "<td><a title='View Party Details for MOUSER, SHANE A'>MOUSER, SHANE A</a> (1989)</td>{pin}"
+           "<td>DEFENDANT</td><td><a href='/d/1' title='View Case Details for 24000293CFMA'>24000293CFMA</a></td>"
+           "<td>CLOSED</td></tr>")
+    HEAD = ("<thead><tr><th class='detailCol'>Summary</th><th class='nameCol'>Name</th>{pin}"
+            "<th class='partyTypeCol'>Party Type</th><th class='caseNumberCol'>Case Number</th>"
+            "<th class='statusCol'>Status</th></tr></thead>")
+
+    def read(self, pin: bool):
+        from playwright.sync_api import sync_playwright
+        from adapters.benchmark_web import _READ_ROWS_JS
+        html = ("<table id='gridSearchResults'>" + self.HEAD.format(pin="<th class='pinCol'>PIN</th>" if pin else "")
+                + "<tbody>" + self.ROW.format(pin="<td>2280303</td>" if pin else "") + "</tbody></table>")
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.set_content(html)
+            rows = page.evaluate(_READ_ROWS_JS)
+            browser.close()
+        return rows
+
+    def test_with_pin_column(self):
+        rows = self.read(pin=True)
+        self.assertEqual((rows[0]["party"], rows[0]["status"]), ("DEFENDANT", "CLOSED"))
+        self.assertEqual([c.case_number for c in candidates_from_rows(rows, ["CF"])], ["24000293CFMA"])
+
+    def test_without_pin_column(self):
+        rows = self.read(pin=False)
+        self.assertEqual((rows[0]["party"], rows[0]["status"]), ("DEFENDANT", "CLOSED"))
