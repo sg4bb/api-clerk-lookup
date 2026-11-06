@@ -299,6 +299,50 @@ def _first_word_only(query: LookupQuery) -> LookupQuery:
     return replace(query, first_name=words[0], middle_name=query.middle_name or " ".join(words[1:]))
 
 
+_NAMED_CASE_RE = re.compile(r"\bcase\s+number\s+([A-Z0-9][A-Z0-9-]*)", re.I)
+
+
+def _case_key(number: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", number.upper())
+
+
+def _farthest_offense(details: CaseDetails, incident: date) -> Optional[int]:
+    """Días entre el incidente de la nota y el cargo más lejano del caso. None si no se sabe."""
+    gaps = [abs((c.offense_date - incident).days) for c in details.charges if c.offense_date]
+    return max(gaps) if gaps else None
+
+
+def order_by_named_case(documents: list, query: LookupQuery,
+                        scored: list[tuple[object, CaseDetails]]) -> list:
+    """Varios documentos del mismo tipo que nombran cada uno un caso: primero el del caso
+    cuyos cargos son todos del incidente de la nota.
+
+    Ranglin (Bay, 06/11/2026): el 24002615CFMA tiene dos "CASE FILED ... CASE NUMBER X".
+    La #1 nombra el propio 2615 (pedido de orden por la pistola del 01/08) y la #40 nombra el
+    24002626CFMC, consolidado en él, con todos los cargos del 06/08: el affidavit del
+    asesinato de la nota. Si la nota no trae fecha, o un documento nombra un caso que no
+    salió en la búsqueda, queda el orden de siempre.
+    """
+    incident = query.incident_date or query.arrest_date
+    if not incident or len(documents) < 2:
+        return documents
+    cases = {_case_key(d.candidate.case_number): d for _, d in scored}
+    named = [(_NAMED_CASE_RE.search(doc.description), doc) for doc in documents]
+    if not all(m for m, _ in named):
+        return documents
+    keys = {_case_key(m.group(1)) for m, _ in named}
+    if len(keys) < 2 or not keys <= cases.keys():
+        return documents
+    gap = {k: _farthest_offense(cases[k], incident) for k in keys}
+    if None in gap.values() or len(set(gap.values())) < 2:
+        return documents
+    ordered = sorted(documents, key=lambda doc: gap[_case_key(_NAMED_CASE_RE.search(doc.description).group(1))])
+    if ordered[0] is not documents[0]:
+        log.info("Varios documentos nombran casos distintos; primero '%s' (cargos más cerca del %s)",
+                 ordered[0].description, incident.isoformat())
+    return ordered
+
+
 def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir: Path,
                    on_status: StatusCallback) -> tuple[list, LookupResult]:
     """La búsqueda de siempre para una persona: (casos puntuados, resultado)."""
@@ -393,7 +437,7 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
         {"date": e.date, "description": e.description, "downloadable": bool(e.doc_ref)}
         for e in details.docket
     ]
-    documents = adapter.find_documents(details)
+    documents = order_by_named_case(adapter.find_documents(details), query, scored)
     support = adapter.find_support_documents(details)
     if documents:
         log.info("Documentos en %s (el primero se descarga): %s", details.candidate.case_number,

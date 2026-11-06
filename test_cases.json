@@ -446,6 +446,25 @@
     "expected_case": "24003617CFMA"
   },
   {
+    "id": "ranglin_andre",
+    "notes": "Bay. 24002615CFMA con el 24002626CFMC consolidado. Dos CASE FILED: la #1 es el pedido de orden por la pistola del 01/08 (reporte 2436424); la #40 (CASE NUMBER 24002626CFMC) es el affidavit del asesinato del 06/08 (reporte 2435098), la que se baja.",
+    "first_name": "Andre",
+    "middle_name": null,
+    "last_name": "Ranglin",
+    "county": "bay",
+    "state": "FL",
+    "incident_date": "2024-08-06",
+    "arrest_date": "2024-08-07",
+    "age": null,
+    "agency": "Panama City Beach Police Department",
+    "charges": [
+      "first-degree murder",
+      "attempted first-degree murder",
+      "felon in possession of a firearm"
+    ],
+    "expected_case": "24002615CFMA"
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",
