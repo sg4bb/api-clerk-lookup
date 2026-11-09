@@ -157,8 +157,35 @@ class Probe:
 
 # CAPTCHA del formulario (Charlotte: reCAPTCHA; Flagler y St. Johns: hCaptcha) y si ya se resolvió.
 HAS_CAPTCHA_JS = """() => !!document.querySelector("iframe[src*='recaptcha/api2/anchor'], iframe[src*='recaptcha/enterprise/anchor'], iframe[src*='hcaptcha']")"""
-CAPTCHA_FILLED_JS = """() => { const f = document.querySelector("[name='g-recaptcha-response'], [name='h-captcha-response']");
-                              return !!(f && f.value); }"""
+CAPTCHA_FILLED_JS = """() => [...document.querySelectorAll("[name='g-recaptcha-response'], [name='h-captcha-response']")]
+                              .some(f => !!f.value)"""
+# Estado del CAPTCHA mientras la persona lo resuelve (Clay, 08/11/2026: "Verification challenge
+# expired" una y otra vez): cuántos widgets hay, si hay token y cuántas veces se reinició.
+CAPTCHA_STATE_JS = """() => {
+  if (window.grecaptcha && grecaptcha.reset && !grecaptcha.__probe) {
+    const original = grecaptcha.reset.bind(grecaptcha);
+    window.__probeResets = 0;
+    grecaptcha.reset = (...a) => { window.__probeResets++; return original(...a); };
+    grecaptcha.__probe = true;
+  }
+  const fields = [...document.querySelectorAll("[name='g-recaptcha-response'], [name='h-captcha-response']")];
+  const anchors = document.querySelectorAll("iframe[src*='recaptcha/api2/anchor'], iframe[src*='recaptcha/enterprise/anchor'], iframe[src*='hcaptcha']");
+  return {widgets: anchors.length, fields: fields.length, token: fields.some(f => !!f.value),
+          resets: window.__probeResets || 0,
+          results: !!document.querySelector('#gridSearchResults, .caseFoundFilter') || location.href.indexOf('/Details/') >= 0};
+}"""
+# Lugar del CAPTCHA aunque Google todavía no lo haya dibujado. Clay (08/11/2026) mete el div
+# del reCAPTCHA con jQuery al cargar; a veces api.js ya pasó y el recuadro no aparece nunca.
+CAPTCHA_SLOT_JS = """() => !!document.querySelector('#WebCaptcha, .g-recaptcha, .h-captcha, [data-sitekey]')"""
+# Clay mete el div del reCAPTCHA con jQuery al cargar la página; si el script de Google terminó
+# antes, el div queda vacío para siempre. Esto le pide a ese mismo script que lo dibuje, con la
+# clave del propio div: lo que la página hace cuando el orden le sale bien. El CAPTCHA lo sigue
+# resolviendo la persona.
+RENDER_JS = """() => {
+  const slot = document.querySelector('#WebCaptcha .g-recaptcha[data-sitekey], .g-recaptcha[data-sitekey]');
+  if (!slot || slot.querySelector('iframe') || !(window.grecaptcha && grecaptcha.render)) return false;
+  try { grecaptcha.render(slot); return true; } catch (e) { return 'error: ' + e.message; }
+}"""
 RESULTS_JS = """() => !!document.querySelector('#gridSearchResults, .caseFoundFilter') || location.href.indexOf('/Details/') >= 0"""
 COURT_TYPE_RE = re.compile(r"Court Type:\s*</td>\s*<td[^>]*>\s*([^<]+)", re.I)
 
@@ -205,17 +232,75 @@ def click_search(page) -> None:
     page.wait_for_timeout(4000)
 
 
-def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | None = None) -> bool:
+def wait_captcha(page, probe: Probe, tag: str) -> bool:
+    """Espera el token del CAPTCHA (o que la persona ya haya buscado). Imprime cada cambio:
+    si el token aparece y luego se pierde, el probe no lo vio a tiempo; si nunca aparece, es
+    el CAPTCHA el que no se deja pasar. True si la búsqueda ya está hecha."""
+    probe.notes[f"captcha_{tag}"] = True
+    print("\n  >>> CAPTCHA: resuélvelo en la ventana. El probe busca solo al ver el visto verde;")
+    print("      si no lo hace en unos segundos, pulsa Search tú. Espero hasta 6 minutos.")
+    log, last = [], None
+    for second in range(360):
+        state = _safe(lambda: page.evaluate(CAPTCHA_STATE_JS), {}) or {}
+        key = (state.get("widgets"), state.get("token"), state.get("resets"))
+        if key != last:
+            print(f"    [{second:3d} s] widgets={state.get('widgets')} campos={state.get('fields')} "
+                  f"token={'sí' if state.get('token') else 'no'} reinicios={state.get('resets')}")
+            log.append({"s": second, **state})
+            last = key
+        if state.get("results"):
+            probe.notes[f"captcha_estado_{tag}"] = log
+            print("  Ya hay resultados (buscaste tú).")
+            return True
+        if state.get("token"):
+            probe.notes[f"captcha_estado_{tag}"] = log
+            print("  CAPTCHA resuelto; busco.")
+            return False
+        page.wait_for_timeout(1000)
+    probe.notes[f"captcha_estado_{tag}"] = log
+    raise TimeoutError("El CAPTCHA no se resolvió en 6 minutos")
+
+
+def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | None = None,
+           captcha_first: bool = False) -> bool:
     """Búsqueda por nombre ("Apellido, Nombre"). `hidden`: valores para los campos ocultos.
 
     Si el formulario trae un CAPTCHA, primero se busca sin resolverlo (para ver qué responde el
     portal: en Flagler solo la primera búsqueda lo exige) y, si no da resultados, se pide a la
-    persona que lo resuelva y se vuelve a buscar.
+    persona que lo resuelva y se vuelve a buscar. Con `captcha_first` se pide antes del primer
+    envío: Clay (08/11/2026) bloquea con Cloudflare ("Sorry, you have been blocked", 403) una
+    búsqueda enviada sin el CAPTCHA.
     """
     fill(page, probe, url, name, tag, hidden)
     on_form = bool(_safe(lambda: page.evaluate(HAS_CAPTCHA_JS), False))
+    if captcha_first and not on_form and _safe(lambda: page.evaluate(CAPTCHA_SLOT_JS), False):
+        # Hay lugar para el CAPTCHA pero no se ve: se espera y, si no aparece, se recarga. Nunca
+        # se envía sin él (Clay bloquea).
+        for attempt in (1, 2, 3, 4):
+            if _safe(lambda: page.wait_for_function(HAS_CAPTCHA_JS, timeout=10_000, polling=500) or True, False):
+                on_form = True
+                break
+            if attempt == 4:
+                break
+            rendered = _safe(lambda: page.evaluate(RENDER_JS), None)
+            print(f"  El recuadro del CAPTCHA no apareció; se lo pido al script de Google: {rendered}")
+            probe.notes.setdefault(f"captcha_dibujar_{tag}", []).append(rendered)
+            if _safe(lambda: page.wait_for_function(HAS_CAPTCHA_JS, timeout=8_000, polling=500) or True, False):
+                on_form = True
+                break
+            print(f"  Sigue sin aparecer; recargo la página ({attempt}/3)")
+            probe.notes[f"captcha_recargas_{tag}"] = attempt
+            fill(page, probe, url, name, tag, hidden)
+        if not on_form:
+            probe.save(f"sin_recuadro_{tag}")
+            raise RuntimeError("El CAPTCHA no apareció tras 3 recargas; no busco sin él")
     probe.notes[f"captcha_en_formulario_{tag}"] = on_form
-    click_search(page)
+    if captcha_first and on_form and not _safe(lambda: page.evaluate(CAPTCHA_FILLED_JS), False):
+        probe.notes[f"captcha_antes_{tag}"] = True
+        if not wait_captcha(page, probe, tag):
+            click_search(page)
+    else:
+        click_search(page)
     if not _safe(lambda: page.evaluate(RESULTS_JS), False):
         probe.notes[f"sin_captcha_{tag}"] = page.url
         probe.save(f"sin_captcha_{tag}")
@@ -224,11 +309,8 @@ def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | Non
                 fill(page, probe, url, name, tag, hidden)
             elif page.input_value("#name") != name:
                 fill(page, probe, url, name, tag, hidden)
-            probe.notes[f"captcha_{tag}"] = True
-            print("\n  >>> CAPTCHA: resuélvelo en la ventana (NO pulses Search). Espero hasta 4 minutos.")
-            page.wait_for_function(CAPTCHA_FILLED_JS, timeout=240_000, polling=500)
-            print("  CAPTCHA resuelto; busco.")
-            click_search(page)
+            if not wait_captcha(page, probe, tag):
+                click_search(page)
     _safe(lambda: page.wait_for_function(RESULTS_JS, timeout=30_000, polling=500))
     page.wait_for_timeout(2000)
     text = _safe(lambda: page.inner_text("body"), "")
@@ -276,9 +358,16 @@ def run(args) -> int:
         page = session.page
         probe = Probe(page, folder, urlparse(args.url).hostname or "")
         probe.notes.update(provider=session.provider, args=vars(args))
+        if session.live_view_url:
+            print(f"Live view (para el CAPTCHA): {session.live_view_url}\n")
         try:
+            if args.pause:
+                # Para revisar la ventana antes de empezar (Clay: borrar la cookie cf_clearance
+                # que dejó un bloqueo anterior y recargar).
+                page.goto(args.url, wait_until="load")
+                input("\n  >>> Ventana abierta. Revisa/borra cookies y recarga si hace falta; luego pulsa Enter aquí... ")
             # 1. Búsqueda del caso conocido.
-            search(page, probe, args.url, args.name, "principal")
+            search(page, probe, args.url, args.name, "principal", captcha_first=args.captcha_first)
             court_types_by_suffix(page, probe, args.url)
             for script in SCRIPTS:
                 probe.fetch_text(site_root(args.url) + script, "script_" + script.split("/")[-1])
@@ -383,7 +472,7 @@ def run(args) -> int:
                 captcha = any(k.startswith("captcha_") and v for k, v in probe.notes.items()
                               if not k.startswith("captcha_en_formulario"))
                 search(page, probe, args.url, args.name2, "comun_fechas",
-                       {"openedFrom": args.opened_from, "openedTo": args.opened_to})
+                       {"openedFrom": args.opened_from, "openedTo": args.opened_to}, args.captcha_first)
                 if not captcha:
                     search(page, probe, args.url, args.name2, "comun")
                     search(page, probe, args.url, args.name2, "comun_tipos",
@@ -413,6 +502,10 @@ def main() -> int:
     parser.add_argument("--opened-to", default="10/31/2026")
     parser.add_argument("--court-types", default="CF,MM")
     parser.add_argument("--local", action="store_true", help="usar Chrome local en vez de Browserbase")
+    parser.add_argument("--pause", action="store_true",
+                        help="abrir la página y esperar Enter antes de empezar")
+    parser.add_argument("--captcha-first", action="store_true",
+                        help="pedir el CAPTCHA antes de la primera búsqueda (Clay bloquea si se envía sin él)")
     args = parser.parse_args()
     # Copiados del navegador pueden traer espacios de más, incluso el "no separable" (\xa0):
     # "18005242CFMA\xa0" no encontraba el caso en Bay (06/11/2026).

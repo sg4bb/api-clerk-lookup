@@ -465,6 +465,36 @@
     "expected_case": "24002615CFMA"
   },
   {
+    "id": "bouie_christopher",
+    "notes": "Clay. Orden del 21/10/2026; el Sheriff lo trajo de la cárcel de Duval el 29/10. ARREST AND BOOKING REPORT (#2) y AFFIDAVIT FOR ARREST WARRANT (#4) de apoyo. Reporte 2026021874.",
+    "first_name": "Christopher",
+    "middle_name": null,
+    "last_name": "Bouie",
+    "county": "clay",
+    "state": "FL",
+    "incident_date": "2026-09-18",
+    "arrest_date": null,
+    "age": 29,
+    "agency": "Clay County Sheriff's Office",
+    "charges": ["attempted first-degree premeditated murder with a firearm", "child abuse"],
+    "expected_case": "2026CF001130"
+  },
+  {
+    "id": "walker_william",
+    "notes": "Clay. Orange Park PD (robo del tráiler, 09/04/2021); lo detuvo JSO en Duval con la orden y el caso se abrió el 12/07/2021 (94 días después). Documento: ARREST AND BOOKING REPORT FROM ANOTHER COUNTY (#3, de JSO).",
+    "first_name": "William",
+    "middle_name": null,
+    "last_name": "Walker",
+    "county": "clay",
+    "state": "FL",
+    "incident_date": "2021-04-09",
+    "arrest_date": null,
+    "age": null,
+    "agency": null,
+    "charges": ["grand theft"],
+    "expected_case": "2021CF001038"
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",

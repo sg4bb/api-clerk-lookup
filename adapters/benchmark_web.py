@@ -106,6 +106,24 @@ _CAPTCHA_KIND_JS = """
        : document.querySelector("iframe[src*='recaptcha'], .g-recaptcha") ? 'recaptcha' : null)
 """
 
+# Recuadro del CAPTCHA ya dibujado por Google (no solo el lugar donde va).
+_CAPTCHA_DRAWN_JS = """
+() => !!document.querySelector("iframe[src*='recaptcha/api2/anchor'], iframe[src*='recaptcha/enterprise/anchor'], iframe[src*='hcaptcha']")
+"""
+
+# Clay (08/11/2026) mete el div del reCAPTCHA con jQuery al cargar la página; si el script de Google
+# terminó antes, el div queda vacío para siempre. Esto le pide a ese mismo script que lo dibuje, con
+# la clave del propio div: lo que hace la página cuando el orden le sale bien. Lo resuelve la persona.
+_CAPTCHA_RENDER_JS = """
+() => {
+  const slot = document.querySelector('#WebCaptcha .g-recaptcha[data-sitekey], .g-recaptcha[data-sitekey]');
+  if (!slot) return 'sin lugar';
+  if (slot.querySelector('iframe')) return 'ya estaba';
+  if (!(window.grecaptcha && grecaptcha.render)) return 'sin script de Google';
+  try { grecaptcha.render(slot); return 'pedido'; } catch (e) { return 'error: ' + e.message; }
+}
+"""
+
 # Firma de las filas visibles: cambia cuando la tabla se vuelve a dibujar (el portal no
 # muestra el "Showing 1 to N of M" de DataTables).
 _ROWS_SIGNATURE_JS = """
@@ -464,10 +482,13 @@ class BenchmarkWebAdapter(ClerkAdapter):
                  "openedTo": f"{date_to:%m/%d/%Y}" if date_to else ""}
         log.info("Buscando %s entre %s y %s (tipos %s)", name, date_from, date_to, query.case_types)
         for attempt in (1, 2, 3):
-            self._submit_search(name, dates)
-            state = self._wait_results()
-            if state == "captcha":
-                state = self._search_with_captcha(name, dates)
+            if self.county.captcha_before_search and not getattr(self, "_captcha_done", False):
+                state = self._search_captcha_first(name, dates)
+            else:
+                self._submit_search(name, dates)
+                state = self._wait_results()
+                if state == "captcha":
+                    state = self._search_with_captcha(name, dates)
             if state == "cf_error":
                 # Bay (06/11/2026): Cloudflare no llegó al servidor del condado (522); se repite.
                 log.warning("El portal no respondió (Cloudflare 52x); repito la búsqueda (intento %d de 3)", attempt)
@@ -616,6 +637,49 @@ class BenchmarkWebAdapter(ClerkAdapter):
         if state == "captcha":
             raise SearchError("The court portal didn't accept the CAPTCHA")
         return state
+
+    def _search_captcha_first(self, name: str, dates: dict) -> str:
+        """Primera búsqueda de la sesión en un portal que bloquea si se busca sin el CAPTCHA
+        (Clay, 08/11/2026: Cloudflare, "Sorry, you have been blocked"). Se resuelve antes de
+        enviar; las búsquedas siguientes de la sesión ya no lo piden."""
+        page = self.page
+        self._open_form()
+        self._fill_form(name, dates)
+        self._ensure_captcha_box(name, dates)
+        kind = page.evaluate(_CAPTCHA_KIND_JS) or "recaptcha"
+        log.info("El portal pide el CAPTCHA antes de buscar (%s); se pide a la persona", kind)
+        self.captcha.solve(page, timeout_s=self.county.captcha_timeout_s, kind=kind)
+        self._click_search()
+        state = self._wait_results()
+        if state == "captcha":
+            raise SearchError("The court portal didn't accept the CAPTCHA")
+        if state in ("rows", "empty", "case"):
+            self._captcha_done = True
+        return state
+
+    def _ensure_captcha_box(self, name: str, dates: dict) -> None:
+        """Espera el recuadro del CAPTCHA; si no aparece, se lo pide al script de Google y, si
+        aun así no sale, recarga el formulario (hasta 3 veces). Nunca se busca sin él."""
+        page = self.page
+        for attempt in (1, 2, 3):
+            try:
+                page.wait_for_function(_CAPTCHA_DRAWN_JS, timeout=10_000, polling=500)
+                return
+            except PlaywrightTimeout:
+                pass
+            result = page.evaluate(_CAPTCHA_RENDER_JS)
+            log.info("El recuadro del CAPTCHA no apareció; se lo pido al script de Google: %s", result)
+            try:
+                page.wait_for_function(_CAPTCHA_DRAWN_JS, timeout=8_000, polling=500)
+                return
+            except PlaywrightTimeout:
+                pass
+            if attempt < 3:
+                log.warning("Sigue sin aparecer el CAPTCHA; recargo el formulario (intento %d de 3)", attempt)
+                self._open_form()
+                self._fill_form(name, dates)
+        raise SearchError("The court portal didn't show its CAPTCHA, so the search wasn't sent "
+                          "(this portal blocks searches without it). Try again in a few minutes.")
 
     def _wait_results(self) -> str:
         try:

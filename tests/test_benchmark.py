@@ -514,3 +514,133 @@ class ResultColumnsTest(unittest.TestCase):
     def test_without_pin_column(self):
         rows = self.read(pin=False)
         self.assertEqual((rows[0]["party"], rows[0]["status"]), ("DEFENDANT", "CLOSED"))
+
+
+# Clay (08/11/2026): docket "DIN | Image | Date | Entry"; "Request" = sin imagen pública.
+CLAY_DOCKET_HTML = """
+<table id='gridDockets'><thead><tr><th>DIN</th><th>Image</th><th>Date</th><th>Entry</th></tr></thead><tbody>
+<tr><td> 517&#160; </td><td class='imgCol'><button class='popmodal'>Request</button>
+  <div class='modal hide fade'><h3>Please Enter Your Email Address</h3><button>Submit Request</button></div></td>
+  <td> 3/13/2025 </td><td id='text_26729125'> MOTION TO WITHDRAW PREVIOUSLY FILED MOTION&#160; </td></tr>
+<tr><td> 418&#160; </td><td class='imgCol'><a class='casedocketimage' id='26417874' digest='q' rel='26417874'>1</a></td>
+  <td> 10/16/2024 </td><td id='text_26417874'> ORDER DENYING DEFENSE MOTION FOR ARREST OF JUDGMENT AND JUDGMENT OF ACQUITTAL&#160; </td></tr>
+<tr><td> 4&#160; </td><td class='imgCol'><a class='casedocketimage' id='22773702' digest='c' rel='22773702'>2</a></td>
+  <td> 3/4/2020 </td><td id='text_22773702'> ARREST WARRANT&#160; </td></tr>
+<tr><td> 3&#160; </td><td class='imgCol'><a class='casedocketimage' id='22773701' digest='b' rel='22773701'>4</a></td>
+  <td> 3/4/2020 </td><td id='text_22773701'> AFFIDAVIT FOR ARREST WARRANT&#160; </td></tr>
+<tr><td> 2&#160; </td><td class='imgCol'><a class='casedocketimage' id='22773700' digest='a' rel='22773700'>3</a></td>
+  <td> 3/4/2020 </td><td id='text_22773700'> ARREST AND BOOKING REPORT&#160; </td></tr>
+</tbody></table>"""
+
+
+class ClayTest(unittest.TestCase):
+    def setUp(self):
+        self.county = get_county("clay")
+
+    def test_case_numbers(self):
+        self.assertEqual([court_code(n) for n in ("2020CF000392", "2019TR023759", "2013GF000115", "2010CA002446")],
+                         ["CF", "TR", "GF", "CA"])
+
+    def test_docket_and_documents(self):
+        from playwright.sync_api import sync_playwright
+        from adapters.benchmark_web import _READ_CASE_JS
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.set_content(CLAY_DOCKET_HTML)
+            rows = page.evaluate(_READ_CASE_JS)["docket"]
+            browser.close()
+        docket = docket_from_case(rows)
+        self.assertEqual([(e.number, e.description) for e in docket][-1], (2, "ARREST AND BOOKING REPORT"))
+        self.assertEqual(docket[-1].date, date(2020, 3, 4))
+        self.assertEqual(docket[0].description, "MOTION TO WITHDRAW PREVIOUSLY FILED MOTION")
+        self.assertIsNone(docket[0].doc_ref)                       # "Request": sin imagen
+        adapter = BenchmarkWebAdapter(page=None, county=self.county, captcha=None)
+        d = CaseDetails(garcia_details().candidate, [], docket)
+        self.assertEqual([e.description for e in adapter.find_documents(d)], ["ARREST AND BOOKING REPORT"])
+        self.assertEqual([e.description for e in adapter.find_support_documents(d)], ["AFFIDAVIT FOR ARREST WARRANT"])
+
+    def test_window_reaches_late_filings(self):
+        """Walker: hecho del 09/04/2021, nota del 07/05, caso abierto el 12/07/2021."""
+        from core.lookup import search_window
+        q = LookupQuery(first_name="William", last_name="Walker", county="clay", incident_date=date(2021, 4, 9),
+                        published_date=date(2021, 5, 7))
+        date_from, date_to = search_window(q, self.county)
+        self.assertLessEqual(date_from, date(2021, 4, 9))
+        self.assertGreaterEqual(date_to, date(2021, 7, 12))
+
+    def test_booking_report_from_another_county_is_the_document(self):
+        adapter = BenchmarkWebAdapter(page=None, county=self.county, captcha=None)
+        from core.models import DocketEntry
+        docket = [DocketEntry(date(2021, 7, 12), "ARREST AND BOOKING REPORT FROM ANOTHER COUNTY", "1|a", 3)]
+        d = CaseDetails(garcia_details().candidate, [], docket)
+        self.assertEqual(len(adapter.find_documents(d)), 1)
+
+    def test_captcha_before_search_only_in_clay(self):
+        from counties.florida import COUNTIES
+        self.assertTrue(self.county.captcha_before_search)
+        self.assertEqual([k for k, c in COUNTIES.items() if c.captcha_before_search], ["clay"])
+
+    def test_agency_and_places(self):
+        from core.matcher import normalize_agency
+        from counties import florida
+        self.assertEqual(normalize_agency("CLAY COUNTY SHERIFFS OFFICE"), normalize_agency("Clay County Sheriff's Office"))
+        self.assertEqual(florida.AGENCY_TO_COUNTY[normalize_agency("Orange Park Police Department")], "clay")
+        self.assertEqual(florida.CITY_TO_COUNTY["orange park"], "clay")
+        self.assertEqual(florida.CITY_TO_COUNTY["fleming island"], "clay")
+        self.assertEqual(florida.AGENCY_TO_COUNTY[normalize_agency("Orange County Sheriff's Office")], "orange")
+
+
+class CaptchaBoxTest(unittest.TestCase):
+    """Clay (08/11/2026): el div del reCAPTCHA llega después del script de Google y queda vacío."""
+
+    def test_render_empty_slot(self):
+        from playwright.sync_api import sync_playwright
+        from adapters.benchmark_web import _CAPTCHA_DRAWN_JS, _CAPTCHA_RENDER_JS
+        slot = "<div id='WebCaptcha'><div class='g-recaptcha' data-sitekey='k'></div></div>"
+        fake = ("<script>window.grecaptcha = {render: el => { const f = document.createElement('iframe');"
+                " f.setAttribute('src', 'about:blank?recaptcha/api2/anchor'); el.appendChild(f); return 0; }};</script>")
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.set_content(slot)
+            self.assertFalse(page.evaluate(_CAPTCHA_DRAWN_JS))
+            self.assertEqual(page.evaluate(_CAPTCHA_RENDER_JS), "sin script de Google")
+            page.set_content(slot + fake)
+            self.assertEqual(page.evaluate(_CAPTCHA_RENDER_JS), "pedido")
+            self.assertTrue(page.evaluate(_CAPTCHA_DRAWN_JS))
+            self.assertEqual(page.evaluate(_CAPTCHA_RENDER_JS), "ya estaba")
+            page.set_content("<form><input id='name'></form>")
+            self.assertEqual(page.evaluate(_CAPTCHA_RENDER_JS), "sin lugar")
+            browser.close()
+
+
+class CaptchaBeforeSearchTest(unittest.TestCase):
+    """Clay: el CAPTCHA va antes de enviar la primera búsqueda; las siguientes de la sesión van sin él."""
+
+    def run_searches(self, county_key):
+        from unittest import mock
+        calls = []
+        adapter = BenchmarkWebAdapter(page=mock.MagicMock(), county=get_county(county_key), captcha=mock.MagicMock())
+        adapter.page.evaluate.return_value = "recaptcha"
+        adapter.captcha.solve.side_effect = lambda *a, **k: calls.append("solve")
+        for name in ("_open_form", "_fill_form", "_ensure_captcha_box"):
+            setattr(adapter, name, (lambda n: (lambda *a, **k: calls.append(n)))(name))
+        adapter._click_search = lambda: calls.append("click")
+        adapter._wait_results = lambda: "empty"
+        q = LookupQuery(first_name="Corey", last_name="Binderim", county=county_key, case_types=["CF"])
+        adapter.search(q, date(2020, 2, 1), date(2020, 4, 1))
+        first = list(calls)
+        calls.clear()
+        adapter.search(q, date(2020, 2, 1), date(2020, 4, 1))
+        return first, calls
+
+    def test_clay(self):
+        first, second = self.run_searches("clay")
+        self.assertEqual(first, ["_open_form", "_fill_form", "_ensure_captcha_box", "solve", "click"])
+        self.assertEqual(second, ["_open_form", "_fill_form", "click"])
+
+    def test_bay_unchanged(self):
+        first, second = self.run_searches("bay")
+        self.assertEqual(first, ["_open_form", "_fill_form", "click"])
+        self.assertEqual(second, first)

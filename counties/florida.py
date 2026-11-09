@@ -475,6 +475,43 @@ BAY = CountyConfig(
     throttle_s=2.0,
 )
 
+# Clay (08/11/2026): BenchmarkWeb 2.10.106 en su propio dominio, como Bay (resumen y docket por
+# AJAX), con el formulario en "All" (como Charlotte) y reCAPTCHA. Cloudflare bloquea ("Sorry, you
+# have been blocked") una búsqueda enviada sin el CAPTCHA, y en el Chrome local también bloquea al
+# navegador automatizado; en Browserbase pasa. Por eso el CAPTCHA va antes de la primera búsqueda
+# (captcha_before_search); las siguientes de la sesión no lo piden. El recuadro lo mete la página con
+# jQuery y a veces el script de Google ya pasó: se le pide que lo dibuje (_CAPTCHA_RENDER_JS).
+# Números "2020CF000392". Docket "DIN | Image | Date | Entry"; las entradas sin imagen pública dicen
+# "Request". Documento: el "ARREST AND BOOKING REPORT" del Sheriff (Lumpkin, 2022CF000713: el único;
+# Binderim, 2020CF000392 y Bouie, 2026CF001130: el de la entrega de la orden; Walker, 2021CF001038:
+# "ARREST AND BOOKING REPORT FROM ANOTHER COUNTY", el de JSO); el "AFFIDAVIT FOR ARREST WARRANT" va
+# de apoyo. Los casos pueden abrirse meses después del hecho (ver window_days_after).
+CLAY = CountyConfig(
+    key="clay",
+    name="Clay County",
+    state="FL",
+    platform="benchmark_web",
+    base_url="https://inquiry.clayclerk.com/Home.aspx/Search",
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+    document_priority=[
+        r"^\s*arrest and booking report\b",
+        r"^\s*arrest(?:ing)? affidavit\b",
+        r"probable cause affidavit",
+        r"affidavit of probable cause",
+        r"^\s*arrest report\b",
+        r"complaint affidavit",
+    ],
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b"],
+    support_documents=[r"^\s*affidavit for arrest warrant\b", r"\bwarrant (?:returned )?(?:served|executed)\b",
+                       r"\bcapias (?:returned )?served\b"],
+    captcha="recaptcha_v2",
+    captcha_before_search=True,
+    # Walker (Orange Park PD, 08/11/2026): hecho del 09/04/2021, lo detuvo JSO en Duval con la orden
+    # y el caso se abrió el 12/07/2021, 94 días después. Con 60 quedaba fuera de la ventana.
+    window_days_after=120,
+    throttle_s=2.0,
+)
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -516,6 +553,7 @@ COUNTIES: dict[str, CountyConfig] = {
     CHARLOTTE.key: CHARLOTTE,
     INDIAN_RIVER.key: INDIAN_RIVER,
     BAY.key: BAY,
+    CLAY.key: CLAY,
 }
 
 
@@ -649,6 +687,9 @@ CITY_TO_COUNTY: dict[str, str] = {
     "panama city beach": "bay", "lynn haven": "bay", "callaway": "bay", "springfield": "bay", "parker": "bay",
     "youngstown": "bay", "fountain": "bay", "southport": "bay", "bayou george": "bay", "hiland park": "bay",
     "cedar grove": "bay", "laguna beach": "bay", "tyndall afb": "bay", "spring hill": "hernando",
+    "green cove springs": "clay", "orange park": "clay", "keystone heights": "clay", "penney farms": "clay",
+    "fleming island": "clay", "middleburg": "clay", "oakleaf": "clay", "oakleaf plantation": "clay",
+    "lake asbury": "clay", "doctors inlet": "clay",
     "the villages": "sumter",
 }
 
@@ -700,6 +741,7 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "indian river shores public safety": "indian_river",
     "bay county so": "bay", "panama city pd": "bay", "panama city beach pd": "bay", "lynn haven pd": "bay",
     "springfield pd": "bay", "parker pd": "bay", "mexico beach pd": "bay",
+    "clay county so": "clay", "orange park pd": "clay", "green cove springs pd": "clay",
     "st johns county so": "st_johns", "st augustine pd": "st_johns", "st augustine beach pd": "st_johns",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",

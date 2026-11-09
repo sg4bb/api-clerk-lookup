@@ -26,6 +26,9 @@ class CountyConfig:
     # investigó el hecho). Mismas exclusiones que arriba.
     support_documents: list[str] = field(default_factory=list)
     captcha: str = "none"             # "recaptcha_v2" | "turnstile" | "none"
+    # El CAPTCHA se resuelve ANTES de la primera búsqueda de la sesión, nunca después de un
+    # "Invalid Captcha". Clay (08/11/2026): Cloudflare bloquea la búsqueda enviada sin él.
+    captcha_before_search: bool = False
     captcha_timeout_s: int = 600     # CAPTCHA_TIMEOUT_S en .env lo cambia
     throttle_s: float = 2.0           # pausa entre requests al portal
     # Ventana de búsqueda alrededor de la fecha del incidente/arresto.
