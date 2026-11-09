@@ -157,6 +157,10 @@ class Probe:
 
 # CAPTCHA del formulario (Charlotte: reCAPTCHA; Flagler y St. Johns: hCaptcha) y si ya se resolvió.
 HAS_CAPTCHA_JS = """() => !!document.querySelector("iframe[src*='recaptcha/api2/anchor'], iframe[src*='recaptcha/enterprise/anchor'], iframe[src*='hcaptcha']")"""
+# CAPTCHA de texto de Benchmark (St. Lucie, 09/11/2026: "68 + 8 = ?" en una imagen, con audio, y
+# la respuesta en input[name=captcha]). No hay token que esperar: la persona escribe y pulsa Search.
+TEXT_CAPTCHA_JS = """() => !!document.querySelector("input[name='captcha']")
+  && !!document.querySelector("img[alt='Captcha'], img[src*='CaptchaImage']")"""
 CAPTCHA_FILLED_JS = """() => [...document.querySelectorAll("[name='g-recaptcha-response'], [name='h-captcha-response']")]
                               .some(f => !!f.value)"""
 # Estado del CAPTCHA mientras la persona lo resuelve (Clay, 08/11/2026: "Verification challenge
@@ -232,10 +236,39 @@ def click_search(page) -> None:
     page.wait_for_timeout(4000)
 
 
+def wait_text_captcha(page, probe: Probe, tag: str) -> bool:
+    """CAPTCHA de texto: la persona escribe la respuesta y pulsa Search. Siempre True (la
+    búsqueda la envía la persona); si el portal la rechaza, queda anotado."""
+    probe.notes[f"captcha_{tag}"] = "texto"
+    print("\n  >>> CAPTCHA de texto: escribe la respuesta en 'Enter Answer Here' y pulsa Search tú.")
+    print("      Espero hasta 6 minutos.")
+    start_url = page.url
+    for second in range(360):
+        state = _safe(lambda: page.evaluate(CAPTCHA_STATE_JS), {}) or {}
+        if state.get("results"):
+            print(f"  [{second} s] Ya hay resultados.")
+            probe.notes[f"captcha_texto_{tag}"] = {"s": second, "resultado": "aceptado"}
+            return True
+        url = page.url
+        if url != start_url and "CaseSearch" in url:
+            print(f"  [{second} s] Búsqueda enviada (sin tabla de resultados: ¿cero casos?).")
+            probe.notes[f"captcha_texto_{tag}"] = {"s": second, "resultado": "enviada", "url": url}
+            return True
+        if url != start_url and re.search(r"error=", url, re.I):
+            print(f"  [{second} s] El portal rechazó la respuesta: {url}")
+            probe.notes[f"captcha_texto_{tag}"] = {"s": second, "resultado": "rechazado", "url": url}
+            probe.save(f"captcha_rechazado_{tag}")
+            return True
+        page.wait_for_timeout(1000)
+    raise TimeoutError("No se envió la búsqueda en 6 minutos")
+
+
 def wait_captcha(page, probe: Probe, tag: str) -> bool:
     """Espera el token del CAPTCHA (o que la persona ya haya buscado). Imprime cada cambio:
     si el token aparece y luego se pierde, el probe no lo vio a tiempo; si nunca aparece, es
     el CAPTCHA el que no se deja pasar. True si la búsqueda ya está hecha."""
+    if _safe(lambda: page.evaluate(TEXT_CAPTCHA_JS), False):
+        return wait_text_captcha(page, probe, tag)
     probe.notes[f"captcha_{tag}"] = True
     print("\n  >>> CAPTCHA: resuélvelo en la ventana. El probe busca solo al ver el visto verde;")
     print("      si no lo hace en unos segundos, pulsa Search tú. Espero hasta 6 minutos.")
@@ -294,6 +327,9 @@ def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | Non
         if not on_form:
             probe.save(f"sin_recuadro_{tag}")
             raise RuntimeError("El CAPTCHA no apareció tras 3 recargas; no busco sin él")
+    if _safe(lambda: page.evaluate(TEXT_CAPTCHA_JS), False):
+        on_form = True
+        probe.notes[f"captcha_texto_en_formulario_{tag}"] = True
     probe.notes[f"captcha_en_formulario_{tag}"] = on_form
     if captcha_first and on_form and not _safe(lambda: page.evaluate(CAPTCHA_FILLED_JS), False):
         probe.notes[f"captcha_antes_{tag}"] = True
@@ -304,7 +340,8 @@ def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | Non
     if not _safe(lambda: page.evaluate(RESULTS_JS), False):
         probe.notes[f"sin_captcha_{tag}"] = page.url
         probe.save(f"sin_captcha_{tag}")
-        if on_form or _safe(lambda: page.evaluate(HAS_CAPTCHA_JS), False):
+        if on_form or _safe(lambda: page.evaluate(HAS_CAPTCHA_JS), False) \
+                or _safe(lambda: page.evaluate(TEXT_CAPTCHA_JS), False):
             if not page.locator("#name").count():
                 fill(page, probe, url, name, tag, hidden)
             elif page.input_value("#name") != name:

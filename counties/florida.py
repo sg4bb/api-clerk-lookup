@@ -512,6 +512,39 @@ CLAY = CountyConfig(
     throttle_s=2.0,
 )
 
+# St. Lucie (09/11/2026): BenchmarkWeb 2.10.105 ("BenchmarkWebExternal"), resumen y docket por AJAX
+# como Bay, formulario en "Name". CAPTCHA de texto (una suma en una imagen, con audio) en CADA
+# búsqueda: lo resuelve la persona (captcha="text"; ver core/captcha.py). Números "2020CF002355 A".
+# Docket "SEQ# | Image | DIN | Date | Entry": manda SEQ# (el DIN tiene ceros y repetidos). El
+# documento es "ARREST REPORT - INITIATING CASE": en Landry (2025MM001336 A, refiling del
+# 2025CF001129 A) está en línea; en Arvelo (2020CF002355 A) dice "Request" y solo se pide al Clerk
+# (documents_on_request). El número de reporte sale siempre en el resumen (Arvelo: 202019734).
+ST_LUCIE = CountyConfig(
+    key="st_lucie",
+    name="St. Lucie County",
+    state="FL",
+    platform="benchmark_web",
+    base_url="https://courtcasesearch.stlucieclerk.gov/BenchmarkWebExternal/Home.aspx/Search",
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+    document_priority=[
+        # Primero el que abrió el caso; "ARREST REPORT - NOT INITIATING CASE" es de una detención
+        # posterior (Arvelo: la de la probation, 2021).
+        r"^\s*arrest report - initiating case\b",
+        r"^\s*arrest report\b",
+        r"^\s*arrest(?:ing)? affidavit\b",
+        r"probable cause affidavit",
+        r"affidavit of probable cause",
+        r"complaint affidavit",
+    ],
+    # La orden de una violación de probation es otra detención (Arvelo: la de 2021, no la huida de 2020).
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b", r"\bviol(?:ation)? of (?:probation|community control)\b"],
+    support_documents=[r"\bwarrant (?:returned )?(?:served|executed)\b", r"\bcapias (?:returned )?served\b"],
+    captcha="text",
+    captcha_before_search=True,
+    documents_on_request=True,
+    throttle_s=2.0,
+)
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -554,6 +587,7 @@ COUNTIES: dict[str, CountyConfig] = {
     INDIAN_RIVER.key: INDIAN_RIVER,
     BAY.key: BAY,
     CLAY.key: CLAY,
+    ST_LUCIE.key: ST_LUCIE,
 }
 
 
@@ -670,7 +704,8 @@ CITY_TO_COUNTY: dict[str, str] = {
     "west palm beach": "palm_beach", "boca raton": "palm_beach", "boynton beach": "palm_beach",
     "jacksonville": "duval", "tallahassee": "leon", "gainesville": "alachua", "pensacola": "escambia",
     "fort myers": "lee", "cape coral": "lee", "naples": "collier", "sarasota": "sarasota",
-    "bradenton": "manatee", "port st lucie": "st_lucie", "fort pierce": "st_lucie", "key west": "monroe",
+    "bradenton": "manatee", "port st lucie": "st_lucie", "port saint lucie": "st_lucie", "fort pierce": "st_lucie",
+    "st lucie village": "st_lucie", "saint lucie village": "st_lucie", "key west": "monroe",
     "panama city": "bay", "mexico beach": "bay", "palm coast": "flagler", "bunnell": "flagler", "flagler beach": "flagler", "beverly beach": "flagler",
     "espanola": "flagler", "hammock": "flagler", "st augustine": "st_johns", "st augustine beach": "st_johns", "saint augustine": "st_johns",
     "ponte vedra": "st_johns", "ponte vedra beach": "st_johns", "fruit cove": "st_johns", "hastings": "st_johns",
@@ -741,6 +776,7 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "indian river shores public safety": "indian_river",
     "bay county so": "bay", "panama city pd": "bay", "panama city beach pd": "bay", "lynn haven pd": "bay",
     "springfield pd": "bay", "parker pd": "bay", "mexico beach pd": "bay",
+    "st lucie county so": "st_lucie", "port st lucie pd": "st_lucie", "fort pierce pd": "st_lucie",
     "clay county so": "clay", "orange park pd": "clay", "green cove springs pd": "clay",
     "st johns county so": "st_johns", "st augustine pd": "st_johns", "st augustine beach pd": "st_johns",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",

@@ -355,6 +355,10 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
                            middle_name=portal_text(query.middle_name) or None,
                            last_name=portal_text(query.last_name))
     variants = last_name_variants(search_query.last_name)
+    if county.captcha == "text":
+        # Cada forma del apellido es una suma más para la persona (St. Fleur, St. Lucie, 09/11/2026:
+        # cinco sumas para una persona). Se prueban la original y las dos más probables.
+        variants = variants[:MAX_VARIANTS_TEXT_CAPTCHA]
     candidates = []
     for attempt, last_name in enumerate(variants, 1):
         if attempt > 1:
@@ -421,6 +425,18 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
                         status = "found"
                         log.info("Solo %s tiene los cargos de la nota; lo elijo",
                                  winner[1].candidate.case_number)
+    if not winner and status == "ambiguous":
+        # Para saber por qué no se desempató: quién es el acusado en cada caso y qué fechas tiene.
+        for m, d in sorted(scored, key=lambda s: -s[0].score)[:6]:
+            if m.disqualified:
+                continue
+            log.info("Empate sin resolver: %s (%d) %s | agencia %s | reporte %s | Initial %s | arresto %s | nac. %s",
+                     d.candidate.case_number, m.score, d.candidate.defendant,
+                     sorted({c.agency for c in d.charges if c.agency}) or "-",
+                     sorted({c.control_number for c in d.charges if c.control_number}) or "-",
+                     sorted({str(c.initial_date) for c in d.charges if c.initial_date}) or "-",
+                     sorted({str(c.arrest_date) for c in d.charges if c.arrest_date}) or "-",
+                     d.candidate.dob or "-")
     if not winner:
         return scored, LookupResult(status, candidates=summary,
                             message="No case on the portal matches the article closely enough" if status == "not_found"
@@ -454,6 +470,20 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
                      "(it says \"Dockets are currently unavailable\"), an outage on the portal's side. "
                      "To get the arrest affidavit and the agency report number, try again later, "
                      "once the portal shows the docket again."),
+            related_cases=related, docket=docket, agency_case_number=agency_number,
+        )
+    requestable = adapter.find_requestable_documents(details) if not documents and county.documents_on_request else []
+    if requestable:
+        # Antes que la orden ejecutada: en St. Lucie (Arvelo, 09/11/2026) la orden era de otra
+        # detención (violación de probation, un año después) y el arrest report estaba en "Request".
+        wanted = re.sub(r"\s*\(\s*V\s*\)\s*$", "", requestable[0].description).strip()
+        log.info("El documento está en el docket pero no en línea ('%s'): se pide al Clerk", wanted)
+        return scored, LookupResult(
+            "no_document", case_number=details.candidate.case_number,
+            score=match.score, reasons=match.reasons, candidates=summary,
+            message=(f"The case was found, but its {wanted} isn't online: the clerk hands it over on request. "
+                     f"To ask for it, search case {details.candidate.case_number} on the court portal "
+                     f"({county.base_url}) and use the \"Request\" button next to that entry in the case docket."),
             related_cases=related, docket=docket, agency_case_number=agency_number,
         )
     if not documents and support:
@@ -556,6 +586,8 @@ def agency_case_number(details: CaseDetails) -> Optional[str]:
             return min(found)[1]
     return None
 
+
+MAX_VARIANTS_TEXT_CAPTCHA = 3   # formas del apellido donde cada búsqueda pide una suma
 
 MAX_DOWNLOAD_TRIES = 4   # documentos que se intentan si el portal no publica los primeros
 

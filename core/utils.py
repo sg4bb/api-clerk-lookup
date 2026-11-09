@@ -69,8 +69,12 @@ def surname_key(last_name: Optional[str]) -> str:
 
     'Cruz Peraza' / 'Cruz-Peraza' / 'CRUZPERAZA' -> 'cruzperaza'
     'Rodriguez Jr.' -> 'rodriguez'
+    'Saint Fleur' / 'St. Fleur' / 'STFLEUR' -> 'stfleur'
     """
-    return "".join(_drop_suffixes(normalize(last_name).split()))
+    words = _drop_suffixes(normalize(last_name).split())
+    if len(words) >= 2 and words[0] == "saint":
+        words = ["st", *words[1:]]
+    return "".join(words)
 
 
 def split_defendant(defendant: str) -> tuple[str, str, str]:
@@ -140,6 +144,16 @@ def last_name_variants(last_name: str) -> list[str]:
         parts = [p for p in re.split(r"[\s\-]+", original) if p]
         if len(parts) < 2:
             return [original]
+        if parts[0].lower().rstrip(".") in ("st", "saint"):
+            # "St. Fleur": el portal puede tenerlo como "ST FLEUR", "SAINT FLEUR" o "STFLEUR". Nunca
+            # "St." solo ni la otra palabra sola (St. Lucie, 09/11/2026: se probó "St." y "Fleur").
+            rest = " ".join(parts[1:])
+            variants = [original, f"St {rest}", f"Saint {rest}", "St" + "".join(parts[1:]), f"St. {rest}"]
+            unique: list[str] = []
+            for v in variants:
+                if v.lower() not in {u.lower() for u in unique}:
+                    unique.append(v)
+            return unique[:MAX_SURNAME_VARIANTS]
         variants = [original, "".join(parts), "-".join(parts), " ".join(parts),
                     # Con tres palabras o más, sin la primera: el segundo nombre pegado delante de
                     # un apellido compuesto ("Parker Eugene Harris Ottoson" -> "Eugene Harris

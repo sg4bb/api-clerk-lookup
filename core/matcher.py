@@ -40,11 +40,14 @@ _AGENCY_ALIASES = {
     "sheriff office": "so",
     "florida highway patrol": "fhp",
     "university of central florida": "ucf",
+    "saint lucie": "st lucie",            # "Port Saint Lucie Police" = "PORT ST. LUCIE POLICE DEPARTMENT"
 }
 # Siglas que usan las notas de prensa ("OPD arrested...").
 _AGENCY_ACRONYMS = {
     "opd": "orlando pd",
     "ocso": "orange county so",
+    "pslpd": "port st lucie pd",
+    "slcso": "st lucie county so",
     "wppd": "winter park pd",
     "ucfpd": "ucf pd",
     "fhp": "fhp",
@@ -726,13 +729,20 @@ def same_incident(a: CaseDetails, b: CaseDetails) -> bool:
     if (ka[1] and ka[1] == kb[1] and normalize(a.candidate.defendant) == normalize(b.candidate.defendant)
             and (not ka[2] or not kb[2] or ka[2] == kb[2])):
         return True
+    # Mismo acusado, misma agencia y una misma fecha "Initial", sin fechas de arresto: casos que
+    # se cargaron en una sola detención aunque cada uno tenga su reporte (una venta encubierta por
+    # caso). Johnson (St. Lucie, 09/11/2026): cinco casos de Port St. Lucie PD, ventas del 11/09 al
+    # 15/10 y la incautación del 15/10, todos con "Initial 10/15/2026".
+    initial_a = {c.initial_date for c in a.charges if getattr(c, "initial_date", None)}
+    initial_b = {c.initial_date for c in b.charges if getattr(c, "initial_date", None)}
+    if (not ka[1] and not kb[1] and ka[2] and ka[2] == kb[2] and len(initial_a) == 1 and initial_a == initial_b
+            and all(c.initial_date for c in a.charges + b.charges) and _same_person(a, b)):
+        return True
     if any(c.control_number or c.arrest_date or c.agency for c in a.charges + b.charges):
         return False                     # el portal sí trae esos datos y no coinciden
     if normalize(a.candidate.defendant) != normalize(b.candidate.defendant):
         return False
     # Misma fecha "Initial" (Civitek): el arresto que abrió los dos casos es el mismo.
-    initial_a = {c.initial_date for c in a.charges if getattr(c, "initial_date", None)}
-    initial_b = {c.initial_date for c in b.charges if getattr(c, "initial_date", None)}
     if initial_a and initial_a == initial_b:
         return True
     if not (ka[0] and kb[0]):
@@ -752,6 +762,22 @@ def _offense_to_initial(details: CaseDetails) -> int:
     gaps = [abs(((c.arrest_date or c.initial_date) - c.offense_date).days) for c in details.charges
             if (c.arrest_date or getattr(c, "initial_date", None)) and c.offense_date]
     return min(gaps) if gaps else 10**6
+
+
+def _same_person(a: CaseDetails, b: CaseDetails) -> bool:
+    """El mismo acusado aunque el portal lo escriba distinto en cada caso ("JOHNSON, ALBERT" y
+    "JOHNSON, ALBERT LEE"): mismo apellido y nombre, segundos nombres compatibles y, si el portal
+    da la fecha (o el año) de nacimiento en los dos, la misma."""
+    dob_a, dob_b = a.candidate.dob, b.candidate.dob
+    if dob_a and dob_b and dob_a != dob_b:
+        return False                     # dos personas con el mismo nombre
+    if normalize(a.candidate.defendant) == normalize(b.candidate.defendant):
+        return True
+    last_a, first_a, middle_a = split_defendant(a.candidate.defendant)
+    last_b, first_b, middle_b = split_defendant(b.candidate.defendant)
+    if surname_key(last_a) != surname_key(last_b) or first_a != first_b:
+        return False
+    return not (middle_a and middle_b and not (middle_a.startswith(middle_b) or middle_b.startswith(middle_a)))
 
 
 def _preference(details: CaseDetails, has_document: Callable[[CaseDetails], bool],

@@ -579,7 +579,8 @@ class ClayTest(unittest.TestCase):
     def test_captcha_before_search_only_in_clay(self):
         from counties.florida import COUNTIES
         self.assertTrue(self.county.captcha_before_search)
-        self.assertEqual([k for k, c in COUNTIES.items() if c.captcha_before_search], ["clay"])
+        self.assertEqual(sorted(k for k, c in COUNTIES.items() if c.captcha_before_search), ["clay", "st_lucie"])
+        self.assertEqual([k for k, c in COUNTIES.items() if c.captcha == "text"], ["st_lucie"])
 
     def test_agency_and_places(self):
         from core.matcher import normalize_agency
@@ -623,6 +624,7 @@ class CaptchaBeforeSearchTest(unittest.TestCase):
         calls = []
         adapter = BenchmarkWebAdapter(page=mock.MagicMock(), county=get_county(county_key), captcha=mock.MagicMock())
         adapter.page.evaluate.return_value = "recaptcha"
+        adapter.page.url = "https://inquiry.clayclerk.com/Home.aspx/Search"
         adapter.captcha.solve.side_effect = lambda *a, **k: calls.append("solve")
         for name in ("_open_form", "_fill_form", "_ensure_captcha_box"):
             setattr(adapter, name, (lambda n: (lambda *a, **k: calls.append(n)))(name))
@@ -644,3 +646,275 @@ class CaptchaBeforeSearchTest(unittest.TestCase):
         first, second = self.run_searches("bay")
         self.assertEqual(first, ["_open_form", "_fill_form", "click"])
         self.assertEqual(second, first)
+
+
+# St. Lucie (09/11/2026): "SEQ# | Image | DIN | Date | Entry"; el DIN tiene ceros y repetidos.
+ST_LUCIE_DOCKET_HTML = """
+<table id='gridDockets'><thead><tr><th>SEQ#</th><th>Image</th><th>DIN</th><th>Date</th><th>Entry</th></tr></thead><tbody>
+<tr><td> 56&#160; </td><td class='imgCol'></td><td>0&#160</td><td> 2/12/2026 </td>
+  <td>CASE PLACED WITH PENN CREDIT&#160;</td></tr>
+<tr><td> 7&#160; </td><td class='imgCol'><a class='casedocketimage' id='40635713' digest='h' rel='40635713'>2</a></td>
+  <td>7&#160</td><td> 5/1/2025 </td><td id='text_40635713'> FIRST APPEARANCE/PROBABLE CAUSE DETERMINATION/PROV APPT PD/NO CONTACT&#160; </td></tr>
+<tr><td> 5&#160; </td><td class='imgCol'>REPORT_CELL</td>
+  <td>5&#160</td><td> 5/1/2025 </td><td id='text_38393120'> ARREST REPORT - INITIATING CASE ( V )&#160; </td></tr>
+<tr><td> 3&#160; </td><td class='imgCol'></td><td>3&#160</td><td> 5/1/2025 </td>
+  <td>CASE FILED 05/01/2025 CASE NUMBER 2025CF001129 A&#160;</td></tr>
+</tbody></table>"""
+ONLINE = "<a class='casedocketimage' id='38393120' digest='r' rel='38393120'>4</a>"
+REQUEST = ("<button type='button' class='popmodal' casedocketid='38393120'>Request</button>"
+           "<div class='modal hide fade'><h3>Please Enter Your Email Address</h3></div>")
+
+
+class StLucieTest(unittest.TestCase):
+    def setUp(self):
+        self.county = get_county("st_lucie")
+        self.adapter = BenchmarkWebAdapter(page=None, county=self.county, captcha=None)
+
+    def docket(self, cell):
+        from playwright.sync_api import sync_playwright
+        from adapters.benchmark_web import _READ_CASE_JS
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.set_content(ST_LUCIE_DOCKET_HTML.replace("REPORT_CELL", cell))
+            rows = page.evaluate(_READ_CASE_JS)["docket"]
+            browser.close()
+        return docket_from_case(rows)
+
+    def details(self, docket):
+        return CaseDetails(garcia_details().candidate, [], docket)
+
+    def test_case_numbers(self):
+        self.assertEqual([court_code(n) for n in ("2020CF002355 A", "2025MM001336 A", "2022TR021307 A")],
+                         ["CF", "MM", "TR"])
+
+    def test_seq_is_the_entry_number(self):
+        docket = self.docket(ONLINE)
+        self.assertEqual([e.number for e in docket], [56, 7, 5, 3])
+        self.assertEqual(docket[2].date, date(2025, 5, 1))
+
+    def test_arrest_report_online(self):
+        d = self.details(self.docket(ONLINE))
+        self.assertEqual([e.description for e in self.adapter.find_documents(d)], ["ARREST REPORT - INITIATING CASE ( V )"])
+        self.assertEqual(self.adapter.find_requestable_documents(d), [])
+
+    def test_arrest_report_on_request(self):
+        """Arvelo: "Request" en vez de la imagen. No se descarga; se dice cómo pedirlo."""
+        d = self.details(self.docket(REQUEST))
+        self.assertEqual(self.adapter.find_documents(d), [])
+        self.assertEqual([e.description for e in self.adapter.find_requestable_documents(d)],
+                         ["ARREST REPORT - INITIATING CASE ( V )"])
+        self.assertTrue(self.county.documents_on_request)
+
+    def test_first_appearance_is_not_the_document(self):
+        d = self.details(self.docket(REQUEST))
+        self.assertNotIn("FIRST APPEARANCE", " ".join(e.description for e in self.adapter.find_documents(d)))
+
+    def test_agencies_and_places(self):
+        from core.matcher import normalize_agency
+        from counties import florida
+        self.assertEqual(normalize_agency("Port Saint Lucie Police Department"),
+                         normalize_agency("PORT ST. LUCIE POLICE DEPARTMENT"))
+        self.assertEqual(florida.AGENCY_TO_COUNTY[normalize_agency("St. Lucie County Sheriff's Office")], "st_lucie")
+        self.assertEqual(florida.CITY_TO_COUNTY["port saint lucie"], "st_lucie")
+
+
+class TextCaptchaSearchTest(unittest.TestCase):
+    """St. Lucie: la suma se pide antes de CADA búsqueda; una respuesta mal escrita trae otra."""
+
+    def adapter(self, states):
+        from unittest import mock
+        calls = []
+        adapter = BenchmarkWebAdapter(page=mock.MagicMock(), county=get_county("st_lucie"), captcha=mock.MagicMock())
+        adapter.page.url = "https://courtcasesearch.stlucieclerk.gov/BenchmarkWebExternal/Home.aspx/Search"
+        adapter.captcha.solve.side_effect = lambda page, timeout_s, kind: calls.append(f"solve:{kind}")
+        for name in ("_open_form", "_fill_form", "_ensure_captcha_box"):
+            setattr(adapter, name, (lambda n: (lambda *a, **k: calls.append(n)))(name))
+        adapter._click_search = lambda: calls.append("click")
+        queue = list(states)
+        adapter._wait_results = lambda: queue.pop(0)
+        return adapter, calls
+
+    def query(self):
+        return LookupQuery(first_name="Xavier", last_name="Arvelo", county="st_lucie", case_types=["CF"])
+
+    def test_every_search(self):
+        adapter, calls = self.adapter(["empty", "empty"])
+        adapter.search(self.query(), date(2020, 9, 1), date(2020, 11, 1))
+        adapter.search(self.query(), None, None)
+        self.assertEqual(calls.count("solve:text"), 2)
+        self.assertEqual(calls[:5], ["_open_form", "_fill_form", "_ensure_captcha_box", "solve:text", "click"])
+
+    def test_wrong_answer_gets_a_new_sum(self):
+        adapter, calls = self.adapter(["captcha", "empty"])
+        adapter.search(self.query(), date(2020, 9, 1), date(2020, 11, 1))
+        self.assertEqual(calls.count("solve:text"), 2)
+
+    def test_sent_from_the_captcha_window(self):
+        """Swan (09/11/2026): el Enter del live view envió el formulario; no se vuelve a pulsar Search."""
+        adapter, calls = self.adapter(["empty"])
+        adapter.page.url = "https://courtcasesearch.stlucieclerk.gov/BenchmarkWebExternal/CourtCase.aspx/CaseSearch"
+        adapter.search(self.query(), date(2020, 9, 1), date(2020, 11, 1))
+        self.assertNotIn("click", calls)
+
+    def test_three_wrong_answers(self):
+        from core.adapter import SearchError
+        adapter, calls = self.adapter(["captcha"] * 3)
+        with self.assertRaises(SearchError):
+            adapter.search(self.query(), date(2020, 9, 1), date(2020, 11, 1))
+        self.assertEqual(calls.count("solve:text"), 3)
+
+
+class TextCaptchaFocusTest(unittest.TestCase):
+    """El panel del CAPTCHA de texto: deja la suma, el audio y el campo; Enter o Search no envían."""
+
+    FORM = ("<form class='searchform' method='post' action='/nowhere'><button id='searchButton' type='submit'>Search</button>"
+            "<img alt='Captcha' src='data:image/gif;base64,R0lGODlhAQABAAAAACw=' style='width:200px;height:50px'>"
+            "<span><img id='btnPlayCaptcha' src='data:image/gif;base64,R0lGODlhAQABAAAAACw='></span>"
+            "<input type='text' name='captcha' value=''></form><p id='logo'>portal</p>")
+
+    URL = "https://portal.test/BenchmarkWebExternal/Home.aspx/Search"
+
+    def open(self, p):
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 540, "height": 700})
+        page.route("**/*", lambda route: route.fulfill(content_type="text/html", body=self.FORM))
+        page.goto(self.URL)
+        return browser, page
+
+    def test_focus_enter_and_restore(self):
+        from playwright.sync_api import sync_playwright
+        from core.captcha import FOCUS_TEXT_CAPTCHA_JS, TEXT_SOLVED_JS, UNFOCUS_CAPTCHA_JS
+        with sync_playwright() as p:
+            browser, page = self.open(p)
+            info = page.evaluate(FOCUS_TEXT_CAPTCHA_JS, {"message": "Type the answer"})
+            self.assertTrue(info["ok"])
+            self.assertTrue(info["audio"])
+            self.assertEqual(info["box"]["top"], 176)
+            page.keyboard.press("Enter")                         # vacío: no cuenta
+            self.assertFalse(page.evaluate(TEXT_SOLVED_JS))
+            page.keyboard.type("76")
+            page.keyboard.press("Enter")
+            self.assertTrue(page.evaluate(TEXT_SOLVED_JS))
+            self.assertEqual(page.url, self.URL)                 # el formulario no se envió
+            page.evaluate(UNFOCUS_CAPTCHA_JS)
+            self.assertIsNone(page.query_selector("#__cl_mask"))
+            self.assertEqual(page.input_value("input[name='captcha']"), "76")
+            self.assertEqual(page.eval_on_selector("input[name='captcha']", "e => e.style.position"), "")
+            browser.close()
+
+    def test_own_search_button(self):
+        from playwright.sync_api import sync_playwright
+        from core.captcha import FOCUS_TEXT_CAPTCHA_JS, TEXT_SOLVED_JS
+        with sync_playwright() as p:
+            browser, page = self.open(p)
+            page.evaluate(FOCUS_TEXT_CAPTCHA_JS, {"message": "Type the answer"})
+            page.fill("input[name='captcha']", "12")
+            page.mouse.click(170, 258)                           # el botón Search del panel
+            self.assertTrue(page.evaluate(TEXT_SOLVED_JS))
+            self.assertEqual(page.url, self.URL)
+            browser.close()
+
+
+class DocumentOnRequestLookupTest(unittest.TestCase):
+    """Arvelo (St. Lucie): el arrest report dice "Request". Sale el caso con el número de reporte y
+    cómo pedir el documento al Clerk."""
+
+    def run_lookup(self, county_key, docket):
+        import tempfile
+        from contextlib import contextmanager
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest import mock
+        from core import lookup
+        from core.models import CaseCandidate, Charge
+        candidate = CaseCandidate("2020CF002355 A", "ARVELO, XAVIER CHEO", "CF", "CLOSED", None, date(2020, 10, 2), "x")
+        charges = [Charge(date(2020, 10, 1), "WANTON FLEEING AND ELUDING (316.1935.1)", None, None,
+                          "PORT ST. LUCIE POLICE DEPARTMENT", "202019734")]
+        details = CaseDetails(candidate, charges, docket)
+        details.agency_report_number = "202019734"            # del resumen del caso
+
+        class Fake(BenchmarkWebAdapter):
+            def search(self, query, date_from, date_to):
+                return [candidate]
+
+            def open_case(self, c):
+                return details
+
+            def throttle(self):
+                pass
+
+        @contextmanager
+        def fake_browser(headless=False):
+            yield SimpleNamespace(page=None, remote=False, live_view_url=None)
+
+        q = LookupQuery(first_name="Xavier", last_name="Arvelo", county=county_key, incident_date=date(2020, 10, 1),
+                        agency="Port St. Lucie Police Department", charges=["fleeing and eluding"])
+        with mock.patch.object(lookup, "open_browser", fake_browser), \
+             mock.patch.object(lookup, "get_adapter", return_value=Fake), tempfile.TemporaryDirectory() as tmp:
+            return lookup.run_lookup(q, Path(tmp), captcha=object())
+
+    def test_report_on_request(self):
+        from core.models import DocketEntry
+        docket = [DocketEntry(date(2020, 10, 2), "ARREST REPORT - INITIATING CASE ( V )", None, 3),
+                  DocketEntry(date(2020, 10, 2), "CASE FILED 10/02/2020 CASE NUMBER 2020CF002355 A", None, 1)]
+        result = self.run_lookup("st_lucie", docket)
+        self.assertEqual((result.status, result.case_number), ("no_document", "2020CF002355 A"))
+        self.assertIn("ARREST REPORT - INITIATING CASE isn't online", result.message)
+        self.assertIn("courtcasesearch.stlucieclerk.gov", result.message)
+        self.assertNotIn("( V )", result.message)
+
+    def test_probation_warrant_is_not_the_arrest(self):
+        """Arvelo (09/11/2026): bajó "VIOL OF PROBATION WARRANT RETURNED SERVED" (2021) como si fuera
+        el arresto de la nota (2020)."""
+        from core.models import DocketEntry
+        docket = [DocketEntry(date(2021, 9, 29), "VIOL OF PROBATION WARRANT RETURNED SERVED ( V )", "1|v", 102),
+                  DocketEntry(date(2020, 10, 2), "ARREST REPORT - INITIATING CASE ( V )", None, 3)]
+        result = self.run_lookup("st_lucie", docket)
+        self.assertEqual(result.status, "no_document")
+        self.assertIn("ARREST REPORT - INITIATING CASE isn't online", result.message)
+        self.assertEqual(result.agency_case_number, "202019734")
+
+    def test_other_counties_keep_their_message(self):
+        from core.models import DocketEntry
+        docket = [DocketEntry(date(2020, 10, 2), "ARREST AND BOOKING REPORT", None, 2)]
+        result = self.run_lookup("clay", docket)
+        self.assertEqual(result.status, "no_document")
+        self.assertNotIn("Request", result.message)
+
+
+
+class TextCaptchaSubmitTest(unittest.TestCase):
+    """Swan (09/11/2026): el Enter del live view enviaba el formulario y el worker se quedaba esperando."""
+    FORM, URL = TextCaptchaFocusTest.FORM, TextCaptchaFocusTest.URL
+    open = TextCaptchaFocusTest.open
+
+    def test_native_submit_is_held_until_ready(self):
+        """El Enter que llega como "char" envía el formulario: se anula y cuenta como Enter."""
+        from playwright.sync_api import sync_playwright
+        from core.captcha import FOCUS_TEXT_CAPTCHA_JS, TEXT_SOLVED_JS
+        with sync_playwright() as p:
+            browser, page = self.open(p)
+            page.evaluate(FOCUS_TEXT_CAPTCHA_JS, {"message": "Type the answer"})
+            page.evaluate("() => document.querySelector('form').requestSubmit()")     # vacío
+            page.wait_for_timeout(300)
+            self.assertEqual(page.url, self.URL)
+            self.assertFalse(page.evaluate(TEXT_SOLVED_JS))
+            page.fill("input[name='captcha']", "78")
+            page.evaluate("() => document.querySelector('form').requestSubmit()")
+            page.wait_for_timeout(300)
+            self.assertEqual(page.url, self.URL)
+            self.assertTrue(page.evaluate(TEXT_SOLVED_JS))
+            browser.close()
+
+    def test_page_that_left_the_form_counts_as_sent(self):
+        from playwright.sync_api import sync_playwright
+        from core.captcha import TEXT_SOLVED_JS
+        with sync_playwright() as p:
+            browser, page = self.open(p)
+            self.assertFalse(page.evaluate(TEXT_SOLVED_JS))
+            page.goto("https://portal.test/BenchmarkWebExternal/CourtCase.aspx/CaseSearch")
+            self.assertTrue(page.evaluate(TEXT_SOLVED_JS))
+            page.goto(self.URL + "?error=Invalid%20Captcha")
+            self.assertTrue(page.evaluate(TEXT_SOLVED_JS))
+            browser.close()

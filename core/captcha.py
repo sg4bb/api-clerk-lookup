@@ -42,7 +42,137 @@ HCAPTCHA_SOLVED_JS = """
 }
 """
 
-SOLVED_JS = {"recaptcha": RECAPTCHA_SOLVED_JS, "turnstile": TURNSTILE_SOLVED_JS, "hcaptcha": HCAPTCHA_SOLVED_JS}
+# CAPTCHA de texto (St. Lucie, BenchmarkWeb, 09/11/2026): una suma en una imagen ("68 + 8 = ?")
+# y la respuesta en input[name=captcha]. No hay token: se da por resuelto cuando la persona pulsa
+# Enter o el botón Search que se le muestra (TEXT_LISTEN_JS o FOCUS_TEXT_CAPTCHA_JS). Ninguno de los
+# dos envía el formulario: lo envía el worker, igual que con los demás CAPTCHAs.
+#
+# St. Lucie, 09/11/2026: en el live view el Enter llega también como tecla "char" y Chrome enviaba el
+# formulario aunque el keydown estuviera anulado; el worker quedaba esperando en la página de
+# resultados. Ahora se anula además el envío del formulario mientras la respuesta no está lista, y
+# si la página igual dejó el formulario (resultados, caso o "Invalid Captcha"), cuenta como enviado.
+TEXT_SOLVED_JS = r"""
+() => window.__clTextDone === true || !/\/home\.aspx\/search/i.test(location.pathname) || /error=/i.test(location.search)
+"""
+
+SOLVED_JS = {"recaptcha": RECAPTCHA_SOLVED_JS, "turnstile": TURNSTILE_SOLVED_JS, "hcaptcha": HCAPTCHA_SOLVED_JS,
+             "text": TEXT_SOLVED_JS}
+
+# Chrome local: Enter en el campo de la respuesta marca el CAPTCHA como listo (sin enviar).
+TEXT_LISTEN_JS = r"""
+() => {
+  const input = document.querySelector("input[name='captcha']");
+  if (!input) return false;
+  window.__clTextDone = false;
+  if (!input.__clListen) {
+    const enter = (e) => {
+      if (e.key !== 'Enter' || window.__clTextDone) return;
+      e.preventDefault(); e.stopPropagation();
+      if (input.value.trim()) window.__clTextDone = true;
+    };
+    input.addEventListener('keydown', enter, true);
+    input.addEventListener('keypress', enter, true);
+    // El envío del formulario queda anulado hasta que la respuesta esté lista (lo hace el worker).
+    input.form?.addEventListener('submit', (e) => {
+      if (window.__clTextDone) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (input.value.trim()) window.__clTextDone = true;
+    }, true);
+    input.__clListen = true;
+  }
+  input.scrollIntoView({block: 'center'});
+  input.focus();
+  return true;
+}
+"""
+
+# Ventana remota: se tapa todo el portal con un panel blanco y encima se colocan la imagen de la
+# suma, el botón de audio, el campo de la respuesta y un botón "Search" propio. Se mueven los
+# elementos reales (no copias: pedir otra vez la imagen cambiaría la suma). Enter o el botón
+# marcan el CAPTCHA como listo; el worker pulsa el Search del portal. Al terminar todo vuelve
+# a su lugar (window.__clUnfocus).
+FOCUS_TEXT_CAPTCHA_JS = r"""
+({message}) => {
+  window.__clUnfocus?.();
+  const input = document.querySelector("input[name='captcha']");
+  const img = document.querySelector("img[alt='Captcha'], img[src*='CaptchaImage']");
+  if (!input || !img) return {ok: false, input: !!input, img: !!img};
+  const audio = document.getElementById('btnPlayCaptcha');
+  window.__clTextDone = false;
+  const moved = [];
+  const place = (node, css) => {
+    moved.push([node, node.style.cssText]);
+    for (const [k, v] of Object.entries(css)) node.style.setProperty(k, v, 'important');
+  };
+  const z = '2147483600';
+  const mask = document.createElement('div');
+  mask.id = '__cl_mask';
+  mask.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:2147483500;';
+  const head = document.createElement('div');
+  head.style.cssText = 'position:fixed;left:20px;top:24px;right:20px;font:16px system-ui,sans-serif;color:#333;z-index:' + z;
+  head.textContent = message;
+  const note = document.createElement('div');
+  note.style.cssText = 'position:fixed;left:20px;top:300px;right:20px;font:13px system-ui,sans-serif;color:#d33;z-index:' + z;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = 'Search';
+  button.style.cssText = 'position:fixed;left:20px;top:236px;width:300px;height:44px;font:600 17px system-ui,sans-serif;'
+                       + 'color:#fff;background:#0b63c5;border:0;border-radius:6px;cursor:pointer;z-index:' + z;
+  document.body.append(mask, head, note, button);
+  place(img, {position: 'fixed', left: '20px', top: '70px', width: '300px', height: 'auto', 'max-height': '90px',
+              margin: '0', 'z-index': z, background: '#fff'});
+  if (audio) place(audio, {position: 'fixed', left: '340px', top: '92px', width: '40px', height: '40px', margin: '0',
+                           'z-index': z, cursor: 'pointer'});
+  place(input, {position: 'fixed', left: '20px', top: '176px', width: '300px', height: '44px', margin: '0',
+                'font-size': '24px', padding: '0 10px', 'box-sizing': 'border-box', border: '2px solid #0b63c5',
+                'border-radius': '6px', background: '#fff', color: '#111', 'z-index': z});
+  const done = () => {
+    if (!input.value.trim()) { note.textContent = 'Type the answer first.'; input.focus(); return; }
+    window.__clTextDone = true;
+  };
+  const onKey = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (e.type === 'keydown') done(); return; }
+    if (['Tab', 'PageUp', 'PageDown'].includes(e.key)) e.preventDefault();
+  };
+  const onClick = (e) => { e.preventDefault(); done(); };
+  // Enter también llega como "char" desde el live view y el navegador enviaba el formulario
+  // (09/11/2026): mientras no esté lista la respuesta, el envío se anula y cuenta como Enter.
+  const form = input.form;
+  const onSubmit = (e) => {
+    if (window.__clTextDone) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    done();
+  };
+  const stop = (e) => e.preventDefault();
+  const opts = {capture: true, passive: false};
+  input.addEventListener('keydown', onKey, true);
+  input.addEventListener('keypress', onKey, true);
+  form?.addEventListener('submit', onSubmit, true);
+  button.addEventListener('click', onClick);
+  window.addEventListener('wheel', stop, opts);
+  window.addEventListener('touchmove', stop, opts);
+  // Los avisos de accesibilidad y otros botones flotantes quedan debajo del panel (z-index menor).
+  window.__clCover = (text) => {
+    for (const node of [img, input, button, note, ...(audio ? [audio] : [])]) node.style.setProperty('visibility', 'hidden', 'important');
+    head.textContent = text;
+  };
+  window.__clUnfocus = () => {
+    input.removeEventListener('keydown', onKey, true);
+    input.removeEventListener('keypress', onKey, true);
+    form?.removeEventListener('submit', onSubmit, true);
+    window.removeEventListener('wheel', stop, opts);
+    window.removeEventListener('touchmove', stop, opts);
+    for (const [node, css] of moved) node.style.cssText = css;
+    input.style.removeProperty('visibility');
+    for (const node of [mask, head, note, button]) node.remove();
+    delete window.__clCover;
+    delete window.__clUnfocus;
+  };
+  input.focus();
+  const r = (e) => { const b = e.getBoundingClientRect(); return {top: Math.round(b.top), left: Math.round(b.left), width: Math.round(b.width), height: Math.round(b.height)}; };
+  return {ok: true, kind: 'text', box: r(input), image: r(img), audio: !!audio, viewport: [innerWidth, innerHeight]};
+}
+"""
 
 # hCaptcha en Chrome local: se centra la casilla (en la ventana remota se usa FOCUS_CAPTCHA_JS).
 FOCUS_HCAPTCHA_JS = """
@@ -342,7 +472,8 @@ class CaptchaHandler(Protocol):
     def solve(self, page: Page, timeout_s: int, kind: str = "recaptcha") -> None:
         """Bloquea hasta que el CAPTCHA esté resuelto o vence el tiempo.
 
-        kind: "recaptcha" (Orange), "turnstile" (Cloudflare, Civitek) o "hcaptcha" (Flagler).
+        kind: "recaptcha" (Orange), "turnstile" (Cloudflare, Civitek), "hcaptcha" (Flagler) o
+        "text" (la suma de St. Lucie).
         """
         ...
 
@@ -399,6 +530,13 @@ class ManualLocalCaptcha:
                 page.evaluate(FOCUS_TURNSTILE_JS)
                 print("\n  CAPTCHA: marca 'Verify you are human' en la ventana de Chrome que se abrió.\n")
                 wait_until_solved(page, timeout_s, TURNSTILE_SOLVED_JS)
+                return
+            if kind == "text":
+                page.bring_to_front()
+                page.evaluate(TEXT_LISTEN_JS)
+                print("\n  CAPTCHA: escribe el resultado de la suma en 'Enter Answer Here' y pulsa Enter.")
+                print("  No pulses Search: el script busca solo después del Enter.\n")
+                wait_until_solved(page, timeout_s, TEXT_SOLVED_JS)
                 return
             if kind == "hcaptcha":
                 page.bring_to_front()
@@ -506,9 +644,13 @@ class LiveViewCaptcha:
                     page.wait_for_timeout(int(os.getenv("REMOTE_CAPTCHA_HIDE_MS", "1200")))
                     # Hay que destapar la página antes de que el script pulse Search.
                     page.evaluate(UNFOCUS_CAPTCHA_JS)
+                except Exception as exc:
+                    # La página ya cambió (otra búsqueda, otra página): no queda nada que destapar.
+                    log.info("No pude destapar la ventana remota (la página cambió): %s", exc)
+                try:
                     page.set_viewport_size(original)
                 except Exception as exc:
-                    log.warning("No pude restaurar la ventana remota: %s", exc)
+                    log.warning("No pude restaurar el tamaño de la ventana remota: %s", exc)
 
     def _focus_on_captcha(self, page: Page, kind: str = "recaptcha"):
         """Achica la ventana remota y deja a la vista solo la casilla mientras se espera.
@@ -525,6 +667,16 @@ class LiveViewCaptcha:
         try:
             page.set_viewport_size(FOCUS_VIEWPORT)
             page.wait_for_timeout(800)          # la página se reacomoda al cambiar de tamaño
+            if kind == "text":
+                info = page.evaluate(FOCUS_TEXT_CAPTCHA_JS, {"message": "Type the answer to the sum, then press Enter or Search:"})
+                if info.get("ok"):
+                    log.info("CAPTCHA de texto enfocado en la ventana remota: campo en %s", info.get("box"))
+                else:
+                    # Sin el panel, Enter enviaría el formulario a medias: al menos se escucha el Enter.
+                    log.warning("No encontré el CAPTCHA de texto para enfocarlo; se muestra la página completa (%s)", info)
+                    page.evaluate(TEXT_LISTEN_JS)
+                self._save_focus_debug(page, info)
+                return original
             info = page.evaluate(FOCUS_CAPTCHA_JS, {"message": "Tick the box to continue:", "kind": kind})
             page.wait_for_timeout(700)
             info["after"] = page.evaluate(CHECK_FOCUS_JS)

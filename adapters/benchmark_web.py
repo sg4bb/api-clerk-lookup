@@ -124,6 +124,14 @@ _CAPTCHA_RENDER_JS = """
 }
 """
 
+# CAPTCHA de texto (St. Lucie): la imagen con la suma y el campo de la respuesta.
+_TEXT_CAPTCHA_JS = """
+() => !!document.querySelector("input[name='captcha']")
+   && !!document.querySelector("img[alt='Captcha'], img[src*='CaptchaImage']")
+"""
+# Intentos con el CAPTCHA de texto: una respuesta mal escrita trae una suma nueva.
+TEXT_CAPTCHA_TRIES = 3
+
 # Firma de las filas visibles: cambia cuando la tabla se vuelve a dibujar (el portal no
 # muestra el "Showing 1 to N of M" de DataTables).
 _ROWS_SIGNATURE_JS = """
@@ -208,7 +216,10 @@ _READ_CASE_JS = """
   // Columna del número de entrada: la primera en casi todos; Indian River pone antes la de la
   // imagen ("Image | DIN | Date | Entry") y ahí la primera celda es la cantidad de páginas.
   const heads = Array.from(document.querySelectorAll('#gridDockets thead th')).map(th => text(th).toUpperCase());
-  const din = Math.max(0, heads.findIndex(h => h === 'DIN' || h === 'SEQ' || h === 'SEQ #'));
+  // St. Lucie tiene las dos, "SEQ# | Image | DIN | Date | Entry", y su DIN no sirve de orden
+  // (0 en lo grabado, repetidos): si hay SEQ, manda SEQ.
+  const seq = heads.findIndex(h => /^SEQ *#?$/.test(h));
+  const din = seq >= 0 ? seq : Math.max(0, heads.findIndex(h => h === 'DIN'));
   const docket = Array.from(document.querySelectorAll('#gridDockets tbody tr')).map(tr => {
     const tds = tr.querySelectorAll(':scope > td');
     const img = tr.querySelector('a.casedocketimage');
@@ -482,7 +493,9 @@ class BenchmarkWebAdapter(ClerkAdapter):
                  "openedTo": f"{date_to:%m/%d/%Y}" if date_to else ""}
         log.info("Buscando %s entre %s y %s (tipos %s)", name, date_from, date_to, query.case_types)
         for attempt in (1, 2, 3):
-            if self.county.captcha_before_search and not getattr(self, "_captcha_done", False):
+            # CAPTCHA de texto: lo pide cada búsqueda (St. Lucie, 09/11/2026). Los demás, solo la primera.
+            if self.county.captcha_before_search and (self.county.captcha == "text"
+                                                      or not getattr(self, "_captcha_done", False)):
                 state = self._search_captcha_first(name, dates)
             else:
                 self._submit_search(name, dates)
@@ -643,30 +656,53 @@ class BenchmarkWebAdapter(ClerkAdapter):
         (Clay, 08/11/2026: Cloudflare, "Sorry, you have been blocked"). Se resuelve antes de
         enviar; las búsquedas siguientes de la sesión ya no lo piden."""
         page = self.page
-        self._open_form()
-        self._fill_form(name, dates)
-        self._ensure_captcha_box(name, dates)
-        kind = page.evaluate(_CAPTCHA_KIND_JS) or "recaptcha"
-        log.info("El portal pide el CAPTCHA antes de buscar (%s); se pide a la persona", kind)
-        self.captcha.solve(page, timeout_s=self.county.captcha_timeout_s, kind=kind)
-        self._click_search()
-        state = self._wait_results()
-        if state == "captcha":
+        text = self.county.captcha == "text"
+        tries = TEXT_CAPTCHA_TRIES if text else 1
+        for attempt in range(1, tries + 1):
+            self._open_form()
+            self._fill_form(name, dates)
+            self._ensure_captcha_box(name, dates)
+            kind = "text" if text else (page.evaluate(_CAPTCHA_KIND_JS) or "recaptcha")
+            log.info("El portal pide el CAPTCHA antes de buscar (%s); se pide a la persona", kind)
+            self.captcha.solve(page, timeout_s=self.county.captcha_timeout_s, kind=kind)
+            if self._still_on_form():
+                self._click_search()
+            else:
+                # La persona envió el formulario desde el live view (St. Lucie, 09/11/2026).
+                log.info("La búsqueda ya se envió desde la ventana del CAPTCHA")
+            state = self._wait_results()
+            if state != "captcha":
+                break
+            if attempt < tries:
+                log.warning("El portal no aceptó la respuesta del CAPTCHA; pido una suma nueva (intento %d de %d)",
+                            attempt + 1, tries)
+        else:
             raise SearchError("The court portal didn't accept the CAPTCHA")
         if state in ("rows", "empty", "case"):
             self._captcha_done = True
         return state
 
+    def _still_on_form(self) -> bool:
+        url = (self.page.url or "").lower()
+        return "/home.aspx/search" in url and "error=" not in url
+
     def _ensure_captcha_box(self, name: str, dates: dict) -> None:
         """Espera el recuadro del CAPTCHA; si no aparece, se lo pide al script de Google y, si
         aun así no sale, recarga el formulario (hasta 3 veces). Nunca se busca sin él."""
         page = self.page
+        text = self.county.captcha == "text"
         for attempt in (1, 2, 3):
             try:
-                page.wait_for_function(_CAPTCHA_DRAWN_JS, timeout=10_000, polling=500)
+                page.wait_for_function(_TEXT_CAPTCHA_JS if text else _CAPTCHA_DRAWN_JS, timeout=10_000, polling=500)
                 return
             except PlaywrightTimeout:
                 pass
+            if text:
+                if attempt < 3:
+                    log.warning("No veo el CAPTCHA de texto; recargo el formulario (intento %d de 3)", attempt)
+                    self._open_form()
+                    self._fill_form(name, dates)
+                continue
             result = page.evaluate(_CAPTCHA_RENDER_JS)
             log.info("El recuadro del CAPTCHA no apareció; se lo pido al script de Google: %s", result)
             try:

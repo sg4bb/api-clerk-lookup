@@ -1,6 +1,6 @@
 # clerk-lookup
 
-Servicio que recibe los datos de un caso y devuelve **un único** Incident Report / Arrest Affidavit desde el portal del Clerk of Courts del condado. Cubre Orange County, FL (myeClerk), y Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia, Jackson, Hendry, Okeechobee, Wakulla, Baker, Bradford, Washington, Hardee, Holmes, Gilchrist, Madison, Dixie, Union, Jefferson, Gulf, Hamilton, Calhoun, Franklin, Glades, Liberty, Lafayette, Pasco, Walton, Santa Rosa, DeSoto y Highlands, FL (Civitek OCRS, probados con casos reales; Holmes y Dixie no publican los affidavits y dan solo el número de reporte), y Osceola, Flagler, St. Johns, Charlotte, Indian River, Bay y Clay, FL (BenchmarkWeb; Flagler y St. Johns con hCaptcha, Charlotte, Bay y Clay con reCAPTCHA); la lista completa y el orden de los próximos está en `docs/condados_florida.md`. El CAPTCHA lo resuelve una persona: hoy en una ventana de tu PC y, más adelante, dentro del dashboard con un iframe.
+Servicio que recibe los datos de un caso y devuelve **un único** Incident Report / Arrest Affidavit desde el portal del Clerk of Courts del condado. Cubre Orange County, FL (myeClerk), y Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia, Jackson, Hendry, Okeechobee, Wakulla, Baker, Bradford, Washington, Hardee, Holmes, Gilchrist, Madison, Dixie, Union, Jefferson, Gulf, Hamilton, Calhoun, Franklin, Glades, Liberty, Lafayette, Pasco, Walton, Santa Rosa, DeSoto y Highlands, FL (Civitek OCRS, probados con casos reales; Holmes y Dixie no publican los affidavits y dan solo el número de reporte), y Osceola, Flagler, St. Johns, Charlotte, Indian River, Bay, Clay y St. Lucie, FL (BenchmarkWeb; Flagler y St. Johns con hCaptcha, Charlotte, Bay y Clay con reCAPTCHA, St. Lucie con una suma en cada búsqueda); la lista completa y el orden de los próximos está en `docs/condados_florida.md`. El CAPTCHA lo resuelve una persona: hoy en una ventana de tu PC y, más adelante, dentro del dashboard con un iframe.
 
 ## Instalación (Windows)
 
@@ -92,7 +92,7 @@ core/
 adapters/
   orange_myeclerk.py   portal de Orange
   civitek_ocrs.py      Civitek OCRS (Marion, Sumter, Hernando, Putnam, Levy, Nassau, Columbia, Jackson, Hendry, Okeechobee, Wakulla, Baker, Bradford, Washington, Hardee, Holmes, Gilchrist, Madison, Dixie, Union, Jefferson, Gulf, Hamilton, Calhoun, Franklin, Glades, Liberty, Lafayette, Pasco, Walton, Santa Rosa, DeSoto, Highlands y, con solo agregar la ficha, otros condados)
-  benchmark_web.py     BenchmarkWeb de Pioneer / Catalis (Osceola, Flagler, St. Johns, Charlotte, Indian River, Bay y Clay —BenchmarkWeb2—; sirve para los otros condados Benchmark)
+  benchmark_web.py     BenchmarkWeb de Pioneer / Catalis (Osceola, Flagler, St. Johns, Charlotte, Indian River, Bay, Clay y St. Lucie —BenchmarkWeb2—; sirve para los otros condados Benchmark)
 counties/
   florida.py    configuración por condado (URL, códigos, documentos)
 extractor/

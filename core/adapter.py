@@ -98,13 +98,17 @@ class ClerkAdapter(ABC):
         """Documentos de apoyo (orden de captura ejecutada), en el mismo orden."""
         return self._matching(details, self.county.support_documents)
 
-    def _matching(self, details: CaseDetails, priority: list[str]) -> list[DocketEntry]:
+    def find_requestable_documents(self, details: CaseDetails) -> list[DocketEntry]:
+        """Los documentos buscados que el docket lista sin enlace (Benchmark: "Request")."""
+        return self._matching(details, self.county.document_priority, without_link=True)
+
+    def _matching(self, details: CaseDetails, priority: list[str], without_link: bool = False) -> list[DocketEntry]:
         excluded = [re.compile(p, re.I) for p in self.county.document_exclude]
         ranked: list[DocketEntry] = []
         for pattern in priority:
             regex = re.compile(pattern, re.I)
             for entry in details.docket:
-                if entry in ranked or not entry.doc_ref:
+                if entry in ranked or bool(entry.doc_ref) == without_link:
                     continue
                 if any(x.search(entry.description) for x in excluded):
                     continue

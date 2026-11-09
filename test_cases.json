@@ -495,6 +495,21 @@
     "expected_case": "2021CF001038"
   },
   {
+    "id": "arvelo_xavier",
+    "notes": "St. Lucie. Port St. Lucie PD, huida en moto del 01/10/2020. El ARREST REPORT - INITIATING CASE (#3) dice Request: sale no_document con el reporte 202019734 y cómo pedirlo al Clerk.",
+    "first_name": "Xavier",
+    "middle_name": null,
+    "last_name": "Arvelo",
+    "county": "st_lucie",
+    "state": "FL",
+    "incident_date": "2020-10-01",
+    "arrest_date": null,
+    "age": null,
+    "agency": "Port St. Lucie Police Department",
+    "charges": ["fleeing and eluding"],
+    "expected_case": "2020CF002355 A"
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",
