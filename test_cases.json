@@ -510,6 +510,21 @@
     "expected_case": "2020CF002355 A"
   },
   {
+    "id": "landry_gregory",
+    "notes": "Martin. Sheriff de Martin, huida en moto escondida en una alfombra (Sunset Bay Marina, Stuart, 23/09/2025). La nota dice Port St. Lucie. ARREST AFFIDAVIT (#4), reporte 25-130421.",
+    "first_name": "Gregory",
+    "middle_name": null,
+    "last_name": "Landry",
+    "county": "martin",
+    "state": "FL",
+    "incident_date": "2025-09-23",
+    "arrest_date": "2025-09-23",
+    "age": 30,
+    "agency": "Martin County Sheriff's Office",
+    "charges": ["fleeing and eluding"],
+    "expected_case": "25001236CFAXMX"
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",

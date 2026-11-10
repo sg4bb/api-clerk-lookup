@@ -579,8 +579,9 @@ class ClayTest(unittest.TestCase):
     def test_captcha_before_search_only_in_clay(self):
         from counties.florida import COUNTIES
         self.assertTrue(self.county.captcha_before_search)
-        self.assertEqual(sorted(k for k, c in COUNTIES.items() if c.captcha_before_search), ["clay", "st_lucie"])
-        self.assertEqual([k for k, c in COUNTIES.items() if c.captcha == "text"], ["st_lucie"])
+        self.assertEqual(sorted(k for k, c in COUNTIES.items() if c.captcha_before_search), ["clay", "martin", "st_lucie"])
+        self.assertEqual(sorted(k for k, c in COUNTIES.items() if c.captcha == "text"), ["martin", "st_lucie"])
+        self.assertEqual([k for k, c in COUNTIES.items() if c.captcha_every_search], ["st_lucie"])
 
     def test_agency_and_places(self):
         from core.matcher import normalize_agency
@@ -918,3 +919,71 @@ class TextCaptchaSubmitTest(unittest.TestCase):
             page.goto(self.URL + "?error=Invalid%20Captcha")
             self.assertTrue(page.evaluate(TEXT_SOLVED_JS))
             browser.close()
+
+
+
+class MartinTest(unittest.TestCase):
+    """Martin (10/11/2026): Benchmark 2.9.29, la suma solo en la primera búsqueda, sin vista previa."""
+
+    def test_case_numbers(self):
+        self.assertEqual([court_code(n) for n in ("25001236CFAXMX", "95015180TRAXMX")], ["CF", "TR"])
+
+    def test_sum_only_on_the_first_search(self):
+        from unittest import mock
+        calls = []
+        adapter = BenchmarkWebAdapter(page=mock.MagicMock(), county=get_county("martin"), captcha=mock.MagicMock())
+        adapter.page.url = "https://court.martinclerk.com/Home.aspx/Search"
+        adapter.captcha.solve.side_effect = lambda page, timeout_s, kind: calls.append(f"solve:{kind}")
+        for name in ("_open_form", "_fill_form", "_ensure_captcha_box"):
+            setattr(adapter, name, (lambda n: (lambda *a, **k: calls.append(n)))(name))
+        adapter._click_search = lambda: calls.append("click")
+        queue = ["rows", "empty", "captcha", "empty"]
+        adapter._wait_results = lambda: queue.pop(0)
+        adapter._read_all_rows = lambda: []
+        q = LookupQuery(first_name="Gregory", last_name="Landry", county="martin", case_types=["CF"])
+        adapter.search(q, date(2025, 9, 1), date(2025, 11, 1))
+        self.assertEqual(calls.count("solve:text"), 1)
+        calls.clear()
+        adapter.search(q, None, None)
+        self.assertEqual(calls, ["_open_form", "_fill_form", "click"])        # sin suma
+        calls.clear()
+        adapter.search(q, None, None)                                            # la sesión la volvió a pedir
+        self.assertEqual(calls.count("solve:text"), 1)
+
+    def test_charges_from_the_case_summary(self):
+        from adapters.benchmark_web import charges_from_case
+        summary = {"agency": "MARTIN COUNTY SHERIFF'S OFFICE", "agencyreportnumber": "25-130421"}
+        charges = charges_from_case(summary, {}, None, ["FLEEING OR ELUDING - LIGHTS AND SIREN (316.1935(2))",
+                                                        "DRIVING WITH LICENSE SUSPENDED (322.34(10b1))"])
+        self.assertEqual([c.description[:8] for c in charges], ["FLEEING ", "DRIVING "])
+        self.assertEqual({(c.agency, c.control_number) for c in charges},
+                         {("MARTIN COUNTY SHERIFF'S OFFICE", "25-130421")})
+        thumb = {"charges": [{"description": "FLEEING", "offense": "09/23/2025", "initial": "09/23/2025"}]}
+        self.assertEqual(len(charges_from_case(summary, thumb, None, ["A", "B"])), 1)   # la vista previa manda
+
+    def test_summary_charges_are_read(self):
+        from playwright.sync_api import sync_playwright
+        from adapters.benchmark_web import _READ_CASE_JS
+        html = ("<table id='gridCharges'><thead><tr><th>Count</th><th>Description</th><th>Level</th></tr></thead><tbody>"
+                "<tr><td> 1&#160;</td><td> FLEEING OR ELUDING - LIGHTS AND SIREN (316.1935(2)) &#160;</td><td>F</td></tr>"
+                "</tbody></table>")
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.set_content(html)
+            data = page.evaluate(_READ_CASE_JS)
+            browser.close()
+        self.assertEqual(data["summaryCharges"], ["FLEEING OR ELUDING - LIGHTS AND SIREN (316.1935(2))"])
+
+    def test_document_and_places(self):
+        from core.matcher import normalize_agency
+        from core.models import DocketEntry
+        from counties import florida
+        adapter = BenchmarkWebAdapter(page=None, county=get_county("martin"), captcha=None)
+        docket = [DocketEntry(date(2025, 9, 24), "SURETY BOND", "1|a", 6),
+                  DocketEntry(date(2025, 9, 24), "ARREST AFFIDAVIT", "2|b", 4),
+                  DocketEntry(date(2025, 9, 24), "CASE FILED 09/24/2025 CASE NUMBER 25001236CFAXMX", None, 1)]
+        d = CaseDetails(garcia_details().candidate, [], docket)
+        self.assertEqual([e.description for e in adapter.find_documents(d)], ["ARREST AFFIDAVIT"])
+        self.assertEqual(florida.AGENCY_TO_COUNTY[normalize_agency("Martin County Sheriff's Office")], "martin")
+        self.assertEqual(florida.CITY_TO_COUNTY["stuart"], "martin")

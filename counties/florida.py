@@ -541,7 +541,36 @@ ST_LUCIE = CountyConfig(
     support_documents=[r"\bwarrant (?:returned )?(?:served|executed)\b", r"\bcapias (?:returned )?served\b"],
     captcha="text",
     captcha_before_search=True,
+    captcha_every_search=True,
     documents_on_request=True,
+    throttle_s=2.0,
+)
+
+# Martin (10/11/2026): BenchmarkWeb 2.9.29 (más vieja que las demás). Formulario en "All" y la suma de
+# St. Lucie, pero solo en la PRIMERA búsqueda de la sesión (la segunda del probe no la pidió). Las filas
+# llegan por AJAX después de la tabla vacía y no se despliegan, pero el resumen de cargos con fechas
+# se pide igual por el número del caso (Landry, Rondon, Pascual: con fechas); si faltara, los cargos
+# salen del resumen del caso, sin fechas. Resumen y docket por AJAX como Bay; docket "DIN | Image | Date |
+# Entry". Números "25001236CFAXMX". Documento: "ARREST AFFIDAVIT" (el Probable Cause Affidavit del
+# Sheriff; Landry, 25001236CFAXMX, reporte 25-130421).
+MARTIN = CountyConfig(
+    key="martin",
+    name="Martin County",
+    state="FL",
+    platform="benchmark_web",
+    base_url="https://court.martinclerk.com/Home.aspx/Search",
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+    document_priority=[
+        r"^\s*arrest(?:ing)? affidavit\b",
+        r"probable cause affidavit",
+        r"affidavit of probable cause",
+        r"^\s*arrest report\b",
+        r"complaint affidavit",
+    ],
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b", r"\bviol(?:ation)? of (?:probation|community control)\b"],
+    support_documents=[r"\bwarrant (?:returned )?(?:served|executed)\b", r"\bcapias (?:returned )?served\b"],
+    captcha="text",
+    captcha_before_search=True,
     throttle_s=2.0,
 )
 
@@ -588,6 +617,7 @@ COUNTIES: dict[str, CountyConfig] = {
     BAY.key: BAY,
     CLAY.key: CLAY,
     ST_LUCIE.key: ST_LUCIE,
+    MARTIN.key: MARTIN,
 }
 
 
@@ -722,6 +752,9 @@ CITY_TO_COUNTY: dict[str, str] = {
     "panama city beach": "bay", "lynn haven": "bay", "callaway": "bay", "springfield": "bay", "parker": "bay",
     "youngstown": "bay", "fountain": "bay", "southport": "bay", "bayou george": "bay", "hiland park": "bay",
     "cedar grove": "bay", "laguna beach": "bay", "tyndall afb": "bay", "spring hill": "hernando",
+    "stuart": "martin", "jensen beach": "martin", "palm city": "martin", "hobe sound": "martin",
+    "indiantown": "martin", "port salerno": "martin", "sewalls point": "martin", "sewall s point": "martin",
+    "jupiter island": "martin", "ocean breeze": "martin",
     "green cove springs": "clay", "orange park": "clay", "keystone heights": "clay", "penney farms": "clay",
     "fleming island": "clay", "middleburg": "clay", "oakleaf": "clay", "oakleaf plantation": "clay",
     "lake asbury": "clay", "doctors inlet": "clay",
@@ -776,6 +809,7 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "indian river shores public safety": "indian_river",
     "bay county so": "bay", "panama city pd": "bay", "panama city beach pd": "bay", "lynn haven pd": "bay",
     "springfield pd": "bay", "parker pd": "bay", "mexico beach pd": "bay",
+    "martin county so": "martin", "stuart pd": "martin", "sewalls point pd": "martin", "sewall s point pd": "martin",
     "st lucie county so": "st_lucie", "port st lucie pd": "st_lucie", "fort pierce pd": "st_lucie",
     "clay county so": "clay", "orange park pd": "clay", "green cove springs pd": "clay",
     "st johns county so": "st_johns", "st augustine pd": "st_johns", "st augustine beach pd": "st_johns",

@@ -191,6 +191,11 @@ RENDER_JS = """() => {
   try { grecaptcha.render(slot); return true; } catch (e) { return 'error: ' + e.message; }
 }"""
 RESULTS_JS = """() => !!document.querySelector('#gridSearchResults, .caseFoundFilter') || location.href.indexOf('/Details/') >= 0"""
+# Filas ya dibujadas. Martin (Benchmark 2.9.29, 10/11/2026): la tabla aparece vacía y las filas
+# llegan después, con la página aún cargando; el probe guardaba antes de que llegaran.
+ROWS_READY_JS = r"""() => location.href.indexOf('/Details/') >= 0
+  || !!document.querySelector("#gridSearchResults a[href*='CourtCase.aspx/Details'], #gridSearchResults td.dataTables_empty")
+  || /cases found\s*0\b/i.test(((document.querySelector('.caseFoundFilter') || {}).innerText || '').replace(/\s+/g, ' '))"""
 COURT_TYPE_RE = re.compile(r"Court Type:\s*</td>\s*<td[^>]*>\s*([^<]+)", re.I)
 
 
@@ -349,6 +354,11 @@ def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | Non
             if not wait_captcha(page, probe, tag):
                 click_search(page)
     _safe(lambda: page.wait_for_function(RESULTS_JS, timeout=30_000, polling=500))
+    started = time.monotonic()
+    if not _safe(lambda: page.wait_for_function(ROWS_READY_JS, timeout=60_000, polling=500) or True, False):
+        print("  Las filas no llegaron en 60 s; guardo lo que hay")
+    probe.notes[f"espera_filas_{tag}"] = round(time.monotonic() - started, 1)
+    _safe(lambda: page.wait_for_load_state("load", timeout=20_000))
     page.wait_for_timeout(2000)
     text = _safe(lambda: page.inner_text("body"), "")
     found = re.search(r"Name\s+(.+?)\s+(\d+)\s+[\d.]+\s*seconds", text)
@@ -411,6 +421,11 @@ def run(args) -> int:
 
             # 2. Resumen desplegable del caso (lo que trae el "+" de la fila).
             link = page.locator(f"a[title='View Case Details for {args.case}']").first
+            if not link.count():
+                # Martin (2.9.29): el enlace del caso no trae ese title; se busca por el texto.
+                link = page.locator("#gridSearchResults a[href*='CourtCase.aspx/Details']",
+                                    has_text=args.case).first
+                probe.notes["enlace_por_texto"] = bool(link.count())
             if not link.count():
                 probe.errors.append(f"No encontré el caso {args.case} en los resultados")
                 return 1

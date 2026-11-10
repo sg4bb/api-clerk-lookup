@@ -29,6 +29,8 @@ class CountyConfig:
     # El CAPTCHA se resuelve ANTES de la primera búsqueda de la sesión, nunca después de un
     # "Invalid Captcha". Clay (08/11/2026): Cloudflare bloquea la búsqueda enviada sin él.
     captcha_before_search: bool = False
+    # El CAPTCHA se pide en CADA búsqueda, no solo en la primera (St. Lucie, 09/11/2026).
+    captcha_every_search: bool = False
     # El docket marca los documentos que no están en línea con un botón "Request" (se piden al
     # Clerk por email). Si el documento buscado está así, se dice al usuario cómo pedirlo.
     documents_on_request: bool = False

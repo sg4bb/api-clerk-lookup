@@ -230,7 +230,11 @@ _READ_CASE_JS = """
       cid: img ? img.getAttribute('rel') || img.id : null, digest: img ? img.getAttribute('digest') : null,
     };
   });
-  return {title: document.title.replace(/\\s+/g, ' ').trim(), summary, parties, docket,
+  // Cargos del resumen ("Count | Description | Level | ..."), sin fechas. Martin (2.9.29) no tiene
+  // la vista previa de la fila, que es de donde salen los cargos con fechas en los demás.
+  const summaryCharges = Array.from(document.querySelectorAll('#gridCharges tbody tr'))
+    .map(tr => text(tr.querySelectorAll(':scope > td')[1])).filter(Boolean);
+  return {title: document.title.replace(/\\s+/g, ' ').trim(), summary, parties, docket, summaryCharges,
           unavailable: /dockets are currently unavailable/i.test(text(document.querySelector('#courtCaseDockets')))};
 }
 """
@@ -407,7 +411,8 @@ def normalize_agency_name(text: str) -> str:
     return f"{flipped.group(2).strip()} {flipped.group(1).strip()}" if flipped else text
 
 
-def charges_from_case(summary: dict, thumb: dict, arrest: Optional[date]) -> list[Charge]:
+def charges_from_case(summary: dict, thumb: dict, arrest: Optional[date],
+                      summary_charges: Optional[list[str]] = None) -> list[Charge]:
     agency = normalize_agency_name(summary.get("agency") or thumb.get("summary", {}).get("Agency", "")) or None
     report = (summary.get("agencyreportnumber") or thumb.get("summary", {}).get("Agency Report #", "")).strip() or None
     charges = []
@@ -416,6 +421,11 @@ def charges_from_case(summary: dict, thumb: dict, arrest: Optional[date]) -> lis
             offense_date=_date(c.get("offense")), description=c.get("description", ""), statute=None,
             arrest_date=arrest, agency=agency, control_number=report, initial_date=_date(c.get("initial")),
         ))
+    if not charges and summary_charges:
+        # Sin vista previa (Martin): los cargos del resumen del caso, sin fechas.
+        for description in summary_charges:
+            charges.append(Charge(offense_date=None, description=description, statute=None, arrest_date=arrest,
+                                  agency=agency, control_number=report))
     if not charges and (agency or report or arrest):
         # Sin resumen de cargos: al menos la agencia, el reporte y la fecha de arresto.
         charges.append(Charge(offense_date=None, description="", statute=None, arrest_date=arrest,
@@ -493,15 +503,18 @@ class BenchmarkWebAdapter(ClerkAdapter):
                  "openedTo": f"{date_to:%m/%d/%Y}" if date_to else ""}
         log.info("Buscando %s entre %s y %s (tipos %s)", name, date_from, date_to, query.case_types)
         for attempt in (1, 2, 3):
-            # CAPTCHA de texto: lo pide cada búsqueda (St. Lucie, 09/11/2026). Los demás, solo la primera.
-            if self.county.captcha_before_search and (self.county.captcha == "text"
+            # St. Lucie pide la suma en cada búsqueda (captcha_every_search); Martin, Clay y los demás
+            # solo en la primera de la sesión.
+            if self.county.captcha_before_search and (self.county.captcha_every_search
                                                       or not getattr(self, "_captcha_done", False)):
                 state = self._search_captcha_first(name, dates)
             else:
                 self._submit_search(name, dates)
                 state = self._wait_results()
                 if state == "captcha":
-                    state = self._search_with_captcha(name, dates)
+                    # La suma no tiene recuadro de Google: se pide con el panel del CAPTCHA de texto.
+                    state = (self._search_captcha_first(name, dates) if self.county.captcha == "text"
+                             else self._search_with_captcha(name, dates))
             if state == "cf_error":
                 # Bay (06/11/2026): Cloudflare no llegó al servidor del condado (522); se repite.
                 log.warning("El portal no respondió (Cloudflare 52x); repito la búsqueda (intento %d de 3)", attempt)
@@ -809,7 +822,7 @@ class BenchmarkWebAdapter(ClerkAdapter):
                 candidate.filed_date = filed
             docket = docket_from_case(data.get("docket", []))
             arrest = arrest_date_from_docket(docket)
-            charges = charges_from_case(summary, thumb_data, arrest)
+            charges = charges_from_case(summary, thumb_data, arrest, data.get("summaryCharges"))
             report = (summary.get("agencyreportnumber") or "").strip() or None
             details = CaseDetails(candidate=candidate, charges=charges, docket=docket, source_url=tab.url,
                                   docket_unavailable=bool(data.get("unavailable")), agency_report_number=report,

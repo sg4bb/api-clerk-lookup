@@ -355,7 +355,7 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
                            middle_name=portal_text(query.middle_name) or None,
                            last_name=portal_text(query.last_name))
     variants = last_name_variants(search_query.last_name)
-    if county.captcha == "text":
+    if county.captcha_every_search:
         # Cada forma del apellido es una suma más para la persona (St. Fleur, St. Lucie, 09/11/2026:
         # cinco sumas para una persona). Se prueban la original y las dos más probables.
         variants = variants[:MAX_VARIANTS_TEXT_CAPTCHA]
