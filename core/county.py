@@ -25,7 +25,7 @@ class CountyConfig:
     # orden de captura ejecutada (trae el número de reporte de la agencia que
     # investigó el hecho). Mismas exclusiones que arriba.
     support_documents: list[str] = field(default_factory=list)
-    captcha: str = "none"             # "recaptcha_v2" | "turnstile" | "none"
+    captcha: str = "none"             # "recaptcha_v2" | "turnstile" | "hcaptcha" | "text" | "none"
     # El CAPTCHA se resuelve ANTES de la primera búsqueda de la sesión, nunca después de un
     # "Invalid Captcha". Clay (08/11/2026): Cloudflare bloquea la búsqueda enviada sin él.
     captcha_before_search: bool = False
@@ -34,6 +34,11 @@ class CountyConfig:
     # El docket marca los documentos que no están en línea con un botón "Request" (se piden al
     # Clerk por email). Si el documento buscado está así, se dice al usuario cómo pedirlo.
     documents_on_request: bool = False
+    # Cloudflare pone su verificación ("Just a moment...") antes del portal y, recién pasada, niega
+    # los scripts y la imagen de la suma (403) hasta recargar. Escambia (10/11/2026). Se espera la
+    # verificación (si no pasa sola, la marca la persona) y se recarga sin caché hasta que la
+    # página carga completa. Nunca se salta: solo se espera y se recarga.
+    cloudflare_gate: bool = False
     captcha_timeout_s: int = 600     # CAPTCHA_TIMEOUT_S en .env lo cambia
     throttle_s: float = 2.0           # pausa entre requests al portal
     # Ventana de búsqueda alrededor de la fecha del incidente/arresto.

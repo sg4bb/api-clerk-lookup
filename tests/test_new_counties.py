@@ -1097,7 +1097,7 @@ class CoverageMessageTest(unittest.TestCase):
         from tests.test_extractor import ARTICLE, extraction
         from worker import _short
         with self.assertRaises(OutOfScope) as ctx:
-            build_query(extraction(county="Escambia", city="Pensacola", agency="Escambia County Sheriff's Office"), ARTICLE)
+            build_query(extraction(county="Okaloosa", city="Crestview", agency="Okaloosa County Sheriff's Office"), ARTICLE)
         message = str(ctx.exception)
         self.assertGreater(len(message), 400)
         self.assertEqual(_short(message), message)

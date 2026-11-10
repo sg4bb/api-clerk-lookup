@@ -191,17 +191,121 @@ RENDER_JS = """() => {
   try { grecaptcha.render(slot); return true; } catch (e) { return 'error: ' + e.message; }
 }"""
 RESULTS_JS = """() => !!document.querySelector('#gridSearchResults, .caseFoundFilter') || location.href.indexOf('/Details/') >= 0"""
+# Enlace al caso buscando el bloque más chico que contiene el número de caso y un enlace al caso.
+CASE_HREF_JS = r"""(number) => {
+  const want = number.replace(/\s+/g, ' ').trim().toUpperCase();
+  for (const a of document.querySelectorAll("a[href*='CourtCase.aspx/Details']")) {
+    let el = a;
+    for (let i = 0; i < 6 && el; i++, el = el.parentElement) {
+      if (el.querySelectorAll("a[href*='CourtCase.aspx/Details']").length > 1) break;
+      const t = (el.innerText || '').replace(/\s+/g, ' ').toUpperCase();
+      if (t.includes(want)) return a.getAttribute('href');
+    }
+  }
+  return null;
+}"""
 # Filas ya dibujadas. Martin (Benchmark 2.9.29, 10/11/2026): la tabla aparece vacía y las filas
 # llegan después, con la página aún cargando; el probe guardaba antes de que llegaran.
 ROWS_READY_JS = r"""() => location.href.indexOf('/Details/') >= 0
   || !!document.querySelector("#gridSearchResults a[href*='CourtCase.aspx/Details'], #gridSearchResults td.dataTables_empty")
+  // Escambia (Benchmark 2.6.3.18): resultados sin #gridSearchResults.
+  || (!document.querySelector('#gridSearchResults') && !!document.querySelector("a[href*='CourtCase.aspx/Details']"))
   || /cases found\s*0\b/i.test(((document.querySelector('.caseFoundFilter') || {}).innerText || '').replace(/\s+/g, ' '))"""
 COURT_TYPE_RE = re.compile(r"Court Type:\s*</td>\s*<td[^>]*>\s*([^<]+)", re.I)
+
+
+CF_CHALLENGE_JS = """() => /just a moment|attention required/i.test(document.title)
+  || /performing security verification|verify you are human/i.test((document.body || {}).innerText || '')"""
+
+
+def wait_cloudflare(page, probe: Probe, tag: str) -> None:
+    """Escambia (10/11/2026): la verificación de Cloudflare ("Just a moment...") antes del portal. Se
+    espera a que pase sola o a que la persona marque la casilla en la ventana o el live view."""
+    if not _safe(lambda: page.evaluate(CF_CHALLENGE_JS), False):
+        return
+    print("\n  >>> Cloudflare está verificando el navegador. Si aparece una casilla, márcala (ventana o live view).")
+    started = time.monotonic()
+    ok = _safe(lambda: page.wait_for_function("() => !!document.querySelector('#name')", timeout=120_000,
+                                              polling=1000) is not None, False)
+    probe.notes.setdefault("cloudflare", []).append({"paso": tag, "superada": ok,
+                                                    "s": round(time.monotonic() - started)})
+    print(f"  Verificación {'superada' if ok else 'NO superada'} en {round(time.monotonic() - started)} s")
+    if not ok:
+        probe.save(f"cloudflare_{tag}")
+        raise RuntimeError("Cloudflare no dejó pasar en 2 minutos")
+
+
+# La página sin sus scripts o sin la imagen de la suma: Escambia (10/11/2026) justo después de la
+# verificación de Cloudflare devuelve 403 a esos recursos; una recarga sin caché unos segundos
+# después trae todo (probe_assets: carga 2 completa).
+INCOMPLETE_JS = """() => {
+  const img = document.querySelector("img[alt='Captcha'], img[src*='CaptchaImage']");
+  if (img && !(img.complete && img.naturalWidth > 0)) return 'imagen de la suma';
+  if (!window.jQuery) return 'jQuery';
+  if (getComputedStyle(document.body).fontFamily.indexOf('Times') >= 0) return 'estilos';
+  return '';
+}"""
+
+
+CHALLENGE_GONE_JS = """() => !/just a moment|attention required/i.test(document.title)
+  && !/performing security verification|verify you are human/i.test((document.body || {}).innerText || '')"""
+
+
+def pass_challenge_on(page, probe: Probe, url: str, tag: str) -> bool:
+    """Abre como página el recurso que Cloudflare niega (la imagen de la suma). Así Cloudflare muestra
+    su verificación, que el navegador pasa solo o con el clic de la persona, y deja la cookie que
+    luego vale para la página del portal. Escambia (10/11/2026): sin pasar la verificación como página,
+    el bundle de scripts y la imagen salen 403 en cada recarga."""
+    print(f"  Abro el recurso negado como página para pasar la verificación de Cloudflare: {url[:90]}")
+    response = _safe(lambda: page.goto(url, wait_until="load"), None)
+    first = getattr(response, "status", None)
+    page.wait_for_timeout(1500)
+    title = _safe(lambda: page.title(), "")
+    print(f"    respuesta {first}, título '{title[:60]}'")
+    if not _safe(lambda: page.evaluate(CF_CHALLENGE_JS), False) and first and first >= 400:
+        probe.save(f"recurso_negado_{tag}")
+    print("  >>> Si aparece una casilla de Cloudflare, márcala en el live view. Espero hasta 90 s.")
+    ok = _safe(lambda: page.wait_for_function(CHALLENGE_GONE_JS, timeout=90_000, polling=1000) is not None, False)
+    page.wait_for_timeout(1500)
+    probe.notes.setdefault(f"verificacion_recurso_{tag}", []).append(
+        {"url": url[:120], "primera_respuesta": first, "titulo": title[:80], "superada": ok})
+    return ok
+
+
+def ensure_complete(page, probe: Probe, tag: str) -> None:
+    form_url = page.url
+    for attempt in (1, 2, 3):
+        missing = _safe(lambda: page.evaluate(INCOMPLETE_JS), "")
+        if not missing:
+            return
+        if attempt == 2:
+            # La recarga sola no alcanzó: la verificación de Cloudflare hay que pasarla como página.
+            src = _safe(lambda: page.evaluate(
+                "() => { const i = document.querySelector(\"img[alt='Captcha'], img[src*='CaptchaImage']\");"
+                " return i ? i.src : null; }"), None)
+            if src and pass_challenge_on(page, probe, src, tag):
+                page.goto(form_url, wait_until="load")
+                wait_cloudflare(page, probe, tag)
+                page.wait_for_timeout(2000)
+                continue
+        print(f"  La página cargó sin {missing}; recargo sin caché en 8 s ({attempt}/3)")
+        probe.notes.setdefault(f"recargas_{tag}", []).append(missing)
+        page.wait_for_timeout(8000)
+        _safe(lambda: page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True}))
+        page.reload(wait_until="load")
+        wait_cloudflare(page, probe, tag)
+        page.wait_for_timeout(2000)
+    missing = _safe(lambda: page.evaluate(INCOMPLETE_JS), "")
+    if missing:
+        probe.save(f"incompleta_{tag}")
+        raise RuntimeError(f"La página sigue sin {missing} tras 3 recargas")
 
 
 def fill(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | None) -> None:
     """Abre el formulario, elige "Name" y escribe el nombre (y los campos ocultos)."""
     page.goto(url, wait_until="load")
+    wait_cloudflare(page, probe, tag)
+    ensure_complete(page, probe, tag)
     _safe(lambda: page.wait_for_function("() => !!(window.jQuery && jQuery.isReady)", timeout=15_000))
     page.wait_for_timeout(1500)
     _safe(lambda: page.locator("#radio_0").check())
@@ -241,13 +345,15 @@ def click_search(page) -> None:
     page.wait_for_timeout(4000)
 
 
-def wait_text_captcha(page, probe: Probe, tag: str) -> bool:
+def wait_text_captcha(page, probe: Probe, tag: str, refill=None) -> bool:
     """CAPTCHA de texto: la persona escribe la respuesta y pulsa Search. Siempre True (la
-    búsqueda la envía la persona); si el portal la rechaza, queda anotado."""
+    búsqueda la envía la persona). Si el portal la rechaza, el formulario vuelve vacío y en "All"
+    (Escambia, 10/11/2026: buscar ahí trae 5000 casos): se vuelve a llenar y se pide otra suma."""
     probe.notes[f"captcha_{tag}"] = "texto"
     print("\n  >>> CAPTCHA de texto: escribe la respuesta en 'Enter Answer Here' y pulsa Search tú.")
     print("      Espero hasta 6 minutos.")
     start_url = page.url
+    rejected = 0
     for second in range(360):
         state = _safe(lambda: page.evaluate(CAPTCHA_STATE_JS), {}) or {}
         if state.get("results"):
@@ -260,20 +366,28 @@ def wait_text_captcha(page, probe: Probe, tag: str) -> bool:
             probe.notes[f"captcha_texto_{tag}"] = {"s": second, "resultado": "enviada", "url": url}
             return True
         if url != start_url and re.search(r"error=", url, re.I):
-            print(f"  [{second} s] El portal rechazó la respuesta: {url}")
-            probe.notes[f"captcha_texto_{tag}"] = {"s": second, "resultado": "rechazado", "url": url}
-            probe.save(f"captcha_rechazado_{tag}")
-            return True
+            rejected += 1
+            print(f"  [{second} s] El portal rechazó la respuesta ({rejected}/3): {url}")
+            probe.notes.setdefault(f"captcha_texto_rechazos_{tag}", []).append({"s": second, "url": url})
+            probe.save(f"captcha_rechazado_{tag}_{rejected}")
+            if not refill or rejected >= 3:
+                probe.notes[f"captcha_texto_{tag}"] = {"s": second, "resultado": "rechazado", "url": url}
+                return True
+            print("  Vuelvo a llenar el formulario: NO busques todavía; espera la nueva suma.")
+            refill()
+            start_url = page.url
+            print("\n  >>> Escribe la NUEVA suma y pulsa Search.")
+            continue
         page.wait_for_timeout(1000)
     raise TimeoutError("No se envió la búsqueda en 6 minutos")
 
 
-def wait_captcha(page, probe: Probe, tag: str) -> bool:
+def wait_captcha(page, probe: Probe, tag: str, refill=None) -> bool:
     """Espera el token del CAPTCHA (o que la persona ya haya buscado). Imprime cada cambio:
     si el token aparece y luego se pierde, el probe no lo vio a tiempo; si nunca aparece, es
     el CAPTCHA el que no se deja pasar. True si la búsqueda ya está hecha."""
     if _safe(lambda: page.evaluate(TEXT_CAPTCHA_JS), False):
-        return wait_text_captcha(page, probe, tag)
+        return wait_text_captcha(page, probe, tag, refill)
     probe.notes[f"captcha_{tag}"] = True
     print("\n  >>> CAPTCHA: resuélvelo en la ventana. El probe busca solo al ver el visto verde;")
     print("      si no lo hace en unos segundos, pulsa Search tú. Espero hasta 6 minutos.")
@@ -315,7 +429,7 @@ def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | Non
         # Hay lugar para el CAPTCHA pero no se ve: se espera y, si no aparece, se recarga. Nunca
         # se envía sin él (Clay bloquea).
         for attempt in (1, 2, 3, 4):
-            if _safe(lambda: page.wait_for_function(HAS_CAPTCHA_JS, timeout=10_000, polling=500) or True, False):
+            if _safe(lambda: page.wait_for_function(HAS_CAPTCHA_JS, timeout=10_000, polling=500) is not None, False):
                 on_form = True
                 break
             if attempt == 4:
@@ -323,7 +437,7 @@ def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | Non
             rendered = _safe(lambda: page.evaluate(RENDER_JS), None)
             print(f"  El recuadro del CAPTCHA no apareció; se lo pido al script de Google: {rendered}")
             probe.notes.setdefault(f"captcha_dibujar_{tag}", []).append(rendered)
-            if _safe(lambda: page.wait_for_function(HAS_CAPTCHA_JS, timeout=8_000, polling=500) or True, False):
+            if _safe(lambda: page.wait_for_function(HAS_CAPTCHA_JS, timeout=8_000, polling=500) is not None, False):
                 on_form = True
                 break
             print(f"  Sigue sin aparecer; recargo la página ({attempt}/3)")
@@ -338,7 +452,7 @@ def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | Non
     probe.notes[f"captcha_en_formulario_{tag}"] = on_form
     if captcha_first and on_form and not _safe(lambda: page.evaluate(CAPTCHA_FILLED_JS), False):
         probe.notes[f"captcha_antes_{tag}"] = True
-        if not wait_captcha(page, probe, tag):
+        if not wait_captcha(page, probe, tag, lambda: fill(page, probe, url, name, tag, hidden)):
             click_search(page)
     else:
         click_search(page)
@@ -351,11 +465,11 @@ def search(page, probe: Probe, url: str, name: str, tag: str, hidden: dict | Non
                 fill(page, probe, url, name, tag, hidden)
             elif page.input_value("#name") != name:
                 fill(page, probe, url, name, tag, hidden)
-            if not wait_captcha(page, probe, tag):
+            if not wait_captcha(page, probe, tag, lambda: fill(page, probe, url, name, tag, hidden)):
                 click_search(page)
     _safe(lambda: page.wait_for_function(RESULTS_JS, timeout=30_000, polling=500))
     started = time.monotonic()
-    if not _safe(lambda: page.wait_for_function(ROWS_READY_JS, timeout=60_000, polling=500) or True, False):
+    if not _safe(lambda: page.wait_for_function(ROWS_READY_JS, timeout=60_000, polling=500) is not None, False):
         print("  Las filas no llegaron en 60 s; guardo lo que hay")
     probe.notes[f"espera_filas_{tag}"] = round(time.monotonic() - started, 1)
     _safe(lambda: page.wait_for_load_state("load", timeout=20_000))
@@ -427,6 +541,12 @@ def run(args) -> int:
                                     has_text=args.case).first
                 probe.notes["enlace_por_texto"] = bool(link.count())
             if not link.count():
+                # Escambia (2.6.3.18): el enlace es un ícono; el número está en el mismo bloque.
+                href = _safe(lambda: page.evaluate(CASE_HREF_JS, args.case), None)
+                probe.notes["enlace_por_bloque"] = href
+                if href:
+                    link = page.locator(f"a[href='{href}']").first
+            if not link.count():
                 probe.errors.append(f"No encontré el caso {args.case} en los resultados")
                 return 1
             row = link.locator("xpath=ancestor::tr[1]")
@@ -448,7 +568,7 @@ def run(args) -> int:
                 # Bay (06/11/2026): el script del caso (casedetails.js) volvía con 522 de Cloudflare y
                 # la página quedaba en el ícono de carga. Se recarga hasta dos veces.
                 for attempt in range(3):
-                    if _safe(lambda: page.wait_for_function(loaded_js, timeout=25_000, polling=500) or True, False):
+                    if _safe(lambda: page.wait_for_function(loaded_js, timeout=25_000, polling=500) is not None, False):
                         break
                     probe.notes[f"caso_sin_cargar_{attempt + 1}"] = [
                         (n["status"], n["url"][-80:]) for n in probe.network[-15:] if n["status"] >= 400]

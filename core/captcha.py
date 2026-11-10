@@ -55,8 +55,18 @@ TEXT_SOLVED_JS = r"""
 () => window.__clTextDone === true || !/\/home\.aspx\/search/i.test(location.pathname) || /error=/i.test(location.search)
 """
 
+# La verificación de Cloudflare a página completa ("Just a moment...", "Performing security
+# verification") antes del portal (Escambia, 10/11/2026). No es un CAPTCHA del portal: es la página
+# de Cloudflare. Casi siempre pasa sola; si muestra una casilla, la marca la persona. Se da por
+# pasada cuando la página ya no es la de Cloudflare.
+CLOUDFLARE_PAGE_JS = r"""
+() => /just a moment|attention required/i.test(document.title)
+  || /performing security verification|verify you are human/i.test((document.body || {}).innerText || '')
+"""
+CLOUDFLARE_PASSED_JS = f"() => !({CLOUDFLARE_PAGE_JS.strip()})()"
+
 SOLVED_JS = {"recaptcha": RECAPTCHA_SOLVED_JS, "turnstile": TURNSTILE_SOLVED_JS, "hcaptcha": HCAPTCHA_SOLVED_JS,
-             "text": TEXT_SOLVED_JS}
+             "text": TEXT_SOLVED_JS, "cloudflare": CLOUDFLARE_PASSED_JS}
 
 # Chrome local: Enter en el campo de la respuesta marca el CAPTCHA como listo (sin enviar).
 TEXT_LISTEN_JS = r"""
@@ -472,8 +482,8 @@ class CaptchaHandler(Protocol):
     def solve(self, page: Page, timeout_s: int, kind: str = "recaptcha") -> None:
         """Bloquea hasta que el CAPTCHA esté resuelto o vence el tiempo.
 
-        kind: "recaptcha" (Orange), "turnstile" (Cloudflare, Civitek), "hcaptcha" (Flagler) o
-        "text" (la suma de St. Lucie).
+        kind: "recaptcha" (Orange), "turnstile" (Cloudflare, Civitek), "hcaptcha" (Flagler),
+        "text" (la suma de St. Lucie) o "cloudflare" (la verificación a página completa de Escambia).
         """
         ...
 
@@ -537,6 +547,12 @@ class ManualLocalCaptcha:
                 print("\n  CAPTCHA: escribe el resultado de la suma en 'Enter Answer Here' y pulsa Enter.")
                 print("  No pulses Search: el script busca solo después del Enter.\n")
                 wait_until_solved(page, timeout_s, TEXT_SOLVED_JS)
+                return
+            if kind == "cloudflare":
+                page.bring_to_front()
+                print("\n  Cloudflare: si en la ventana de Chrome aparece una casilla ('Verify you are human'), márcala.")
+                print("  El script sigue solo cuando el portal carga.\n")
+                wait_until_solved(page, timeout_s, CLOUDFLARE_PASSED_JS)
                 return
             if kind == "hcaptcha":
                 page.bring_to_front()
@@ -662,6 +678,9 @@ class LiveViewCaptcha:
         REMOTE_CAPTCHA_FOCUS=0 lo desactiva.
         """
         if os.getenv("REMOTE_CAPTCHA_FOCUS", "1").strip() in ("0", "false", "no"):
+            return None
+        if kind == "cloudflare":
+            # La página entera es la de Cloudflare: no hay portal que tapar ni casilla que mover.
             return None
         original = page.viewport_size or {"width": 1280, "height": 900}
         try:

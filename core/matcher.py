@@ -48,6 +48,7 @@ _AGENCY_ACRONYMS = {
     "ocso": "orange county so",
     "pslpd": "port st lucie pd",
     "slcso": "st lucie county so",
+    "ecso": "escambia county so",
     "wppd": "winter park pd",
     "ucfpd": "ucf pd",
     "fhp": "fhp",

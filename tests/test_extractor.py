@@ -175,7 +175,7 @@ class OutOfScopeTest(unittest.TestCase):
         exc = self.reason(county="Seminole County", city="Sanford", agency="Sanford Police Department")
         self.assertEqual((exc.reason, exc.county), ("county", "Seminole"))
         self.assertEqual(self.reason(county="Miami-Dade", city="Miami", agency=None).county, "Miami-Dade")
-        self.assertEqual(self.reason(county="Escambia", city=None, agency=None).county, "Escambia")
+        self.assertEqual(self.reason(county="Okaloosa", city=None, agency=None).county, "Okaloosa")
 
     def test_unknown(self):
         self.assertEqual(self.reason(county=None, city=None, state=None, agency="Police").reason, "unknown")

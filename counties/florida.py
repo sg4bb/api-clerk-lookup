@@ -574,6 +574,35 @@ MARTIN = CountyConfig(
     throttle_s=2.0,
 )
 
+# Escambia (10/11/2026, BenchmarkWeb 2.6.3.18). Cloudflare pone su verificación antes del portal y
+# recién pasada niega los scripts y la imagen de la suma (cloudflare_gate). La suma se pide en cada
+# búsqueda ("Invalid Captcha" sin ella, también en la segunda). Docket "Image | Date | Entry", sin
+# número de entrada y de la más nueva a la más vieja; el documento es "ARREST REPORT" y el arresto
+# sale en "ARREST SEQ: 1 - ...". Algunas entradas tienen "Request" (se piden por email al Clerk).
+ESCAMBIA = CountyConfig(
+    key="escambia",
+    name="Escambia County",
+    state="FL",
+    platform="benchmark_web",
+    base_url="https://public.escambiaclerk.com/BMWebLatest/Home.aspx/Search",
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+    document_priority=[
+        r"^\s*arrest report\b",
+        r"^\s*arrest(?:ing)? affidavit\b",
+        r"probable cause affidavit",
+        r"affidavit of probable cause",
+        r"complaint affidavit",
+    ],
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b", r"\bviol(?:ation)? of (?:probation|community control)\b"],
+    support_documents=[r"\bwarrant (?:returned )?(?:served|executed)\b", r"\bcapias (?:returned )?served\b"],
+    captcha="text",
+    captcha_before_search=True,
+    captcha_every_search=True,
+    documents_on_request=True,
+    cloudflare_gate=True,
+    throttle_s=2.0,
+)
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -618,6 +647,7 @@ COUNTIES: dict[str, CountyConfig] = {
     CLAY.key: CLAY,
     ST_LUCIE.key: ST_LUCIE,
     MARTIN.key: MARTIN,
+    ESCAMBIA.key: ESCAMBIA,
 }
 
 
@@ -758,6 +788,12 @@ CITY_TO_COUNTY: dict[str, str] = {
     "green cove springs": "clay", "orange park": "clay", "keystone heights": "clay", "penney farms": "clay",
     "fleming island": "clay", "middleburg": "clay", "oakleaf": "clay", "oakleaf plantation": "clay",
     "lake asbury": "clay", "doctors inlet": "clay",
+    # Ojo: Gulf Breeze y Navarre son de Santa Rosa. Pensacola Beach sí es de Escambia.
+    "pensacola beach": "escambia", "cantonment": "escambia", "century": "escambia", "molino": "escambia",
+    "perdido key": "escambia", "warrington": "escambia", "ensley": "escambia", "ferry pass": "escambia",
+    "brent": "escambia", "myrtle grove": "escambia", "bellview": "escambia", "west pensacola": "escambia",
+    "goulding": "escambia", "gonzalez": "escambia", "beulah": "escambia", "walnut hill": "escambia",
+    "mcdavid": "escambia", "bratt": "escambia", "innerarity point": "escambia",
     "the villages": "sumter",
 }
 
@@ -811,6 +847,8 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "springfield pd": "bay", "parker pd": "bay", "mexico beach pd": "bay",
     "martin county so": "martin", "stuart pd": "martin", "sewalls point pd": "martin", "sewall s point pd": "martin",
     "st lucie county so": "st_lucie", "port st lucie pd": "st_lucie", "fort pierce pd": "st_lucie",
+    "escambia county so": "escambia", "pensacola pd": "escambia", "university of west florida pd": "escambia",
+    "uwf pd": "escambia",
     "clay county so": "clay", "orange park pd": "clay", "green cove springs pd": "clay",
     "st johns county so": "st_johns", "st augustine pd": "st_johns", "st augustine beach pd": "st_johns",
     "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",

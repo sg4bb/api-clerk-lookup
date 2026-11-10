@@ -29,6 +29,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from core.adapter import ClerkAdapter, DocumentUnavailable, DownloadError, SearchError
+from core.captcha import CLOUDFLARE_PAGE_JS, CLOUDFLARE_PASSED_JS, CaptchaTimeout
 from core.models import CaseCandidate, CaseDetails, Charge, DocketEntry, LookupQuery
 from core.documents import is_pdf
 from core.utils import parse_us_date, portal_text, safe_filename
@@ -160,6 +161,33 @@ _CF_ERROR_JS = r"""
 () => /\|\s*52\d\s*:/.test(document.title) || /error code 52\d/i.test((document.body || {}).innerText || '')
 """
 
+# Escambia (10/11/2026): recién pasada la verificación de Cloudflare, el portal carga sin sus scripts,
+# sin estilos o sin la imagen de la suma (403). Devuelve lo que falta, o '' si la página está completa.
+_INCOMPLETE_JS = """
+() => {
+  const img = document.querySelector("img[alt='Captcha'], img[src*='CaptchaImage']");
+  if (img && !(img.complete && img.naturalWidth > 0)) return 'the sum image';
+  if (!window.jQuery) return 'jQuery';
+  if (getComputedStyle(document.body).fontFamily.indexOf('Times') >= 0) return 'styles';
+  return '';
+}
+"""
+# Segundos que se espera a que la verificación de Cloudflare pase sola antes de pedírsela a la persona
+# (Escambia, 10/11/2026: pasó sola en 30 s).
+CLOUDFLARE_SELF_PASS_S = 45
+# Tiempo para que la persona marque la casilla de Cloudflare, si aparece (en Escambia no apareció:
+# el círculo gira y nada más). Corto: cada minuto de Browserbase cuesta.
+CLOUDFLARE_PERSON_S = 90
+# Pausa antes de cada recarga del portal incompleto (el paso 2 abre el recurso negado como página).
+# Tres cargas en ~1 minuto: más no sirvió (Rodriguez, 10/11/2026: 5 cargas en 2 minutos, nada) y
+# cada minuto de Browserbase cuesta.
+CLOUDFLARE_GATE_PAUSES_S = (8, 3, 15)
+
+
+class CloudflareBlocked(SearchError):
+    """Cloudflare no deja cargar el portal al navegador de búsqueda (Escambia). search() lo cambia
+    por un mensaje con lo necesario para buscar a mano."""
+
 # BenchmarkWeb2 (Bay, 2.9.7): la página del caso trae solo el marco; el resumen
 # (CourtCase.aspx/DetailsSummary/<cid>) y el docket (CourtCase.aspx/CaseDockets/<cid>) los pide
 # casedetails.js, que a veces vuelve con 522 y la página queda en el ícono de carga. Se piden
@@ -220,12 +248,17 @@ _READ_CASE_JS = """
   // (0 en lo grabado, repetidos): si hay SEQ, manda SEQ.
   const seq = heads.findIndex(h => /^SEQ *#?$/.test(h));
   const din = seq >= 0 ? seq : Math.max(0, heads.findIndex(h => h === 'DIN'));
+  // Escambia (2.6.3.18): "Image | Date | Entry", sin columna de número. La primera es la imagen
+  // (cantidad de páginas o "Request"): no es un número de entrada.
+  const numbered = !(seq < 0 && heads.indexOf('DIN') < 0 && heads[0] === 'IMAGE');
+  const dateCol = heads.indexOf('DATE');
   const docket = Array.from(document.querySelectorAll('#gridDockets tbody tr')).map(tr => {
     const tds = tr.querySelectorAll(':scope > td');
     const img = tr.querySelector('a.casedocketimage');
     const entry = tr.querySelector("td[id^='text_']");
     return {
-      seq: text(tds[din]), date: tds.length > 3 ? text(tds[tds.length - 2]) : '',
+      seq: numbered ? text(tds[din]) : '',
+      date: tds.length > 3 ? text(tds[tds.length - 2]) : (dateCol >= 0 ? text(tds[dateCol]) : ''),
       text: entry ? text(entry) : text(tds[tds.length - 1]),
       cid: img ? img.getAttribute('rel') || img.id : null, digest: img ? img.getAttribute('digest') : null,
     };
@@ -434,6 +467,15 @@ def charges_from_case(summary: dict, thumb: dict, arrest: Optional[date],
 
 
 def docket_from_case(rows: list[dict]) -> list[DocketEntry]:
+    """Las entradas del docket. Sin columna de número (Escambia: "Image | Date | Entry", de la más
+    nueva a la más vieja) se ponen en orden cronológico y se numeran así: el primer documento que
+    coincide es entonces el del arresto que abrió el caso, no el de un arresto posterior (Rodriguez,
+    2023 CF 003056 A: ARREST REPORT del 24/07/2023 y otro del 27/10/2023, por la fianza revocada)."""
+    if rows and not any(re.sub(r"\D", "", r.get("seq", "")) for r in rows):
+        dates = [d for d in (_date(r.get("date")) for r in rows) if d]
+        if len(dates) > 1 and dates[0] > dates[-1]:
+            rows = rows[::-1]
+        rows = [{**r, "seq": str(i)} for i, r in enumerate(rows, 1)]
     docket = []
     for row in rows:
         seq = re.sub(r"\D", "", row.get("seq", ""))
@@ -502,6 +544,19 @@ class BenchmarkWebAdapter(ClerkAdapter):
                  "openedFrom": f"{date_from:%m/%d/%Y}" if date_from else "",
                  "openedTo": f"{date_to:%m/%d/%Y}" if date_to else ""}
         log.info("Buscando %s entre %s y %s (tipos %s)", name, date_from, date_to, query.case_types)
+        try:
+            return self._search(query, name, dates)
+        except CloudflareBlocked as exc:
+            log.warning("Cloudflare bloquea el portal: %s", exc)
+            opened = (f", cases opened {dates['openedFrom']} to {dates['openedTo']}"
+                      if dates["openedFrom"] and dates["openedTo"] else "")
+            raise SearchError(
+                f"{self.county.name}'s court portal is blocking automated searches right now (its Cloudflare "
+                f"security check didn't let the search browser through). Try again later, or search it by hand "
+                f"at {self.county.base_url} with the name \"{name}\"{opened}.") from None
+
+    def _search(self, query: LookupQuery, name: str, dates: dict) -> list[CaseCandidate]:
+        page = self.page
         for attempt in (1, 2, 3):
             # St. Lucie pide la suma en cada búsqueda (captcha_every_search); Martin, Clay y los demás
             # solo en la primera de la sesión.
@@ -561,16 +616,151 @@ class BenchmarkWebAdapter(ClerkAdapter):
         campo: si se escribe antes, se envía el formulario sin nombre y el portal vuelve a él.
         """
         page = self.page
+        if self.county.cloudflare_gate:
+            self._watch_blocked()
         for attempt in range(3):
-            page.goto(self.county.base_url, wait_until="load")
-            if not page.evaluate(_CF_ERROR_JS):
+            if self.county.cloudflare_gate:
+                self._goto_behind_cloudflare(self.county.base_url)
+            else:
+                page.goto(self.county.base_url, wait_until="load")
+            # Escambia: la página puede seguir navegando (verificación de Cloudflare); sin error 52x a la vista, se sigue.
+            cf_error = self._evaluate_or(_CF_ERROR_JS, False) if self.county.cloudflare_gate else page.evaluate(_CF_ERROR_JS)
+            if not cf_error:
                 break
             log.warning("El portal no respondió (Cloudflare 52x); recargo (intento %d de 3)", attempt + 1)
             page.wait_for_timeout(3000)
+        if self.county.cloudflare_gate:
+            self._pass_cloudflare_gate()
         # "attached", no "visible": Charlotte abre en "All" y el campo del nombre está oculto hasta
         # elegir "Name" (_fill_form lo elige).
         page.wait_for_selector("#name", state="attached", timeout=25_000)
         self._wait_scripts()
+
+    def _pass_cloudflare_gate(self) -> None:
+        """Escambia (10/11/2026): la verificación de Cloudflare y, después, la página completa.
+
+        Tras la verificación, Cloudflare puede negar (403) el bundle de estilos y scripts y la imagen
+        de la suma: el formulario queda sin estilos ni suma. Se arregla cuando Cloudflare pone su
+        verificación a una página entera y el navegador la pasa (deja la cookie que luego vale para
+        todo). En el probe pasó en la tercera carga; en el worker (Rodriguez, 10/11/2026) no salió en
+        tres cargas, ni en cinco. Tres cargas en ~1 minuto: recargar sin caché (Ctrl+Shift+R), abrir
+        como página el recurso negado (por si Cloudflare pone ahí su verificación) y volver a recargar.
+        Si no pasa, CloudflareBlocked: el usuario recibe cómo buscarlo a mano. Nada se salta: se espera a Cloudflare y la casilla, si aparece, la marca la persona.
+        Cada paso deja en el log qué recursos negó Cloudflare, para el diagnóstico."""
+        page = self.page
+        blocked = self._watch_blocked(clear=False)
+        self._wait_cloudflare()
+        for step, pause_s in enumerate(CLOUDFLARE_GATE_PAUSES_S, 1):
+            missing = self._evaluate_or(_INCOMPLETE_JS, "")
+            if not missing:
+                if step > 1:
+                    log.info("La página del portal cargó completa (paso %d)", step)
+                return
+            denied = [b for b in blocked if b[1] != "document"]
+            log.warning("Paso %d de %d: la página cargó sin %s. Cloudflare negó: %s", step,
+                        len(CLOUDFLARE_GATE_PAUSES_S), missing,
+                        "; ".join(f"{st} {kind} {url[len(self.site_root()):][:70]}" for st, kind, url in denied[:4])
+                        or "nada (sin respuestas de error)")
+            target = self._blocked_page_url(denied) if step == 2 else None
+            blocked.clear()
+            page.wait_for_timeout(pause_s * 1000)
+            if target:
+                log.info("Abro como página lo que negó Cloudflare, para que ponga ahí su verificación: %s", target)
+                response = self._goto_behind_cloudflare(target)
+                log.info("Respuesta %s, título '%s'", getattr(response, "status", None),
+                         self._evaluate_or("() => document.title", "")[:60])
+                self._wait_cloudflare(appear_s=8)
+                self._goto_behind_cloudflare(self.county.base_url)
+            else:
+                try:
+                    page.context.new_cdp_session(page).send("Network.setCacheDisabled", {"cacheDisabled": True})
+                except PlaywrightError as exc:
+                    log.info("No pude desactivar la caché (recargo igual): %s", exc)
+                self._goto_behind_cloudflare(None)
+            self._wait_cloudflare()
+            page.wait_for_timeout(2000)
+        missing = self._evaluate_or(_INCOMPLETE_JS, "")
+        if missing:
+            self._save_debug(page, "cloudflare_incompleta")
+            raise CloudflareBlocked(f"the page kept loading without {missing}")
+
+    def _goto_behind_cloudflare(self, url: Optional[str]):
+        """goto (o reload, sin url) que no falla si la página no termina de cargar: la verificación de
+        Cloudflare puede quedarse girando sin disparar "load" (probe en Browserbase, 10/11/2026: 30 s
+        sin cargar). Lo que haya quedado lo revisan _wait_cloudflare y la comprobación de la página."""
+        try:
+            if url is None:
+                return self.page.reload(wait_until="load")
+            return self.page.goto(url, wait_until="load")
+        except PlaywrightTimeout:
+            log.warning("La página no terminó de cargar en 30 s (¿la verificación de Cloudflare girando?)")
+            return None
+
+    def _watch_blocked(self, clear: bool = True) -> list:
+        """Anota las respuestas de error del portal (estado, tipo, URL): lo que Cloudflare negó."""
+        if getattr(self, "_cf_blocked", None) is None:
+            self._cf_blocked: list[tuple[int, str, str]] = []
+            host = urlparse(self.county.base_url).netloc
+
+            def on_response(response) -> None:
+                try:
+                    if response.status >= 400 and urlparse(response.url).netloc == host:
+                        self._cf_blocked.append((response.status, response.request.resource_type, response.url))
+                except Exception:
+                    pass
+
+            self.page.on("response", on_response)
+        if clear:
+            self._cf_blocked.clear()
+        return self._cf_blocked
+
+    def _blocked_page_url(self, denied: list[tuple[int, str, str]]) -> str:
+        """El recurso negado que se abre como página: la hoja de estilos o el script del portal y, si
+        no se vio ninguno, la imagen de la suma nueva (CaptchaImage; la del formulario puede ser
+        "LastCaptchaImage", que no es la que se negó)."""
+        for kinds in (("stylesheet", "script"), ("image",)):
+            for _, kind, url in denied:
+                if kind in kinds:
+                    return url
+        return urljoin(self.site_root(), "CourtCase.aspx/CaptchaImage")
+
+    def _wait_cloudflare(self, appear_s: float = 4) -> None:
+        """Si aparece la página de verificación de Cloudflare (se mira hasta `appear_s` segundos:
+        puede llegar después del "load"), espera a que pase sola; si no pasa, se la pide a la persona
+        como un CAPTCHA más (el live view o la ventana local)."""
+        page = self.page
+        waited = 0.0
+        while not self._evaluate_or(CLOUDFLARE_PAGE_JS, False):
+            if waited >= appear_s:
+                return
+            page.wait_for_timeout(1000)
+            waited += 1
+        log.info("Cloudflare está verificando el navegador; espero hasta %d s a que pase sola", CLOUDFLARE_SELF_PASS_S)
+        try:
+            page.wait_for_function(CLOUDFLARE_PASSED_JS, timeout=CLOUDFLARE_SELF_PASS_S * 1000, polling=1000)
+            log.info("Verificación de Cloudflare superada sola")
+        except (PlaywrightTimeout, PlaywrightError):
+            if self._evaluate_or(CLOUDFLARE_PAGE_JS, True):
+                # Escambia (10/11/2026, Chrome local con perfil limpio): la verificación se queda en el
+                # círculo de carga, sin casilla. Se le da a la persona un rato corto por si aparece una
+                # casilla; si no, es un bloqueo, no algo que la persona pueda resolver.
+                log.info("La verificación de Cloudflare no pasó sola; se pide a la persona (hasta %d s)",
+                         CLOUDFLARE_PERSON_S)
+                try:
+                    self.captcha.solve(page, timeout_s=CLOUDFLARE_PERSON_S, kind="cloudflare")
+                except CaptchaTimeout:
+                    raise CloudflareBlocked("the security check never finished") from None
+        try:
+            page.wait_for_load_state("load", timeout=20_000)
+        except PlaywrightTimeout:
+            pass
+
+    def _evaluate_or(self, js: str, default):
+        """page.evaluate, o `default` si la página está navegando (Cloudflare recarga sola al pasar)."""
+        try:
+            return self.page.evaluate(js)
+        except PlaywrightError:
+            return default
 
     def _wait_scripts(self) -> None:
         """Espera a que search.js termine de preparar el formulario. Al cargar, marca la opción por

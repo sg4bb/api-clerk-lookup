@@ -525,6 +525,21 @@
     "expected_case": "25001236CFAXMX"
   },
   {
+    "id": "rodriguez_michael",
+    "notes": "Escambia. Homicidio en Sam's Lounge (Pensacola, 21/07/2023), Sheriff de Escambia. Dos ARREST REPORT: el del 24/07/2023 (el del hecho) y el del 27/10/2023 (fianza revocada). Reporte ECSO23013609. La nota (weartv) es de la condena.",
+    "first_name": "Michael",
+    "middle_name": "Andrew",
+    "last_name": "Rodriguez",
+    "county": "escambia",
+    "state": "FL",
+    "incident_date": "2023-07-21",
+    "arrest_date": "2023-07-22",
+    "age": null,
+    "agency": "Escambia County Sheriff's Office",
+    "charges": ["second-degree murder"],
+    "expected_case": "2023 CF 003056 A"
+  },
+  {
     "id": "plantilla",
     "skip": true,
     "notes": "Copia este bloque para un caso nuevo y quita 'skip'. Solo first_name, last_name y county son obligatorios; lo que no sepas déjalo en null.",

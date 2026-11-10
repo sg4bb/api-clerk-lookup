@@ -579,9 +579,11 @@ class ClayTest(unittest.TestCase):
     def test_captcha_before_search_only_in_clay(self):
         from counties.florida import COUNTIES
         self.assertTrue(self.county.captcha_before_search)
-        self.assertEqual(sorted(k for k, c in COUNTIES.items() if c.captcha_before_search), ["clay", "martin", "st_lucie"])
-        self.assertEqual(sorted(k for k, c in COUNTIES.items() if c.captcha == "text"), ["martin", "st_lucie"])
-        self.assertEqual([k for k, c in COUNTIES.items() if c.captcha_every_search], ["st_lucie"])
+        self.assertEqual(sorted(k for k, c in COUNTIES.items() if c.captcha_before_search),
+                         ["clay", "escambia", "martin", "st_lucie"])
+        self.assertEqual(sorted(k for k, c in COUNTIES.items() if c.captcha == "text"), ["escambia", "martin", "st_lucie"])
+        self.assertEqual(sorted(k for k, c in COUNTIES.items() if c.captcha_every_search), ["escambia", "st_lucie"])
+        self.assertEqual([k for k, c in COUNTIES.items() if c.cloudflare_gate], ["escambia"])
 
     def test_agency_and_places(self):
         from core.matcher import normalize_agency
