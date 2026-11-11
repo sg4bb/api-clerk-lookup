@@ -40,6 +40,7 @@ class BrowserSession:
     page: Page
     provider: str = "local"
     live_view_url: Optional[str] = None   # solo en navegadores remotos
+    session_id: Optional[str] = None      # Browserbase: para liberarla desde fuera si algo se cuelga
 
     @property
     def remote(self) -> bool:

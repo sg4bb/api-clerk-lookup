@@ -70,7 +70,7 @@ def open_browserbase() -> Iterator[BrowserSession]:
                 page = context.pages[0] if context.pages else context.new_page()
                 page.set_default_timeout(30_000)
                 try:
-                    yield BrowserSession(page, provider="browserbase", live_view_url=live_url)
+                    yield BrowserSession(page, provider="browserbase", live_view_url=live_url, session_id=session_id)
                 finally:
                     try:
                         browser.close()
@@ -78,11 +78,22 @@ def open_browserbase() -> Iterator[BrowserSession]:
                         pass
         finally:
             # Liberar la sesión para que deje de consumir tiempo del plan.
-            release = {"status": "REQUEST_RELEASE"}
-            if project_id:
-                release["projectId"] = project_id
-            try:
-                api.post(f"/sessions/{session_id}", json=release)
-                log.info("Sesión remota liberada")
-            except Exception as exc:
-                log.warning("No pude liberar la sesión %s (se cerrará sola): %s", session_id, exc)
+            release_session(session_id, api)
+
+
+def release_session(session_id: str, api: httpx.Client | None = None) -> None:
+    """Pide a Browserbase cerrar la sesión. También sirve desde otro hilo: si la lectura de una nota
+    se cuelga (wkrg, 10/11/2026), cerrar la sesión corta la conexión y el hilo colgado termina."""
+    project_id = os.getenv("BROWSERBASE_PROJECT_ID", "").strip()
+    release = {"status": "REQUEST_RELEASE"}
+    if project_id:
+        release["projectId"] = project_id
+    try:
+        if api is None:
+            with _client() as own:
+                own.post(f"/sessions/{session_id}", json=release)
+        else:
+            api.post(f"/sessions/{session_id}", json=release)
+        log.info("Sesión remota liberada")
+    except Exception as exc:
+        log.warning("No pude liberar la sesión %s (se cerrará sola): %s", session_id, exc)

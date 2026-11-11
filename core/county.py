@@ -39,6 +39,13 @@ class CountyConfig:
     # verificación (si no pasa sola, la marca la persona) y se recarga sin caché hasta que la
     # página carga completa. Nunca se salta: solo se espera y se recarga.
     cloudflare_gate: bool = False
+    # Si Cloudflare bloquea el portal, otra fuente pública de donde sacar el arresto y su número de
+    # reporte (sin el documento): "escambia_jail" (registro de la cárcel de Escambia, 10/11/2026).
+    blocked_fallback: str | None = None
+    # Tiempo máximo por documento descargado en el navegador remoto (todos los condados). Antes se
+    # esperaba lo que tardara el portal: Escambia dejó colgada una descarga y con ella la búsqueda
+    # entera (Rodriguez, 10/11/2026; el PDF bueno tardó 2 min 15 s). En local, Playwright ya corta a 30 s.
+    download_timeout_s: int = 240
     captcha_timeout_s: int = 600     # CAPTCHA_TIMEOUT_S en .env lo cambia
     throttle_s: float = 2.0           # pausa entre requests al portal
     # Ventana de búsqueda alrededor de la fecha del incidente/arresto.

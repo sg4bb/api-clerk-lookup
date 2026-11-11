@@ -21,10 +21,15 @@ from .models import CaseCandidate, CaseDetails, DocketEntry, LookupQuery
 log = logging.getLogger(__name__)
 
 
+# timeoutMs: se corta la petición a ese tiempo (download_timeout_s del condado). Sin eso, un portal
+# que deja colgada la descarga deja colgada la búsqueda entera (Escambia, 10/11/2026).
 _FETCH_JS = """
-async ({url, referrer}) => {
+async ({url, referrer, timeoutMs}) => {
+  const ctl = timeoutMs ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
   try {
     const options = {credentials: 'include'};
+    if (ctl) options.signal = ctl.signal;
     if (referrer && new URL(referrer).origin === location.origin) options.referrer = referrer;
     const r = await fetch(url, options);
     const bytes = new Uint8Array(await r.arrayBuffer());
@@ -34,7 +39,9 @@ async ({url, referrer}) => {
     }
     return {status: r.status, type: r.headers.get('content-type') || '', b64: btoa(bin)};
   } catch (e) {
-    return {error: String(e)};
+    return {error: e && e.name === 'AbortError' ? 'no answer in ' + Math.round(timeoutMs / 1000) + ' s' : String(e)};
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 """
@@ -42,6 +49,17 @@ async ({url, referrer}) => {
 
 class SearchError(Exception):
     """El portal rechazó la búsqueda (CAPTCHA inválido, validación, etc.)."""
+
+
+class PortalBlocked(SearchError):
+    """El portal bloquea la búsqueda automática, pero otra fuente pública dio lo que sirve para pedir
+    el video (Escambia: el registro de la cárcel). Termina como "no_document" con esos números, no
+    como error. El mensaje ya está escrito para la persona."""
+
+    def __init__(self, message: str, case_number: str | None = None, agency_case_number: str | None = None):
+        super().__init__(message)
+        self.case_number = case_number
+        self.agency_case_number = agency_case_number
 
 
 class DownloadError(Exception):
@@ -69,7 +87,8 @@ class ClerkAdapter(ABC):
         if not self.remote:
             response = page.request.get(url, headers={"Referer": referer} if referer else None)
             return response.status, response.headers.get("content-type", ""), response.body()
-        result = page.evaluate(_FETCH_JS, {"url": url, "referrer": referer})
+        timeout_s = getattr(self.county, "download_timeout_s", None) or 0
+        result = page.evaluate(_FETCH_JS, {"url": url, "referrer": referer, "timeoutMs": timeout_s * 1000})
         if result.get("error"):
             raise DownloadError(f"El navegador remoto no pudo descargar {url.split('?')[0]}: {result['error']}")
         return result["status"], result["type"], base64.b64decode(result["b64"])

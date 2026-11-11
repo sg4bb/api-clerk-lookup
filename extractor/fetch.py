@@ -208,15 +208,62 @@ def facebook_filler_date(url: str, published: Optional[date], text: str) -> bool
     return any(published.year < int(y) <= this_year for y in _YEAR_RE.findall(text))
 
 
+# Lectura en el navegador remoto: como mucho un minuto en total (crear la sesión incluido) y sin
+# imágenes, videos ni fuentes, que para el texto no hacen falta. wkrg (10/11/2026): la página
+# cargaba un video en streaming y anuncios sin fin y la lectura se quedó pegada minutos.
+REMOTE_READ_LIMIT_S = 60
+# Patrones de Network.setBlockedURLs (los bloquea el propio navegador, sin ida y vuelta al worker).
+_HEAVY = ("jpg", "jpeg", "png", "gif", "webp", "avif", "svg", "ico", "mp4", "webm", "m3u8", "ts", "m4s",
+          "vtt", "mp3", "aac", "woff", "woff2", "ttf", "otf")
+BLOCKED_URL_PATTERNS = [p for ext in _HEAVY for p in (f"*.{ext}", f"*.{ext}?*")]
+
+
 def _fetch_with_remote_browser(url: str) -> Optional[str]:
-    """Abre la nota en el navegador remoto (sale por una IP de EE. UU.)."""
+    """Abre la nota en el navegador remoto (sale por una IP de EE. UU.), con tiempo máximo.
+
+    La lectura corre en un hilo aparte: si no termina en REMOTE_READ_LIMIT_S, se cierra la sesión
+    de Browserbase (eso corta la conexión y el hilo termina solo) y la nota queda sin leer."""
+    import threading
+
+    log.info("Abro el artículo en el navegador remoto (máximo %d s, sin imágenes ni videos)", REMOTE_READ_LIMIT_S)
+    state: dict = {}
+
+    def read() -> None:
+        try:
+            state["html"] = _read_remote(url, state)
+        except Exception as exc:
+            state["error"] = exc
+
+    worker = threading.Thread(target=read, name="lectura-remota", daemon=True)
+    worker.start()
+    worker.join(REMOTE_READ_LIMIT_S)
+    if worker.is_alive():
+        log.warning("La nota no terminó de leerse en %d s en el navegador remoto; la dejo", REMOTE_READ_LIMIT_S)
+        if state.get("session_id"):
+            from core.remote import release_session
+            release_session(state["session_id"])
+        worker.join(5)              # con la sesión cerrada, el hilo termina enseguida
+        return None
+    if "error" in state:
+        raise state["error"]
+    return state.get("html")
+
+
+def _read_remote(url: str, state: dict) -> Optional[str]:
     from core.browser import open_browser
 
-    log.info("Abro el artículo en el navegador remoto")
     with open_browser() as session:
-        _goto(session.page, url)
-        session.page.wait_for_timeout(2_500)
-        return session.page.content()
+        state["session_id"] = session.session_id
+        page = session.page
+        try:
+            cdp = page.context.new_cdp_session(page)
+            cdp.send("Network.enable")
+            cdp.send("Network.setBlockedURLs", {"urls": BLOCKED_URL_PATTERNS})
+        except Exception as exc:
+            log.info("No pude bloquear imágenes y videos (sigo igual): %s", exc)
+        _goto(page, url)
+        page.wait_for_timeout(2_500)
+        return page.content()
 
 
 def _parse(html: Optional[str], url: str, via: str) -> Optional[Article]:

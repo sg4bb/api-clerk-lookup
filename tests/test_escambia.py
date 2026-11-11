@@ -290,6 +290,330 @@ class CloudflareGateTest(unittest.TestCase):
         page.set_viewport_size.assert_not_called()
 
 
+def jail_record(name, booking, booked, age, charges, released=""):
+    rows = "".join(
+        f"<tr><td id='expander{i}' onclick='ToggleExpand(this.id)'>[+]</td>"
+        f"<td aria-label='Statute  {st}'>{st}</td><td aria-label='Case Number {ref}'>{ref}</td>"
+        f"<td aria-label='Charge  {ch}'>{ch}</td><td>F</td><td>F</td><td>$0.00</td></tr>"
+        f"<tr><td colspan='8' id='expanded{i}' style='display:none'>{more}</td></tr>"
+        for i, (st, ref, ch, more) in enumerate(charges))
+    released_cells = f"<td class='InmateInfoGridTd'>Released:</td><td class='InmateInfoGridTd'>{released}</td>" if released else ""
+    return (f"<tr class='InmateRecordRow'><td><img></td><td nowrap valign='top'><table><thead><tr>"
+            f"<td class='SearchHeader' colspan='4'>{name} &nbsp; (W/ MALE )</td></tr></thead><tbody>"
+            f"<tr><td class='InmateInfoGridTd'>Status:</td><td class='InmateInfoGridTd'>Released</td></tr>"
+            f"<tr><td class='InmateInfoGridTd'>Booking No:</td><td class='InmateInfoGridTd'>{booking}</td>"
+            f"<td class='InmateInfoGridTd'>MniNo:</td><td class='InmateInfoGridTd'>ECSO07MNI021509</td></tr>"
+            f"<tr><td class='InmateInfoGridTd'>Booking Date:</td><td class='InmateInfoGridTd'>{booked}</td>{released_cells}</tr>"
+            f"<tr><td class='InmateInfoGridTd'>Age On Booking Date:</td><td class='InmateInfoGridTd'>{age}</td></tr>"
+            f"</tbody></table></td></tr><tr class='InmateRecordSeperater'></tr>"
+            f"<tr><td colspan='2' valign='top'><table class='JailViewCharges' aria-label='Charges for the Subject'>"
+            f"<thead><tr><td class='SearchHeader' colspan='6'>CHARGES</td></tr></thead><tbody>"
+            f"<tr class='SearchHeader'><td></td><td>STATUTE</td><td>COURT CASE NUMBER</td><td>CHARGE</td></tr>"
+            f"{rows}</tbody></table></td></tr>")
+
+
+# Como el registro de la cárcel (10/11/2026, PDF de la búsqueda de Rodriguez): cinco bookings.
+RODRIGUEZ_JAIL_HTML = (
+    "<div id='JailInfo'><table class='JailView'><tbody>"
+    + jail_record("RODRIGUEZ, MICHAEL ANDREW", "ECSO11JBN002003", "02/11/2011 12:39 PM", 26,
+                  [("784.03.1a1", "PPD11OFF000956 (PENSACOLA POLICE DEPARTMENT )", "BATTERY", "TOUCH OR STRIKE")],
+                  "02/12/2011 07:42 PM")
+    + jail_record("RODRIGUEZ, MICHAEL ANDREW", "ECC23JBN007745", "07/22/2023 07:24 AM", 39,
+                  [("782.04.2", "ECSO23OFF013609 (ESCAMBIA COUNTY SHERIFF'S OFFICE)", "HOMICIDE", "")],
+                  "07/24/2023 09:39 PM")
+    + jail_record("RODRIGUEZ, MICHAEL ANDREW", "ECC23JBN011847", "10/26/2023 10:20 AM", 40,
+                  [("0.00a", "2023 CF 3056 (ESCAMBIA COUNTY SHERIFF'S OFFICE)", "GENERIC STATUTE CODE", "")],
+                  "03/19/2025 05:00 AM")
+    + jail_record("RODRIGUEZ, MICHAEL JOSE", "ECC24JBN000001", "07/23/2023 01:00 AM", 22,
+                  [("784.03.1a1", "ECSO23OFF013700 (ESCAMBIA COUNTY SHERIFF'S OFFICE)", "BATTERY", "")])
+    + "</tbody></table></div>")
+
+
+def jail_bookings():
+    from playwright.sync_api import sync_playwright
+    from adapters.escambia_jail import _READ_JS, bookings_from_rows
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.set_content(RODRIGUEZ_JAIL_HTML)
+        rows = page.evaluate(_READ_JS)
+        browser.close()
+    return bookings_from_rows(rows)
+
+
+RODRIGUEZ_QUERY = LookupQuery(first_name="Michael", last_name="Rodriguez", county="escambia", age=40,
+                              incident_date=date(2023, 7, 21), published_date=date(2025, 3, 6),
+                              age_as_of=date(2025, 3, 6))
+
+
+class JailRecordTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.bookings = jail_bookings()
+
+    def test_read(self):
+        b = self.bookings[1]
+        self.assertEqual((b.name, b.booking_number, b.age), ("RODRIGUEZ, MICHAEL ANDREW", "ECC23JBN007745", 39))
+        self.assertEqual(b.booked.strftime("%m/%d/%Y %H:%M"), "07/22/2023 07:24")
+        self.assertEqual(b.released.strftime("%m/%d/%Y"), "07/24/2023")
+        self.assertEqual((b.report.number, b.report.agency), ("ECSO23OFF013609", "ESCAMBIA COUNTY SHERIFF'S OFFICE"))
+        self.assertIsNone(b.court_case)
+        self.assertEqual(self.bookings[0].charges[0].charge, "BATTERY TOUCH OR STRIKE")
+        self.assertEqual(self.bookings[0].report.agency, "PENSACOLA POLICE DEPARTMENT")
+
+    def test_court_case_and_warrants_are_not_reports(self):
+        from adapters.escambia_jail import JailCharge
+        self.assertEqual(self.bookings[2].court_case, "2023 CF 3056")
+        self.assertIsNone(self.bookings[2].report)
+        self.assertFalse(JailCharge("21WAR010641", "ESCAMBIA COUNTY SHERIFF'S OFFICE", "x").is_report)
+        self.assertFalse(JailCharge("PNS2711000020", "OTHER AGENCY", "x").is_report)
+        self.assertTrue(JailCharge("KRO2711001263", "FLORIDA HIGHWAY PATROL", "x").is_report)
+
+    def test_the_booking_of_the_incident(self):
+        """El del 22/07/2023, no el de la fianza revocada ni el de otro Michael Rodriguez (22 años)."""
+        from adapters.escambia_jail import pick_booking
+        self.assertEqual(pick_booking(self.bookings, RODRIGUEZ_QUERY, 60).booking_number, "ECC23JBN007745")
+
+    def test_age_and_middle_name_tell_people_apart(self):
+        from dataclasses import replace
+        from adapters.escambia_jail import pick_booking
+        older = replace(RODRIGUEZ_QUERY, age=60)
+        self.assertIsNone(pick_booking(self.bookings, older, 60))
+        jose = replace(RODRIGUEZ_QUERY, middle_name="Jose", age=None)
+        self.assertEqual(pick_booking(self.bookings, jose, 60).booking_number, "ECC24JBN000001")
+
+    def test_later_age_on_the_booking(self):
+        """Ketchup (10/11/2026): booking del 23/08/2023 con "27", la edad que tenía en 2025 (la nota)."""
+        from adapters.escambia_jail import JailBooking, pick_booking
+        from datetime import datetime
+        booking = JailBooking("KETCHUP, CHRISTIAN MICHAEL", "ECC23JBN009099", datetime(2023, 8, 23, 11, 12), age=27)
+        query = LookupQuery(first_name="Christian", last_name="Ketchup", county="escambia", age=27,
+                            incident_date=date(2023, 8, 23), age_as_of=date(2025, 9, 18))
+        self.assertEqual(pick_booking([booking], query, 60), booking)
+        booking.age = 22                      # más joven de lo que podía tener ese día
+        self.assertIsNone(pick_booking([booking], query, 60))
+        booking.age = 35                      # mayor de lo que tiene hoy
+        self.assertIsNone(pick_booking([booking], query, 60))
+
+    def test_same_charges_near_the_date(self):
+        """Blackburn (10/11/2026): la nota fecha el crimen el 29/10/2023; fue en 2022 y su booking por
+        homicidio es del 01/11/2022. Fuera de la ventana, se toma por los cargos y se avisa."""
+        from datetime import datetime
+        from adapters.benchmark_web import blocked_with_booking
+        from adapters.escambia_jail import JailBooking, JailCharge, pick_booking
+        theft = JailBooking("BLACKBURN, ALYSSA MARIE", "ECC22JBN006206", datetime(2022, 6, 27, 17, 36), age=22,
+                            charges=[JailCharge("2022 MM 2617", "OTHER AGENCY", "LARC PETIT THEFT 1ST DEGREE")])
+        murder = JailBooking("BLACKBURN, ALYSSA MARIE", "ECC22JBN010917", datetime(2022, 11, 1, 16, 40), age=26,
+                             charges=[JailCharge("220784CT2", "ESCAMBIA COUNTY SHERIFF'S OFFICE",
+                                                 "HOMICIDE MURDER FIRST DEGREE PREMEDITATED"),
+                                      JailCharge("2022 CF 4540", "ESCAMBIA COUNTY SHERIFF'S OFFICE", "GENERIC STATUTE CODE")])
+        query = LookupQuery(first_name="Alyssa", last_name="Blackburn", middle_name="Marie", county="escambia",
+                            incident_date=date(2023, 10, 29), published_date=date(2025, 10, 10),
+                            charges=["principal to second degree murder", "first degree premeditated murder"])
+        chosen = pick_booking([theft, murder], query, 60)
+        self.assertEqual(chosen.booking_number, "ECC22JBN010917")
+        self.assertEqual(chosen.story_date, date(2023, 10, 29))
+        self.assertEqual(chosen.court_case, "2022 CF 4540")
+        message = blocked_with_booking("Escambia County", chosen, "at https://x")
+        self.assertIn("Note: this booking is 362 days before the date the story gives (10/29/2023); it was picked "
+                      "because the charges match, so check that it's the same arrest.", message)
+
+    def test_arrest_months_later(self):
+        """Sumler (11/11/2026): triple homicidio del 28/04/2024, arrestado el 12/08/2024 (106 días)."""
+        from datetime import datetime
+        from adapters.benchmark_web import blocked_with_booking
+        from adapters.escambia_jail import JailBooking, JailCharge, pick_booking
+        booking = JailBooking("SUMLER, TORRANCE LAMAR", "ECC24JBN009250", datetime(2024, 8, 12, 19, 32), age=24,
+                              charges=[JailCharge("2024 CF 003308", "ESCAMBIA COUNTY SHERIFF'S OFFICE",
+                                                  "HOMICIDE MURDER FIRST DEGREE PREMEDITATED")])
+        query = LookupQuery(first_name="Torrance", last_name="Sumler", county="escambia", age=24,
+                            incident_date=date(2024, 4, 28), published_date=date(2026, 2, 6),
+                            age_as_of=date(2026, 2, 6), charges=["three counts of first-degree premeditated murder"])
+        chosen = pick_booking([booking], query, 60)
+        self.assertEqual(chosen.court_case, "2024 CF 003308")
+        self.assertIn("this booking is 106 days after the date the story gives (04/28/2024)",
+                      blocked_with_booking("Escambia County", chosen, "at https://x"))
+
+    def test_tolerance_needs_the_same_kind_of_charges_and_a_near_date(self):
+        from dataclasses import replace
+        from datetime import datetime
+        from adapters.escambia_jail import JailBooking, JailCharge, pick_booking
+        theft = JailBooking("BLACKBURN, ALYSSA MARIE", "ECC22JBN006206", datetime(2022, 6, 27), age=22,
+                            charges=[JailCharge("2022 MM 2617", "OTHER AGENCY", "LARC PETIT THEFT 1ST DEGREE")])
+        query = LookupQuery(first_name="Alyssa", last_name="Blackburn", county="escambia",
+                            incident_date=date(2023, 10, 29), published_date=date(2025, 10, 10),
+                            charges=["first degree premeditated murder"])
+        self.assertIsNone(pick_booking([theft], query, 60))                          # otros cargos
+        old = replace(theft, charges=[JailCharge("x", "ESCAMBIA COUNTY SHERIFF'S OFFICE", "HOMICIDE")],
+                      booked=datetime(2019, 1, 1))
+        self.assertIsNone(pick_booking([old], query, 60))                            # demasiado lejos
+        after = replace(old, booked=datetime(2025, 12, 1))
+        self.assertIsNone(pick_booking([after], query, 60))                          # después de la nota
+        self.assertIsNone(pick_booking([replace(old, booked=datetime(2023, 3, 1))], replace(query, charges=[]), 60))
+
+    def test_nothing_near_the_date(self):
+        from dataclasses import replace
+        from adapters.escambia_jail import pick_booking
+        self.assertIsNone(pick_booking(self.bookings, replace(RODRIGUEZ_QUERY, incident_date=date(2019, 1, 1)), 60))
+
+    def test_message(self):
+        from adapters.benchmark_web import blocked_with_booking
+        message = blocked_with_booking("Escambia County", self.bookings[1], 'at https://x with the name "Rodriguez, Michael"')
+        self.assertIn("booked 07/22/2023 07:24 AM, booking ECC23JBN007745, "
+                      "Escambia County Sheriff's Office report ECSO23OFF013609, charges: homicide.", message)
+        self.assertIn("https://inmatelookup.myescambia.com/smartwebclient/jail.aspx", message)
+        self.assertIn("or try again later.", message)
+        self.assertNotIn("\n", message)
+
+
+class BlockedFallbackTest(unittest.TestCase):
+    def blocked_search(self, key, booking):
+        from adapters.benchmark_web import CloudflareBlocked
+        adapter = BenchmarkWebAdapter(page=mock.MagicMock(), county=get_county(key), captcha=mock.MagicMock())
+        adapter._search = mock.MagicMock(side_effect=CloudflareBlocked("x"))
+        with mock.patch("adapters.escambia_jail.jail_fallback", return_value=booking) as fallback:
+            try:
+                adapter.search(RODRIGUEZ_QUERY, date(2023, 7, 14), date(2025, 3, 20))
+            except Exception as exc:
+                return exc, fallback
+        self.fail("no exception")
+
+    def test_jail_gives_the_numbers(self):
+        from core.adapter import PortalBlocked
+        exc, fallback = self.blocked_search("escambia", jail_bookings()[1])
+        self.assertIsInstance(exc, PortalBlocked)
+        self.assertEqual((exc.agency_case_number, exc.case_number), ("ECSO23OFF013609", None))
+        self.assertEqual(fallback.call_args.args[2:], (date(2023, 7, 14), date(2025, 3, 20), 60))
+
+    def test_nothing_in_the_jail_keeps_the_blocked_message(self):
+        from core.adapter import PortalBlocked, SearchError
+        exc, _ = self.blocked_search("escambia", None)
+        self.assertIsInstance(exc, SearchError)
+        self.assertNotIsInstance(exc, PortalBlocked)
+        self.assertIn("is blocking automated searches right now", str(exc))
+
+    def test_other_counties_have_no_fallback(self):
+        self.assertEqual([k for k in ("st_lucie", "martin", "clay", "bay") if get_county(k).blocked_fallback], [])
+        exc, fallback = self.blocked_search("bay", jail_bookings()[1])
+        fallback.assert_not_called()
+
+    def test_lookup_result(self):
+        """run_lookup: PortalBlocked termina como no_document con los números, no como error."""
+        import tempfile
+        from contextlib import contextmanager
+        from pathlib import Path
+        from types import SimpleNamespace
+        from core import lookup
+        from core.adapter import PortalBlocked
+
+        class Fake(BenchmarkWebAdapter):
+            def search(self, query, date_from, date_to):
+                raise PortalBlocked("blocked, report ECSO23OFF013609", case_number="2023 CF 3056",
+                                    agency_case_number="ECSO23OFF013609")
+
+        @contextmanager
+        def fake_browser(headless=False):
+            yield SimpleNamespace(page=None, remote=False, live_view_url=None)
+
+        with mock.patch.object(lookup, "open_browser", fake_browser), \
+             mock.patch.object(lookup, "get_adapter", return_value=Fake), tempfile.TemporaryDirectory() as tmp:
+            result = lookup.run_lookup(RODRIGUEZ_QUERY, Path(tmp), captcha=object())
+        self.assertEqual((result.status, result.case_number, result.agency_case_number),
+                         ("no_document", "2023 CF 3056", "ECSO23OFF013609"))
+        self.assertEqual(result.message, "blocked, report ECSO23OFF013609")
+
+
+JAIL_FORM = """<html><body><form id='form1' method='post' action='./jail.aspx'>
+<input id='txbLastName' name='txbLastName'><input id='txbFirstName' name='txbFirstName'>
+<input id='tbBeginDate' name='tbBeginDate'><input id='tbEndDate' name='tbEndDate'>
+<select id='TypeSearch' name='TypeSearch'><option value='0'>c</option><option value='2'>b</option></select>
+<select id='SearchSortOption' name='SearchSortOption'><option value='0'>n</option><option value='1'>d</option></select>
+<select id='SearchOrderOption' name='SearchOrderOption'><option value='0'>a</option></select>
+<input type='submit' id='btnSumit' name='btnSumit' value='Submit'><img src='/photo.jpg'></form>%s</body></html>"""
+
+
+class JailSearchFlowTest(unittest.TestCase):
+    """El formulario real (probe_jail, 10/11/2026) contra una copia local: postback y lectura."""
+
+    def run_search(self, results_html, begin=date(2023, 7, 14)):
+        from playwright.sync_api import sync_playwright
+        from adapters.escambia_jail import jail_fallback
+        posts, images = [], []
+
+        def handler(route):
+            if route.request.resource_type == "image":
+                images.append(route.request.url)
+                return route.fulfill(body=b"", content_type="image/jpeg")
+            if route.request.method == "POST":
+                posts.append(route.request.post_data)
+                return route.fulfill(body=JAIL_FORM % results_html, content_type="text/html")
+            return route.fulfill(body=JAIL_FORM % "<div id='JailInfo'><table><tbody></tbody></table></div>",
+                                 content_type="text/html")
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            context = browser.new_context()
+            context.route("https://inmatelookup.myescambia.com/**", handler)
+            booking = jail_fallback(context, RODRIGUEZ_QUERY, begin, date(2025, 3, 20), 60)
+            browser.close()
+        return booking, posts, images
+
+    def test_postback_and_pick(self):
+        booking, posts, images = self.run_search(RODRIGUEZ_JAIL_HTML)
+        self.assertEqual(booking.booking_number, "ECC23JBN007745")
+        self.assertIn("TypeSearch=2", posts[0])
+        self.assertIn("tbBeginDate=07%2F14%2F2023", posts[0])
+        self.assertEqual(images, [])                      # las fotos de los presos no se piden
+
+    def test_without_dates_when_nothing_comes_back(self):
+        empty = "<div id='JailInfo'><table><tbody></tbody></table></div>"
+        booking, posts, _ = self.run_search(empty)
+        self.assertIsNone(booking)
+        self.assertEqual(len(posts), 2)
+        self.assertIn("tbBeginDate=&", posts[1])
+
+
+class DownloadTimeoutTest(unittest.TestCase):
+    """Todos los condados cortan una descarga a los 240 s (Escambia dejó una colgada, 10/11/2026)."""
+
+    def test_every_county(self):
+        from counties.florida import COUNTIES
+        self.assertEqual({c.download_timeout_s for c in COUNTIES.values()}, {240})
+
+    def test_benchmark_download(self):
+        from core.models import DocketEntry
+        adapter = BenchmarkWebAdapter(page=mock.MagicMock(), county=get_county("bay"), captcha=None)
+        adapter.page.evaluate.return_value = {"error": "no answer in 240 s"}
+        entry = DocketEntry(date(2023, 10, 30), "CAPIAS RETURNED SERVED", "1|d", 60)
+        with self.assertRaises(Exception):
+            adapter.download(CaseDetails(candidate(), [], [entry]), entry, None)
+        self.assertEqual(adapter.page.evaluate.call_args.args[1]["timeoutMs"], 240_000)
+
+    def test_remote_fetch_civitek_and_orange(self):
+        from core.adapter import DownloadError
+        from adapters.civitek_ocrs import CivitekOcrsAdapter
+        adapter = CivitekOcrsAdapter(page=None, county=get_county("marion"), captcha=None)
+        adapter.remote = True
+        page = mock.MagicMock()
+        page.evaluate.return_value = {"error": "no answer in 240 s"}
+        with self.assertRaises(DownloadError):
+            adapter.fetch(page, "https://x/doc.pdf")
+        self.assertEqual(page.evaluate.call_args.args[1]["timeoutMs"], 240_000)
+
+    def test_abort_in_a_real_page(self):
+        from playwright.sync_api import sync_playwright
+        from core.adapter import _FETCH_JS
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.route("http://t.test/", lambda r: r.fulfill(body="<html></html>", content_type="text/html"))
+            page.route("http://t.test/slow.pdf", lambda r: page.wait_for_timeout(3000) or r.fulfill(body=b"x"))
+            page.goto("http://t.test/")
+            result = page.evaluate(_FETCH_JS, {"url": "http://t.test/slow.pdf", "referrer": None, "timeoutMs": 500})
+            browser.close()
+        self.assertEqual(result, {"error": "no answer in 1 s"})
+
+
 class EscambiaSearchTest(unittest.TestCase):
     def test_sum_on_every_search(self):
         calls = []

@@ -28,7 +28,7 @@ from urllib.parse import quote, unquote, urljoin, urlparse
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
-from core.adapter import ClerkAdapter, DocumentUnavailable, DownloadError, SearchError
+from core.adapter import ClerkAdapter, DocumentUnavailable, DownloadError, PortalBlocked, SearchError
 from core.captcha import CLOUDFLARE_PAGE_JS, CLOUDFLARE_PASSED_JS, CaptchaTimeout
 from core.models import CaseCandidate, CaseDetails, Charge, DocketEntry, LookupQuery
 from core.documents import is_pdf
@@ -184,6 +184,37 @@ CLOUDFLARE_PERSON_S = 90
 CLOUDFLARE_GATE_PAUSES_S = (8, 3, 15)
 
 
+def _title(text: str) -> str:
+    """"ESCAMBIA COUNTY SHERIFF'S OFFICE" -> "Escambia County Sheriff's Office"."""
+    return " ".join(w.capitalize() for w in (text or "").split())
+
+
+def blocked_with_booking(county_name: str, booking, by_hand: str) -> str:
+    """El mensaje cuando el portal está bloqueado pero la cárcel dio el arresto (una sola línea)."""
+    from adapters.escambia_jail import JAIL_URL
+    report = booking.report
+    parts = [f"booked {booking.booked:%m/%d/%Y %I:%M %p}" if booking.booked else "booked",
+             f"booking {booking.booking_number}"]
+    if report:
+        parts.append(f"{_title(report.agency)} report {report.number}")
+    charges = list(dict.fromkeys(c.charge for c in booking.charges if c.charge))
+    if charges:
+        parts.append("charges: " + "; ".join(charges[:3]).lower())
+    if booking.court_case:
+        parts.append(f"court case {booking.court_case}")
+    need = (" That report number is what a footage request needs." if report else "")
+    if booking.story_date and booking.booked:
+        # Sumler (11/11/2026): no siempre es un error de la nota; a veces el arresto llegó meses después.
+        days = (booking.booked.date() - booking.story_date).days
+        when = f"{abs(days)} days {'after' if days >= 0 else 'before'}"
+        need += (f" Note: this booking is {when} the date the story gives ({booking.story_date:%m/%d/%Y}); it was "
+                 f"picked because the charges match, so check that it's the same arrest.")
+    return (f"{county_name}'s court portal is blocking automated searches right now, so the arrest report "
+            f"couldn't be downloaded. The county jail record ({JAIL_URL}) has the arrest: "
+            f"{booking.name}, {', '.join(parts)}.{need} For the arrest report itself, search the court portal "
+            f"by hand {by_hand}, or try again later.")
+
+
 class CloudflareBlocked(SearchError):
     """Cloudflare no deja cargar el portal al navegador de búsqueda (Escambia). search() lo cambia
     por un mensaje con lo necesario para buscar a mano."""
@@ -316,22 +347,29 @@ async (url) => {
 """
 
 # El documento: el portal arma el PDF y lo entrega por un guid.
+# Las dos peticiones se cortan a timeoutMs (download_timeout_s del condado): sin eso, una petición que
+# el portal deja colgada deja colgada la búsqueda entera (Escambia, Rodriguez, 10/11/2026).
 _PDF_JS = """
-async ({base, cid, digest}) => {
+async ({base, cid, digest, timeoutMs}) => {
+  const ctl = timeoutMs ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
+  const signal = ctl ? ctl.signal : undefined;
   try {
     const form = new URLSearchParams({cid: cid, digest: digest, time: new Date().toString(), redacted: 'False'});
     const g = await fetch(base + 'ImageAsync.aspx/GetPDFRequestGuid', {method: 'POST', credentials: 'include',
       headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest'},
-      body: form.toString()});
+      body: form.toString(), signal});
     const guid = (await g.text()).trim().replace(/^"|"$/g, '');
     if (!/^[0-9a-f-]{20,}$/i.test(guid)) return {status: g.status, type: 'guid', b64: btoa(unescape(encodeURIComponent(guid.slice(0, 3000))))};
-    const r = await fetch(base + 'ImageAsync.aspx/GetPDF?guid=' + encodeURIComponent(guid), {credentials: 'include'});
+    const r = await fetch(base + 'ImageAsync.aspx/GetPDF?guid=' + encodeURIComponent(guid), {credentials: 'include', signal});
     const bytes = new Uint8Array(await r.arrayBuffer());
     let bin = '';
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     return {status: r.status, type: r.headers.get('content-type') || '', b64: btoa(bin)};
   } catch (e) {
-    return {error: String(e)};
+    return {error: e && e.name === 'AbortError' ? 'no answer in ' + Math.round(timeoutMs / 1000) + ' s' : String(e)};
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 """
@@ -550,10 +588,25 @@ class BenchmarkWebAdapter(ClerkAdapter):
             log.warning("Cloudflare bloquea el portal: %s", exc)
             opened = (f", cases opened {dates['openedFrom']} to {dates['openedTo']}"
                       if dates["openedFrom"] and dates["openedTo"] else "")
+            by_hand = f"at {self.county.base_url} with the name \"{name}\"{opened}"
+            booking = self._blocked_fallback(query, date_from, date_to)
+            if booking:
+                raise PortalBlocked(blocked_with_booking(self.county.name, booking, by_hand),
+                                    case_number=booking.court_case,
+                                    agency_case_number=booking.report.number if booking.report else None) from None
             raise SearchError(
                 f"{self.county.name}'s court portal is blocking automated searches right now (its Cloudflare "
                 f"security check didn't let the search browser through). Try again later, or search it by hand "
-                f"at {self.county.base_url} with the name \"{name}\"{opened}.") from None
+                f"{by_hand}.") from None
+
+    def _blocked_fallback(self, query: LookupQuery, date_from: Optional[date], date_to: Optional[date]):
+        """Con el portal bloqueado, el arresto desde otra fuente pública (Escambia: la cárcel)."""
+        if self.county.blocked_fallback != "escambia_jail":
+            return None
+        from adapters.escambia_jail import jail_fallback
+        log.info("Busco el arresto en el registro de la cárcel de Escambia")
+        return jail_fallback(self.page.context, query, date_from, date_to, self.county.window_days_after,
+                             save_debug=self._save_debug)
 
     def _search(self, query: LookupQuery, name: str, dates: dict) -> list[CaseCandidate]:
         page = self.page
@@ -1064,7 +1117,9 @@ class BenchmarkWebAdapter(ClerkAdapter):
             raise DownloadError(f"'{entry.description}' has no document link")
         cid, digest = entry.doc_ref.split("|", 1)
         base = self.site_root()
-        result = self.page.evaluate(_PDF_JS, {"base": base, "cid": cid, "digest": digest})
+        timeout_s = self.county.download_timeout_s
+        result = self.page.evaluate(_PDF_JS, {"base": base, "cid": cid, "digest": digest,
+                                              "timeoutMs": (timeout_s or 0) * 1000})
         if result.get("error"):
             raise DownloadError(f"The court portal didn't hand over '{entry.description}': {result['error']}")
         body = base64.b64decode(result["b64"])

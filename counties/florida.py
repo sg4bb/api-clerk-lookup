@@ -600,6 +600,8 @@ ESCAMBIA = CountyConfig(
     captcha_every_search=True,
     documents_on_request=True,
     cloudflare_gate=True,
+    # Si Cloudflare bloquea el portal: el arresto y el número de reporte desde el registro de la cárcel.
+    blocked_fallback="escambia_jail",
     throttle_s=2.0,
 )
 

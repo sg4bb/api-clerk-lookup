@@ -16,7 +16,7 @@ from typing import Callable, Optional, Union
 from adapters import get_adapter
 from counties import get_county
 
-from .adapter import DocumentUnavailable, DownloadError, SearchError
+from .adapter import DocumentUnavailable, DownloadError, PortalBlocked, SearchError
 from .browser import open_browser
 from .captcha import CaptchaHandler, CaptchaTimeout, LiveViewCaptcha, ManualLocalCaptcha
 from .county import CountyConfig
@@ -118,6 +118,13 @@ def run_lookup(
             wide = _wide_search(adapter, attempts) if _wide_search_applies(attempts) else None
         except CaptchaTimeout as exc:
             return LookupResult("captcha_timeout", message=str(exc))
+        except PortalBlocked as exc:
+            # Escambia (10/11/2026): Cloudflare bloquea el portal de la corte; el registro de la cárcel
+            # dio el arresto con su número de reporte. Sin PDF, pero con lo que sirve para pedir el video.
+            log.info("Portal bloqueado; resultado con otra fuente: caso %s, reporte %s",
+                     exc.case_number, exc.agency_case_number)
+            return LookupResult("no_document", case_number=exc.case_number,
+                                agency_case_number=exc.agency_case_number, message=str(exc))
         except (SearchError, DownloadError) as exc:
             # Mensajes ya escritos para la persona (en inglés, se ven en la web).
             log.exception("Fallo en la consulta")
