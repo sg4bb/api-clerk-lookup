@@ -220,8 +220,8 @@ def jail_details(county, booking, name: str, date_from: Optional[date], date_to:
     from adapters.escambia_jail import JAIL_URL
     report = booking.report
     agency = report.agency if report else next(
-        (c.agency for c in booking.charges if c.is_court_case and c.agency.upper() not in ("OTHER AGENCY", "COURT TRANSFERS")),
-        "")
+        (c.agency for c in booking._ordered()
+         if c.is_court_case and c.agency.upper() not in ("OTHER AGENCY", "COURT TRANSFERS")), "")
     days = ((booking.booked.date() - booking.story_date).days
             if booking.story_date and booking.booked else None)
     return {
@@ -232,6 +232,7 @@ def jail_details(county, booking, name: str, date_from: Optional[date], date_to:
         "booked": booking.booked.isoformat(timespec="minutes") if booking.booked else None,
         "released": booking.released.isoformat(timespec="minutes") if booking.released else None,
         "court_case": booking.court_case,
+        "other_cases": booking.other_cases,      # otros cargos del mismo booking (Brown: el fraude)
         "report": report.number if report else None,
         "agency": _title(agency) or None,
         "charges": list(dict.fromkeys(c.charge for c in booking.charges if c.charge)),

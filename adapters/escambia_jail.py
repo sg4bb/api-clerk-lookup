@@ -113,14 +113,30 @@ class JailBooking:
     charges: list[JailCharge] = field(default_factory=list)
     # Elegido por los cargos y no por la fecha: la fecha que da la nota, para avisarlo en el mensaje.
     story_date: Optional[date] = None
+    # Tipos de cargo de la nota (core.charges.categorize): con varios casos o reportes en el mismo
+    # booking, se prefiere el del cargo de la nota. Lo pone pick_booking.
+    wanted: frozenset = frozenset()
+
+    def _ordered(self) -> list[JailCharge]:
+        """Los cargos con los de la nota primero (Brown, 11/11/2026: fraude en 2026 CF 3560 y el
+        homicidio en 2026 CF 3561, en el mismo booking)."""
+        if not self.wanted:
+            return list(self.charges)
+        return sorted(self.charges, key=lambda c: 0 if categorize([c.charge]) & self.wanted else 1)
 
     @property
     def report(self) -> Optional[JailCharge]:
-        return next((c for c in self.charges if c.is_report), None)
+        return next((c for c in self._ordered() if c.is_report), None)
 
     @property
     def court_case(self) -> Optional[str]:
-        return next((c.number for c in self.charges if c.is_court_case), None)
+        return next((c.number for c in self._ordered() if c.is_court_case), None)
+
+    @property
+    def other_cases(self) -> list[str]:
+        """Los demás números de caso del booking (de otros cargos)."""
+        main = self.court_case
+        return list(dict.fromkeys(c.number for c in self.charges if c.is_court_case and c.number != main))
 
 
 def _when(value: str) -> Optional[datetime]:
@@ -206,11 +222,16 @@ def pick_booking(bookings: list[JailBooking], query: LookupQuery, window_days_af
                  f"{b.booked:%m/%d/%Y}" if b.booked else "?", b.name, b.age, reason or "puede ser")
         if not reason:
             mine.append(b)
+    wanted = frozenset(categorize(query.charges or []))
     if reference is None:
-        return mine[0] if len(mine) == 1 else None
-    if mine:
-        return min(mine, key=lambda b: b.booked)
-    return _near_with_same_charges(person, query, reference)
+        chosen = mine[0] if len(mine) == 1 else None
+    elif mine:
+        chosen = min(mine, key=lambda b: b.booked)
+    else:
+        chosen = _near_with_same_charges(person, query, reference)
+    if chosen:
+        chosen.wanted = wanted
+    return chosen
 
 
 def _near_with_same_charges(person: list[JailBooking], query: LookupQuery, reference: date) -> Optional[JailBooking]:

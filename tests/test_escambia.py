@@ -346,6 +346,11 @@ RODRIGUEZ_QUERY = LookupQuery(first_name="Michael", last_name="Rodriguez", count
                               age_as_of=date(2025, 3, 6))
 
 
+def replace_charges(query, charges=()):
+    from dataclasses import replace
+    return replace(query, charges=list(charges))
+
+
 class JailRecordTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -448,6 +453,27 @@ class JailRecordTest(unittest.TestCase):
                          ("2024 CF 003308", None, "Escambia County Sheriff's Office"))
         self.assertEqual((d["story_date"], d["days_from_story"], d["charges"]), ("2024-04-28", 106, ["HOMICIDE"]))
         self.assertEqual(d["portal_url"], get_county("escambia").base_url)
+
+    def test_the_case_of_the_story_charge(self):
+        """Brown (11/11/2026): en el mismo booking, el fraude es 2026 CF 3560 y el homicidio 2026 CF 3561."""
+        from datetime import datetime
+        from adapters.benchmark_web import jail_details
+        from adapters.escambia_jail import JailBooking, JailCharge, pick_booking
+        so = "ESCAMBIA COUNTY SHERIFF'S OFFICE"
+        booking = JailBooking("BROWN, ASHANTI NORA", "ECC26JBN010706", datetime(2026, 8, 31, 14, 44), age=23,
+                              charges=[JailCharge("2026 CF 3560", so, "FRAUD FAIL REDELIV HIRED LEASED PROP"),
+                                       JailCharge("2026 CF 3561", so, "OBSTRUCTING JUSTICE TAMPER W EVIDENCE"),
+                                       JailCharge("2026 CF 3561", so, "HOMICIDE MURDER DANGEROUS DEPRAVED WO PREMEDITATION")])
+        query = LookupQuery(first_name="Ashanti", last_name="Brown", county="escambia", age=23,
+                            incident_date=date(2026, 8, 30), published_date=date(2026, 8, 31),
+                            charges=["second-degree murder", "tampering with evidence"])
+        chosen = pick_booking([booking], query, 60)
+        self.assertEqual(chosen.court_case, "2026 CF 3561")
+        self.assertEqual(chosen.other_cases, ["2026 CF 3560"])
+        d = jail_details(get_county("escambia"), chosen, "Brown, Ashanti", None, None)
+        self.assertEqual((d["court_case"], d["other_cases"]), ("2026 CF 3561", ["2026 CF 3560"]))
+        # Sin cargos en la nota, el primero, como antes.
+        self.assertEqual(pick_booking([booking], replace_charges(query), 60).court_case, "2026 CF 3560")
 
     def test_tolerance_needs_the_same_kind_of_charges_and_a_near_date(self):
         from dataclasses import replace
