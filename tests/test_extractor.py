@@ -124,15 +124,15 @@ class OutOfScopeTest(unittest.TestCase):
         self.assertEqual(self.reason(state=None, county="Fulton", city="Atlanta", agency="Atlanta PD").reason, "state")
 
     def test_city_of_uncovered_county(self):
-        exc = self.reason(county=None, city="Daytona Beach", agency="Daytona Beach Police Department")
-        self.assertEqual((exc.reason, exc.county), ("county", "Volusia"))
-        self.assertIn("Daytona Beach (Volusia County, FL)", str(exc))
+        exc = self.reason(county=None, city="Melbourne", agency="Melbourne Police Department")
+        self.assertEqual((exc.reason, exc.county), ("county", "Brevard"))
+        self.assertIn("Melbourne (Brevard County, FL)", str(exc))
         self.assertIn("Orange County", str(exc))
 
     def test_county_given_as_city_not_repeated(self):
-        exc = self.reason(county="Volusia", city="Volusia County", agency="Volusia Sheriff's Office")
-        self.assertIn("about Volusia County, FL.", str(exc))
-        self.assertNotIn("(Volusia County, FL)", str(exc))
+        exc = self.reason(county="Brevard", city="Brevard County", agency="Brevard County Sheriff's Office")
+        self.assertIn("about Brevard County, FL.", str(exc))
+        self.assertNotIn("(Brevard County, FL)", str(exc))
 
     def test_ocala_is_covered(self):
         """Marion (Ocala) tiene cobertura desde el adaptador de Civitek."""

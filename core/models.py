@@ -88,6 +88,9 @@ class DocketEntry:
     description: str
     doc_ref: Optional[str]            # link al documento; depende de la sesión
     number: Optional[int] = None      # orden en que entró al expediente (Civitek: "Doc #")
+    # Por qué no hay enlace, si el portal lo dice: "request" (se pide al Clerk) o "unpublished"
+    # (listado pero aún sin publicar). Elige el texto de CountyConfig.request_messages.
+    availability: Optional[str] = None
 
 
 @dataclass

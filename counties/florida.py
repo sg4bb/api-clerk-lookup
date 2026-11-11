@@ -605,6 +605,42 @@ ESCAMBIA = CountyConfig(
     throttle_s=2.0,
 )
 
+# Volusia (11/11/2026): Case Inquiry propio (ccms.clerk.org), ver adapters/volusia_ccms.py. Sin
+# CAPTCHA visible (reCAPTCHA v3 invisible, que no frenó en las pruebas). El documento es el
+# "CHARGING AFFIDAVIT" (el "Arrest Affidavit - Volusia (Adult)" del 7.º Circuito), casi siempre la
+# entrada 1 del docket. Los "Viewable on Request" se piden al Clerk; el renglón sin ícono está
+# listado pero aún sin publicar (Stripling/Bowers, 11/11/2026: el affidavit a los 11 días).
+VOLUSIA = CountyConfig(
+    key="volusia",
+    name="Volusia County",
+    state="FL",
+    platform="volusia_ccms",
+    base_url="https://ccms.clerk.org/inquiry.aspx",
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+    document_priority=[
+        r"^\s*charging affidavit\b",
+        r"^\s*arrest affidavit\b",
+        r"probable cause affidavit",
+        r"affidavit of probable cause",
+        r"^\s*arrest report\b",
+        r"complaint affidavit",
+    ],
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b", r"\bviol(?:ation)? of (?:probation|community control)\b",
+                      r"\(CONFIDENTIAL\)"],
+    support_documents=[r"\bwarrant (?:returned )?(?:served|executed)\b", r"\bcapias (?:returned )?served\b"],
+    captcha="none",
+    documents_on_request=True,
+    request_messages={
+        "request": ("The case was found, but its {document} isn't online: the clerk hands it over on request. "
+                    "To ask for it, search case {case_number} on the court portal ({portal}) and click the "
+                    "\"Viewable on Request\" icon next to that entry in the case docket."),
+        "unpublished": ("The case was found, and its {document} is listed in the case docket, but the clerk "
+                        "hasn't put it online yet: recent filings can take a while to be reviewed. "
+                        "Try again in a few days, or search case {case_number} on the court portal ({portal})."),
+    },
+    throttle_s=2.0,
+)
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -650,6 +686,7 @@ COUNTIES: dict[str, CountyConfig] = {
     ST_LUCIE.key: ST_LUCIE,
     MARTIN.key: MARTIN,
     ESCAMBIA.key: ESCAMBIA,
+    VOLUSIA.key: VOLUSIA,
 }
 
 
@@ -757,6 +794,10 @@ CITY_TO_COUNTY: dict[str, str] = {
     "clermont": "lake", "leesburg": "lake", "eustis": "lake", "tavares": "lake", "mount dora": "lake",
     "daytona beach": "volusia", "deltona": "volusia", "deland": "volusia", "orange city": "volusia",
     "port orange": "volusia", "new smyrna beach": "volusia", "ormond beach": "volusia",
+    "edgewater": "volusia", "debary": "volusia", "holly hill": "volusia", "south daytona": "volusia",
+    "daytona beach shores": "volusia", "ponce inlet": "volusia", "lake helen": "volusia", "pierson": "volusia",
+    "oak hill": "volusia", "ormond by the sea": "volusia", "osteen": "volusia", "enterprise": "volusia",
+    "de leon springs": "volusia", "seville": "volusia",
     "melbourne": "brevard", "palm bay": "brevard", "titusville": "brevard", "cocoa": "brevard",
     "cocoa beach": "brevard", "lakeland": "polk", "winter haven": "polk", "haines city": "polk",
     "tampa": "hillsborough", "brandon": "hillsborough", "plant city": "hillsborough",
@@ -853,7 +894,12 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "uwf pd": "escambia",
     "clay county so": "clay", "orange park pd": "clay", "green cove springs pd": "clay",
     "st johns county so": "st_johns", "st augustine pd": "st_johns", "st augustine beach pd": "st_johns",
-    "volusia county so": "volusia", "lake county so": "lake", "polk county so": "polk",
+    "volusia county so": "volusia", "volusia so": "volusia", "daytona beach pd": "volusia", "deland pd": "volusia",
+    "ormond beach pd": "volusia", "port orange pd": "volusia", "new smyrna beach pd": "volusia",
+    "edgewater pd": "volusia", "holly hill pd": "volusia", "south daytona pd": "volusia",
+    "ponce inlet pd": "volusia", "lake helen pd": "volusia", "orange city pd": "volusia",
+    "daytona beach shores of public safety": "volusia",
+    "lake county so": "lake", "polk county so": "polk",
     "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",
     "jacksonville so": "duval", "miami dade pd": "miami_dade", "miami pd": "miami_dade",
     "broward county so": "broward", "palm beach county so": "palm_beach", "pinellas county so": "pinellas",

@@ -11,11 +11,13 @@ from core.adapter import ClerkAdapter
 from .benchmark_web import BenchmarkWebAdapter
 from .civitek_ocrs import CivitekOcrsAdapter
 from .orange_myeclerk import OrangeMyEClerkAdapter
+from .volusia_ccms import VolusiaCcmsAdapter
 
 ADAPTERS: dict[str, type[ClerkAdapter]] = {
     "orange_myeclerk": OrangeMyEClerkAdapter,
     "civitek_ocrs": CivitekOcrsAdapter,
     "benchmark_web": BenchmarkWebAdapter,
+    "volusia_ccms": VolusiaCcmsAdapter,
 }
 
 

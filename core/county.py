@@ -34,6 +34,11 @@ class CountyConfig:
     # El docket marca los documentos que no están en línea con un botón "Request" (se piden al
     # Clerk por email). Si el documento buscado está así, se dice al usuario cómo pedirlo.
     documents_on_request: bool = False
+    # Texto propio del condado para decir cómo conseguir ese documento, por motivo del docket
+    # (DocketEntry.availability: "request", "unpublished"). Admite {document}, {case_number} y
+    # {portal}. Sin texto para el motivo, se usa el general (el botón "Request" de Benchmark).
+    # Volusia (11/11/2026): su ícono es "Viewable on Request" y hay renglones aún sin publicar.
+    request_messages: dict[str, str] = field(default_factory=dict)
     # Cloudflare pone su verificación ("Just a moment...") antes del portal y, recién pasada, niega
     # los scripts y la imagen de la suma (403) hasta recargar. Escambia (10/11/2026). Se espera la
     # verificación (si no pasa sola, la marca la persona) y se recarga sin caché hasta que la

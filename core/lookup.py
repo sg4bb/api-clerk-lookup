@@ -485,13 +485,18 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
         # Antes que la orden ejecutada: en St. Lucie (Arvelo, 09/11/2026) la orden era de otra
         # detención (violación de probation, un año después) y el arrest report estaba en "Request".
         wanted = re.sub(r"\s*\(\s*V\s*\)\s*$", "", requestable[0].description).strip()
-        log.info("El documento está en el docket pero no en línea ('%s'): se pide al Clerk", wanted)
+        how = county.request_messages.get(requestable[0].availability or "")
+        log.info("El documento está en el docket pero no en línea ('%s'): %s", wanted,
+                 "aún sin publicar" if requestable[0].availability == "unpublished" else "se pide al Clerk")
+        message = (how.format(document=wanted, case_number=details.candidate.case_number, portal=county.base_url)
+                   if how else
+                   f"The case was found, but its {wanted} isn't online: the clerk hands it over on request. "
+                   f"To ask for it, search case {details.candidate.case_number} on the court portal "
+                   f"({county.base_url}) and use the \"Request\" button next to that entry in the case docket.")
         return scored, LookupResult(
             "no_document", case_number=details.candidate.case_number,
             score=match.score, reasons=match.reasons, candidates=summary,
-            message=(f"The case was found, but its {wanted} isn't online: the clerk hands it over on request. "
-                     f"To ask for it, search case {details.candidate.case_number} on the court portal "
-                     f"({county.base_url}) and use the \"Request\" button next to that entry in the case docket."),
+            message=message,
             related_cases=related, docket=docket, agency_case_number=agency_number,
         )
     if not documents and support:
