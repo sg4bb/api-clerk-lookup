@@ -118,7 +118,9 @@ def handle(store: JobStore, job: dict[str, Any], base_output: Path) -> str:
                       # El número de reporte que el portal anota en el docket (para pedir el footage).
                       agency_case_number=lookup.agency_case_number,
                       # Escambia con el portal bloqueado: el booking de la cárcel, para su tarjeta.
-                      jail_booking=lookup.jail_booking)
+                      jail_booking=lookup.jail_booking,
+                      # Caso sin PDF: por qué y qué documento, para el sello de la tarjeta.
+                      missing_document=lookup.missing_document)
         if result.pdf_path and result.pdf_path.exists():
             try:
                 fields["pdf_path"] = store.upload_pdf(job_id, result.pdf_path)
@@ -137,18 +139,19 @@ def handle(store: JobStore, job: dict[str, Any], base_output: Path) -> str:
     try:
         store.update(job_id, **fields)
     except JobsError as exc:
-        # Base sin sql/004 o sql/005 todavía: se guarda el resultado sin esas columnas.
+        # Base sin sql/004 a sql/007 todavía: se guarda el resultado sin esas columnas.
         if not any(col in str(exc) for col in NEW_COLUMNS):
             raise
         missing = [col for col in NEW_COLUMNS if col in str(exc)]
         log.warning("Faltan columnas en lookup_jobs (corre sql/004_people_and_closest.sql, "
-                    "sql/005_agency_case_number.sql y sql/006_jail_booking.sql): %s", exc)
+                    "sql/005_agency_case_number.sql, sql/006_jail_booking.sql y sql/007_missing_document.sql): %s", exc)
         store.update(job_id, **{k: v for k, v in fields.items() if k not in missing})
     log.info("Pedido %s terminado: %s %s", job_id, fields["status"], fields.get("case_number") or "")
     return fields["status"]
 
 
-NEW_COLUMNS = ("people_searched", "closest_case", "agency_case_number", "jail_booking")   # sql/004 a sql/006
+NEW_COLUMNS = ("people_searched", "closest_case", "agency_case_number", "jail_booking",
+               "missing_document")   # sql/004 a sql/007
 
 
 def main() -> int:

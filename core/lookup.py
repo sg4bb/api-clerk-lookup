@@ -11,7 +11,7 @@ import re
 from datetime import date, timedelta
 from pathlib import Path
 from dataclasses import replace
-from typing import Callable, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 from adapters import get_adapter
 from counties import get_county
@@ -24,7 +24,7 @@ from .charges import categorize
 from .matcher import (INITIAL_NEAR_DAYS, pick_best, prelim_reasons, prelim_score, related_cases,
                       resolve_by_arrest_date, resolve_by_charges, resolve_by_publication,
                       resolve_same_incident, score_case)
-from .models import CaseDetails, LookupQuery, LookupResult
+from .models import CaseDetails, DocketEntry, LookupQuery, LookupResult
 from .utils import last_name_variants, portal_text, today
 
 log = logging.getLogger(__name__)
@@ -145,6 +145,27 @@ def run_lookup(
 
 
 # Qué resultado se entrega si se probó a más de una persona.
+def missing_document(county: CountyConfig, reason: str, entry: Optional[DocketEntry] = None,
+                     document: Optional[str] = None) -> dict[str, Any]:
+    """Para la web (sql/007): por qué no hay PDF, qué documento era, cuándo entró y el portal."""
+    return {"reason": reason, "document": document or (entry.description if entry else None),
+            "filed": entry.date.isoformat() if entry and entry.date else None, "portal_url": county.base_url}
+
+
+
+def confidential_documents(county: CountyConfig, details: CaseDetails) -> list[DocketEntry]:
+    """El documento buscado está en el docket pero marcado "(CONFIDENTIAL)". Solo en los condados con
+    texto propio para eso (request_messages["confidential"]): hoy Volusia."""
+    if "confidential" not in county.request_messages:
+        return []
+    for pattern in county.document_priority:
+        regex = re.compile(pattern, re.I)
+        found = [e for e in details.docket if "(CONFIDENTIAL)" in e.description and regex.search(e.description)]
+        if found:
+            return found
+    return []
+
+
 _RANK = {"found": 0, "no_document": 1, "ambiguous": 2, "not_found": 3}
 CLOSEST_MIN = 30   # % mínimo para mostrar "el caso más cercano" cuando nada pasa MIN_SCORE
 # Una ofensa a más días que esto del incidente es otro hecho, aunque los cargos se
@@ -479,6 +500,7 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
                      "To get the arrest affidavit and the agency report number, try again later, "
                      "once the portal shows the docket again."),
             related_cases=related, docket=docket, agency_case_number=agency_number,
+            missing_document=missing_document(county, "docket_unavailable"),
         )
     requestable = adapter.find_requestable_documents(details) if not documents and county.documents_on_request else []
     if requestable:
@@ -498,6 +520,9 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
             score=match.score, reasons=match.reasons, candidates=summary,
             message=message,
             related_cases=related, docket=docket, agency_case_number=agency_number,
+            missing_document=missing_document(
+                county, "unpublished" if requestable[0].availability == "unpublished" else "on_request",
+                requestable[0], wanted),
         )
     if not documents and support:
         # Sin arrest affidavit pero con la orden ejecutada: mejor la orden que nada.
@@ -509,6 +534,19 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
                     details.candidate.case_number, len(downloadable), len(docket))
         for e in downloadable:
             log.warning("  %s  %s", e["date"], e["description"])
+        sealed = confidential_documents(county, details)
+        if sealed:
+            # Volusia (Levesque, 11/11/2026): los dos charging affidavits del caso, confidenciales.
+            wanted = re.sub(r"\s*\(CONFIDENTIAL\)\s*$", "", sealed[0].description).strip()
+            log.info("El documento está en el docket pero es confidencial ('%s')", wanted)
+            return scored, LookupResult(
+                "no_document", case_number=details.candidate.case_number,
+                score=match.score, reasons=match.reasons, candidates=summary,
+                message=county.request_messages["confidential"].format(
+                    document=wanted, case_number=details.candidate.case_number, portal=county.base_url),
+                related_cases=related, docket=docket, agency_case_number=agency_number,
+                missing_document=missing_document(county, "confidential", sealed[0], wanted),
+            )
         return scored, LookupResult(
             "no_document", case_number=details.candidate.case_number,
             score=match.score, reasons=match.reasons, candidates=summary,
@@ -516,6 +554,7 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
             related_cases=related,
             docket=docket,
             agency_case_number=agency_number,
+            missing_document=missing_document(county, "not_in_docket"),
         )
 
     on_status("downloading")
@@ -546,6 +585,7 @@ def _lookup_person(adapter, county: CountyConfig, query: LookupQuery, output_dir
                      "temporary outage on the portal's side. Try again in a few hours; if it keeps "
                      "happening, request the document from the clerk with the case number."),
             related_cases=related, docket=docket, agency_case_number=agency_number,
+            missing_document=missing_document(county, "withheld", document=withheld[0] if withheld else None),
         )
     support_doc, support_path = None, None
     pending_support = [] if chosen in support else support

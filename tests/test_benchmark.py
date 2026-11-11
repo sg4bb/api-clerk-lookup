@@ -866,6 +866,11 @@ class DocumentOnRequestLookupTest(unittest.TestCase):
         self.assertIn("ARREST REPORT - INITIATING CASE isn't online", result.message)
         self.assertIn("courtcasesearch.stlucieclerk.gov", result.message)
         self.assertNotIn("( V )", result.message)
+        # Sin texto propio del condado: el de siempre, y el motivo para la web.
+        self.assertIn("use the \"Request\" button", result.message)
+        self.assertEqual(result.missing_document, {"reason": "on_request", "document": "ARREST REPORT - INITIATING CASE",
+                                                   "filed": "2020-10-02",
+                                                   "portal_url": get_county("st_lucie").base_url})
 
     def test_probation_warrant_is_not_the_arrest(self):
         """Arvelo (09/11/2026): bajó "VIOL OF PROBATION WARRANT RETURNED SERVED" (2021) como si fuera

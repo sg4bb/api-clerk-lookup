@@ -226,6 +226,29 @@ class VolusiaRequestMessageTest(unittest.TestCase):
         self.assertIn("hasn't put it online yet", result.message)
         self.assertIn("Try again", result.message)
         self.assertNotIn("Request", result.message)
+        self.assertEqual(result.missing_document, {"reason": "unpublished", "document": "CHARGING AFFIDAVIT",
+                                                   "filed": "2026-10-31",
+                                                   "portal_url": "https://ccms.clerk.org/inquiry.aspx"})
+
+    def test_confidential(self):
+        """Levesque (11/11/2026): los dos charging affidavits confidenciales."""
+        result = self.run_lookup([
+            {"cells": ["11/04/2026", "3.000", "CHARGING AFFIDAVIT", "", ""], "icon": "images/file_x.png", "onclick": ""},
+            {"cells": ["11/04/2026", "1.000", "CHARGING AFFIDAVIT", "ORIGINAL", ""], "icon": "images/file_x.png",
+             "onclick": ""}])
+        self.assertEqual(result.status, "no_document")
+        self.assertIn("CHARGING AFFIDAVIT is marked confidential", result.message)
+        self.assertNotIn("(CONFIDENTIAL)", result.message)
+        self.assertEqual((result.missing_document["reason"], result.missing_document["document"]),
+                         ("confidential", "CHARGING AFFIDAVIT"))
+
+    def test_nothing_in_docket(self):
+        result = self.run_lookup([
+            {"cells": ["11/04/2026", "6.000", "NOTICE OF ACCEPTANCE OF ELECTRONIC SERVICE", "", ""],
+             "icon": "images/file_x.png", "onclick": ""}])
+        self.assertEqual(result.status, "no_document")
+        self.assertEqual(result.missing_document["reason"], "not_in_docket")
+        self.assertIsNone(result.missing_document["document"])
 
     def test_viewable_on_request(self):
         result = self.run_lookup([
@@ -235,6 +258,7 @@ class VolusiaRequestMessageTest(unittest.TestCase):
         self.assertIn("\"Viewable on Request\" icon", result.message)
         self.assertIn("2026 107137 CFDB", result.message)
         self.assertIn("https://ccms.clerk.org/inquiry.aspx", result.message)
+        self.assertEqual(result.missing_document["reason"], "on_request")
 
 
 class VolusiaConfigTest(unittest.TestCase):

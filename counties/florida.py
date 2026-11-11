@@ -637,6 +637,10 @@ VOLUSIA = CountyConfig(
         "unpublished": ("The case was found, and its {document} is listed in the case docket, but the clerk "
                         "hasn't put it online yet: recent filings can take a while to be reviewed. "
                         "Try again in a few days, or search case {case_number} on the court portal ({portal})."),
+        # Levesque (11/11/2026): los dos charging affidavits con el ícono "Confidential".
+        "confidential": ("The case was found, but its {document} is marked confidential in the case docket, so "
+                         "it isn't online. Recent filings are sometimes opened once the clerk reviews them: try "
+                         "again in a few days, or ask the clerk's office about case {case_number}."),
     },
     throttle_s=2.0,
 )

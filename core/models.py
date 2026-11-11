@@ -158,6 +158,10 @@ class LookupResult:
     agency_case_number: Optional[str] = None
     # Escambia con el portal bloqueado: el booking de la cárcel por partes (columna jail_booking, sql/006).
     jail_booking: Optional[dict[str, Any]] = None
+    # Caso encontrado sin PDF: por qué y qué documento (columna missing_document, sql/007), para que la
+    # web lo muestre con su sello. reason: on_request | unpublished | confidential | not_in_docket |
+    # docket_unavailable | withheld.
+    missing_document: Optional[dict[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         def convert(value: Any) -> Any:
