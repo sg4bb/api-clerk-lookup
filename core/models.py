@@ -153,6 +153,8 @@ class LookupResult:
     # Número de reporte de la agencia que el portal anota en el docket ("Agency Case
     # Number: 19OFF003389" en Civitek). Sirve para pedir el footage aunque no haya PDF.
     agency_case_number: Optional[str] = None
+    # Escambia con el portal bloqueado: el booking de la cárcel por partes (columna jail_booking, sql/006).
+    jail_booking: Optional[dict[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         def convert(value: Any) -> Any:

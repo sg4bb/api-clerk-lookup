@@ -56,10 +56,12 @@ class PortalBlocked(SearchError):
     el video (Escambia: el registro de la cárcel). Termina como "no_document" con esos números, no
     como error. El mensaje ya está escrito para la persona."""
 
-    def __init__(self, message: str, case_number: str | None = None, agency_case_number: str | None = None):
+    def __init__(self, message: str, case_number: str | None = None, agency_case_number: str | None = None,
+                 details: dict | None = None):
         super().__init__(message)
         self.case_number = case_number
         self.agency_case_number = agency_case_number
+        self.details = details          # el booking por partes, para la tarjeta de la web
 
 
 class DownloadError(Exception):

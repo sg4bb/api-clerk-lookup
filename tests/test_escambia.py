@@ -434,6 +434,21 @@ class JailRecordTest(unittest.TestCase):
         self.assertIn("this booking is 106 days after the date the story gives (04/28/2024)",
                       blocked_with_booking("Escambia County", chosen, "at https://x"))
 
+    def test_details_for_the_web_card(self):
+        """Sin reporte: la agencia sale del cargo con el número de caso; días desde la fecha de la nota."""
+        from datetime import datetime
+        from adapters.benchmark_web import jail_details
+        from adapters.escambia_jail import JailBooking, JailCharge
+        booking = JailBooking("SUMLER, TORRANCE LAMAR", "ECC24JBN009250", datetime(2024, 8, 12, 19, 32), age=24,
+                              charges=[JailCharge("2024 CF 003308", "ESCAMBIA COUNTY SHERIFF'S OFFICE", "HOMICIDE"),
+                                       JailCharge("2024 CF 003308", "ESCAMBIA COUNTY SHERIFF'S OFFICE", "HOMICIDE")],
+                              story_date=date(2024, 4, 28))
+        d = jail_details(get_county("escambia"), booking, "Sumler, Torrance", date(2024, 4, 21), date(2026, 2, 20))
+        self.assertEqual((d["court_case"], d["report"], d["agency"]),
+                         ("2024 CF 003308", None, "Escambia County Sheriff's Office"))
+        self.assertEqual((d["story_date"], d["days_from_story"], d["charges"]), ("2024-04-28", 106, ["HOMICIDE"]))
+        self.assertEqual(d["portal_url"], get_county("escambia").base_url)
+
     def test_tolerance_needs_the_same_kind_of_charges_and_a_near_date(self):
         from dataclasses import replace
         from datetime import datetime
@@ -483,6 +498,14 @@ class BlockedFallbackTest(unittest.TestCase):
         exc, fallback = self.blocked_search("escambia", jail_bookings()[1])
         self.assertIsInstance(exc, PortalBlocked)
         self.assertEqual((exc.agency_case_number, exc.case_number), ("ECSO23OFF013609", None))
+        self.assertEqual(exc.details["booking_number"], "ECC23JBN007745")
+        self.assertEqual(exc.details["booked"], "2023-07-22T07:24")
+        self.assertEqual(exc.details["agency"], "Escambia County Sheriff's Office")
+        self.assertEqual(exc.details["report"], "ECSO23OFF013609")
+        self.assertEqual(exc.details["charges"], ["HOMICIDE"])
+        self.assertEqual((exc.details["search_name"], exc.details["opened_from"], exc.details["opened_to"]),
+                         ("Rodriguez, Michael", "2023-07-14", "2025-03-20"))
+        self.assertIsNone(exc.details["days_from_story"])
         self.assertEqual(fallback.call_args.args[2:], (date(2023, 7, 14), date(2025, 3, 20), 60))
 
     def test_nothing_in_the_jail_keeps_the_blocked_message(self):
@@ -509,7 +532,7 @@ class BlockedFallbackTest(unittest.TestCase):
         class Fake(BenchmarkWebAdapter):
             def search(self, query, date_from, date_to):
                 raise PortalBlocked("blocked, report ECSO23OFF013609", case_number="2023 CF 3056",
-                                    agency_case_number="ECSO23OFF013609")
+                                    agency_case_number="ECSO23OFF013609", details={"booking_number": "ECC23JBN007745"})
 
         @contextmanager
         def fake_browser(headless=False):
@@ -521,6 +544,8 @@ class BlockedFallbackTest(unittest.TestCase):
         self.assertEqual((result.status, result.case_number, result.agency_case_number),
                          ("no_document", "2023 CF 3056", "ECSO23OFF013609"))
         self.assertEqual(result.message, "blocked, report ECSO23OFF013609")
+        self.assertEqual(result.jail_booking, {"booking_number": "ECC23JBN007745"})
+        self.assertEqual(result.to_dict()["jail_booking"], {"booking_number": "ECC23JBN007745"})
 
 
 JAIL_FORM = """<html><body><form id='form1' method='post' action='./jail.aspx'>

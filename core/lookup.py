@@ -124,7 +124,8 @@ def run_lookup(
             log.info("Portal bloqueado; resultado con otra fuente: caso %s, reporte %s",
                      exc.case_number, exc.agency_case_number)
             return LookupResult("no_document", case_number=exc.case_number,
-                                agency_case_number=exc.agency_case_number, message=str(exc))
+                                agency_case_number=exc.agency_case_number, message=str(exc),
+                                jail_booking=exc.details)
         except (SearchError, DownloadError) as exc:
             # Mensajes ya escritos para la persona (en inglés, se ven en la web).
             log.exception("Fallo en la consulta")

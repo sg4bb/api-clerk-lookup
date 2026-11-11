@@ -215,6 +215,37 @@ def blocked_with_booking(county_name: str, booking, by_hand: str) -> str:
             f"by hand {by_hand}, or try again later.")
 
 
+def jail_details(county, booking, name: str, date_from: Optional[date], date_to: Optional[date]) -> dict:
+    """Lo mismo que el mensaje, por partes, para la tarjeta de la web (columna jail_booking, sql/006)."""
+    from adapters.escambia_jail import JAIL_URL
+    report = booking.report
+    agency = report.agency if report else next(
+        (c.agency for c in booking.charges if c.is_court_case and c.agency.upper() not in ("OTHER AGENCY", "COURT TRANSFERS")),
+        "")
+    days = ((booking.booked.date() - booking.story_date).days
+            if booking.story_date and booking.booked else None)
+    return {
+        "source": f"{county.name} jail record",
+        "source_url": JAIL_URL,
+        "name": booking.name,
+        "booking_number": booking.booking_number,
+        "booked": booking.booked.isoformat(timespec="minutes") if booking.booked else None,
+        "released": booking.released.isoformat(timespec="minutes") if booking.released else None,
+        "court_case": booking.court_case,
+        "report": report.number if report else None,
+        "agency": _title(agency) or None,
+        "charges": list(dict.fromkeys(c.charge for c in booking.charges if c.charge)),
+        # Elegido por los cargos y no por la fecha: cuántos días lo separan de la fecha de la nota.
+        "story_date": booking.story_date.isoformat() if booking.story_date else None,
+        "days_from_story": days,
+        # Para buscar el arrest report a mano en el portal de la corte.
+        "portal_url": county.base_url,
+        "search_name": name,
+        "opened_from": date_from.isoformat() if date_from else None,
+        "opened_to": date_to.isoformat() if date_to else None,
+    }
+
+
 class CloudflareBlocked(SearchError):
     """Cloudflare no deja cargar el portal al navegador de búsqueda (Escambia). search() lo cambia
     por un mensaje con lo necesario para buscar a mano."""
@@ -593,7 +624,8 @@ class BenchmarkWebAdapter(ClerkAdapter):
             if booking:
                 raise PortalBlocked(blocked_with_booking(self.county.name, booking, by_hand),
                                     case_number=booking.court_case,
-                                    agency_case_number=booking.report.number if booking.report else None) from None
+                                    agency_case_number=booking.report.number if booking.report else None,
+                                    details=jail_details(self.county, booking, name, date_from, date_to)) from None
             raise SearchError(
                 f"{self.county.name}'s court portal is blocking automated searches right now (its Cloudflare "
                 f"security check didn't let the search browser through). Try again later, or search it by hand "
