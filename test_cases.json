@@ -11,11 +11,7 @@
     "arrest_date": "2024-09-10",
     "age": null,
     "agency": "Orlando Police Department",
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
+    "case_types": ["CF", "MM", "CT"],
     "expected_case": "2024-CF-012151-A-O"
   },
   {
@@ -30,11 +26,7 @@
     "arrest_date": "2024-09-05",
     "age": null,
     "agency": null,
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
+    "case_types": ["CF", "MM", "CT"],
     "expected_case": "2024-CF-012159-A-O"
   },
   {
@@ -49,11 +41,7 @@
     "arrest_date": "2024-09-05",
     "age": null,
     "agency": null,
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
+    "case_types": ["CF", "MM", "CT"],
     "expected_case": "2024-CF-012177-A-O"
   },
   {
@@ -68,11 +56,7 @@
     "arrest_date": "2024-09-05",
     "age": null,
     "agency": null,
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
+    "case_types": ["CF", "MM", "CT"],
     "expected_case": "2024-CF-012177-A-O"
   },
   {
@@ -87,11 +71,7 @@
     "arrest_date": "2025-09-05",
     "age": null,
     "agency": null,
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
+    "case_types": ["CF", "MM", "CT"],
     "expected_case": null,
     "expected_status": "not_found"
   },
@@ -107,11 +87,7 @@
     "arrest_date": "2025-02-26",
     "age": null,
     "agency": null,
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
+    "case_types": ["CF", "MM", "CT"],
     "expected_case": "2025-CF-002471-A-O"
   },
   {
@@ -126,11 +102,7 @@
     "arrest_date": "2021-02-08",
     "age": 34,
     "agency": "Orlando Police Department",
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
+    "case_types": ["CF", "MM", "CT"],
     "expected_case": "2021-CT-001093-A-O"
   },
   {
@@ -145,11 +117,7 @@
     "arrest_date": "2025-01-06",
     "age": 25,
     "agency": "Orlando Police Department",
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
+    "case_types": ["CF", "MM", "CT"],
     "expected_case": "2025-CT-400125-A-O"
   },
   {
@@ -164,15 +132,8 @@
     "arrest_date": "2023-08-03",
     "age": 29,
     "agency": "Orange County Sheriff's Office",
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
-    "expected_case": [
-      "2023-CF-010421-A-O",
-      "2023-MM-005527-A-O"
-    ]
+    "case_types": ["CF", "MM", "CT"],
+    "expected_case": ["2023-CF-010421-A-O", "2023-MM-005527-A-O"]
   },
   {
     "id": "clarkerosen_ucf",
@@ -186,11 +147,7 @@
     "arrest_date": "2023-08-01",
     "age": 29,
     "agency": "University of Central Florida Police Department",
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
+    "case_types": ["CF", "MM", "CT"],
     "expected_case": "2023-MM-000205-A-E"
   },
   {
@@ -205,10 +162,7 @@
     "arrest_date": null,
     "age": null,
     "agency": "Lafayette County Sheriff's Office",
-    "charges": [
-      "armed trespass",
-      "petit theft"
-    ],
+    "charges": ["armed trespass", "petit theft"],
     "expected_case": "25000018CFAXMX"
   },
   {
@@ -223,11 +177,7 @@
     "arrest_date": "2026-07-01",
     "age": null,
     "agency": "Lafayette County Sheriff's Office",
-    "charges": [
-      "possession of ammunition by a felon",
-      "possession of marijuana",
-      "driving while license suspended"
-    ],
+    "charges": ["possession of ammunition by a felon", "possession of marijuana", "driving while license suspended"],
     "expected_case": "26000029CFAXMX"
   },
   {
@@ -242,10 +192,7 @@
     "arrest_date": "2025-08-10",
     "age": null,
     "agency": null,
-    "charges": [
-      "possession of controlled substance with intent to sell",
-      "introduction of contraband into a correctional institution"
-    ],
+    "charges": ["possession of controlled substance with intent to sell", "introduction of contraband into a correctional institution"],
     "expected_case": "25000038CFAXMX"
   },
   {
@@ -260,9 +207,7 @@
     "arrest_date": "2026-10-02",
     "age": 59,
     "agency": "St. Cloud Police Department",
-    "charges": [
-      "child abuse"
-    ],
+    "charges": ["child abuse"],
     "expected_case": "2026 CF 003520"
   },
   {
@@ -277,9 +222,7 @@
     "arrest_date": "2026-09-27",
     "age": null,
     "agency": "Osceola County Sheriff's Office",
-    "charges": [
-      "child neglect"
-    ],
+    "charges": ["child neglect"],
     "expected_case": "2026 CF 003435"
   },
   {
@@ -294,9 +237,7 @@
     "arrest_date": "2026-09-27",
     "age": null,
     "agency": "Osceola County Sheriff's Office",
-    "charges": [
-      "child neglect"
-    ],
+    "charges": ["child neglect"],
     "expected_case": "2026 CF 003434"
   },
   {
@@ -311,9 +252,7 @@
     "arrest_date": "2026-10-24",
     "age": null,
     "agency": "Flagler County Sheriff's Office",
-    "charges": [
-      "lewd or lascivious battery"
-    ],
+    "charges": ["lewd or lascivious battery"],
     "expected_case": "2026 CF 000915"
   },
   {
@@ -328,14 +267,8 @@
     "arrest_date": "2026-09-17",
     "age": null,
     "agency": "St. Johns County Sheriff's Office",
-    "charges": [
-      "animal cruelty",
-      "possession of a firearm by a convicted felon"
-    ],
-    "expected_case": [
-      "26001422CFMA",
-      "26001446CFMA"
-    ]
+    "charges": ["animal cruelty", "possession of a firearm by a convicted felon"],
+    "expected_case": ["26001422CFMA", "26001446CFMA"]
   },
   {
     "id": "byrne_levy_maurin",
@@ -349,10 +282,7 @@
     "arrest_date": "2026-10-31",
     "age": 26,
     "agency": "Charlotte County Sheriff's Office",
-    "charges": [
-      "fleeing and eluding",
-      "resisting an officer without violence"
-    ],
+    "charges": ["fleeing and eluding", "resisting an officer without violence"],
     "expected_case": "26001343F"
   },
   {
@@ -367,9 +297,7 @@
     "arrest_date": "2026-11-02",
     "age": 41,
     "agency": "Indian River County Sheriff's Office",
-    "charges": [
-      "offense against computer users"
-    ],
+    "charges": ["offense against computer users"],
     "expected_case": "2026 CF 001193 A"
   },
   {
@@ -384,11 +312,7 @@
     "arrest_date": "2026-10-27",
     "age": 37,
     "agency": "Vero Beach Police Department",
-    "charges": [
-      "sexual cyberharassment",
-      "stalking",
-      "promotion of an altered sexual depiction"
-    ],
+    "charges": ["sexual cyberharassment", "stalking", "promotion of an altered sexual depiction"],
     "expected_case": "2026 CF 001179 A"
   },
   {
@@ -403,10 +327,7 @@
     "arrest_date": "2018-11-25",
     "age": null,
     "agency": "Bay County Sheriff's Office",
-    "charges": [
-      "second-degree murder",
-      "armed burglary"
-    ],
+    "charges": ["second-degree murder", "armed burglary"],
     "expected_case": "18005242CFMA"
   },
   {
@@ -421,11 +342,7 @@
     "arrest_date": "2024-01-30",
     "age": 35,
     "agency": "Florida Highway Patrol",
-    "charges": [
-      "fleeing and eluding",
-      "reckless driving",
-      "resisting without violence"
-    ],
+    "charges": ["fleeing and eluding", "reckless driving", "resisting without violence"],
     "expected_case": "24000293CFMA"
   },
   {
@@ -440,9 +357,7 @@
     "arrest_date": null,
     "age": null,
     "agency": "Lynn Haven Police Department",
-    "charges": [
-      "armed robbery"
-    ],
+    "charges": ["armed robbery"],
     "expected_case": "24003617CFMA"
   },
   {
@@ -457,11 +372,7 @@
     "arrest_date": "2024-08-07",
     "age": null,
     "agency": "Panama City Beach Police Department",
-    "charges": [
-      "first-degree murder",
-      "attempted first-degree murder",
-      "felon in possession of a firearm"
-    ],
+    "charges": ["first-degree murder", "attempted first-degree murder", "felon in possession of a firearm"],
     "expected_case": "24002615CFMA"
   },
   {
@@ -597,11 +508,22 @@
     "arrest_date": null,
     "age": null,
     "agency": null,
-    "case_types": [
-      "CF",
-      "MM",
-      "CT"
-    ],
+    "case_types": ["CF", "MM", "CT"],
     "expected_case": null
+  },
+  {
+    "id": "thomason_argentina",
+    "notes": "Brevard. Robo de panes en un puesto de Titusville (Brevard County Sheriff's Office), 03/10/2026. ARREST AFFIDAVIT (documento 1); reporte 202600304762 en 'Charging Agency' (spacecoastdaily).",
+    "first_name": "Argentina",
+    "middle_name": null,
+    "last_name": "Thomason",
+    "county": "brevard",
+    "state": "FL",
+    "incident_date": "2026-10-03",
+    "arrest_date": "2026-10-03",
+    "age": 54,
+    "agency": "Brevard County Sheriff's Office",
+    "charges": ["petit theft"],
+    "expected_case": "05-2026-MM-052463-AXXX-BC"
   }
 ]

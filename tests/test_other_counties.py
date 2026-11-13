@@ -63,7 +63,7 @@ class BuildQueryTest(unittest.TestCase):
     def test_only_covered_counties(self):
         article = Article(url="u", title="Chase", published=date(2025, 9, 17), via="direct", text=(
             "Stevens Charles, 40, was arrested after a chase, the Flagler County Sheriff's Office said. "
-            "He was booked into the Brevard County Jail."))
+            "He was booked into the Hillsborough County Jail."))
         aq = build_query(extraction(people=[dict(first_name="Stevens", last_name="Charles", role="arrested",
                                                  evidence="-", age=40)],
                                     incident_date="2025-09-16", city=None, county="Flagler",
@@ -71,21 +71,21 @@ class BuildQueryTest(unittest.TestCase):
         self.assertEqual((aq.query.county, aq.other_counties), ("flagler", []))
 
     def test_uncovered_county_falls_back_to_a_named_one(self):
-        """La nota es de Brevard (sin cobertura) y nombra St. Johns: se busca en St. Johns."""
+        """La nota es de Hillsborough (sin cobertura) y nombra St. Johns: se busca en St. Johns."""
         article = Article(url="u", title="Burglary", published=date(2026, 7, 3), via="direct", text=(
-            "Austin Moore, 32, was arrested by the Brevard County Sheriff's Office. He was also wanted "
+            "Austin Moore, 32, was arrested by the Hillsborough County Sheriff's Office. He was also wanted "
             "in St. Johns County for vehicle burglaries."))
         aq = build_query(dogs(people=[dict(first_name="Austin", last_name="Moore", role="arrested", evidence="-")],
-                              city="Melbourne", county="Brevard", agency="Brevard County Sheriff's Office"), article)
-        self.assertEqual((aq.query.county, aq.uncovered_county, aq.other_counties), ("st_johns", "Brevard", []))
-        self.assertIsNone(aq.query.agency)          # el Sheriff de Brevard no cuenta en St. Johns
+                              city="Tampa", county="Hillsborough", agency="Hillsborough County Sheriff's Office"), article)
+        self.assertEqual((aq.query.county, aq.uncovered_county, aq.other_counties), ("st_johns", "Hillsborough", []))
+        self.assertIsNone(aq.query.agency)          # el Sheriff de Hillsborough no cuenta en St. Johns
 
     def test_uncovered_county_without_a_covered_one_is_still_unsupported(self):
         article = Article(url="u", title="Arrest", published=date(2026, 7, 3), via="direct",
-                          text="Austin Moore, 32, was arrested by the Brevard County Sheriff's Office.")
+                          text="Austin Moore, 32, was arrested by the Hillsborough County Sheriff's Office.")
         with self.assertRaises(OutOfScope) as ctx:
             build_query(dogs(people=[dict(first_name="Austin", last_name="Moore", role="arrested", evidence="-")],
-                             city="Melbourne", county="Brevard", agency="Brevard County Sheriff's Office"), article)
+                             city="Tampa", county="Hillsborough", agency="Hillsborough County Sheriff's Office"), article)
         self.assertEqual(ctx.exception.reason, "county")
 
     def test_agency_of_another_county_does_not_count(self):
@@ -157,14 +157,14 @@ class PipelineTest(unittest.TestCase):
 
     def test_uncovered_county_message(self):
         article = Article(url="u", title="Burglary", published=date(2026, 7, 3), via="direct", text=(
-            "Austin Moore, 32, was arrested by the Brevard County Sheriff's Office. He was also wanted "
+            "Austin Moore, 32, was arrested by the Hillsborough County Sheriff's Office. He was also wanted "
             "in St. Johns County for vehicle burglaries."))
         moore = dogs(people=[dict(first_name="Austin", last_name="Moore", role="arrested", evidence="-")],
-                     city="Melbourne", county="Brevard", agency="Brevard County Sheriff's Office")
+                     city="Tampa", county="Hillsborough", agency="Hillsborough County Sheriff's Office")
         result, calls = self.run_with([LookupResult("not_found")], article=article, extracted=moore)
         self.assertEqual(calls[0][0][0], "st_johns")
         self.assertEqual(result.status, "not_found")
-        self.assertIn("Brevard County, which is not covered yet", result.message)
+        self.assertIn("Hillsborough County, which is not covered yet", result.message)
         self.assertIn("St. Johns County", result.message)
 
 

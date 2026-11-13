@@ -645,6 +645,47 @@ VOLUSIA = CountyConfig(
     throttle_s=2.0,
 )
 
+# Brevard (13/11/2026): BECA propio (vmatrix1.brevardclerk.us/beca), ver adapters/brevard_beca.py.
+# Sin CAPTCHA. El documento es el "ARREST AFFIDAVIT" (el Probable Cause Affidavit de la agencia),
+# casi siempre el documento 1. El número de reporte sale en el caso ("Charging Agency"). El portal
+# avisa que las imágenes tardan más de lo normal en publicarse: esas salen como "Pending".
+BREVARD = CountyConfig(
+    key="brevard",
+    name="Brevard County",
+    state="FL",
+    platform="brevard_beca",
+    base_url="https://vmatrix1.brevardclerk.us/beca/beca_splash.cfm",
+    case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
+    document_priority=[
+        r"^\s*arrest affidavit\b",
+        r"probable cause affidavit",
+        r"affidavit of probable cause",
+        r"complaint affidavit",
+        r"^\s*charging affidavit\b",
+        r"^\s*arrest report\b",
+    ],
+    document_exclude=[r"insolvency", r"indigen", r"\bmotion\b", r"\bviol(?:ation)? of (?:probation|community control)\b",
+                      r"\(CONFIDENTIAL\)", r"\(SEALED\)"],
+    support_documents=[r"\bwarrant (?:returned )?(?:served|executed)\b", r"\bcapias (?:returned )?served\b"],
+    captcha="none",
+    documents_on_request=True,
+    request_messages={
+        "request": ("The case was found, but its {document} isn't online: the clerk hands it over on request. "
+                    "To ask for it, search case {case_number} on the court portal ({portal}) or use the clerk's "
+                    "\"Purchase Copies\" link next to the case's Register of Actions."),
+        "unpublished": ("The case was found, and its {document} is listed in the case's Register of Actions as "
+                        "\"Pending\": the clerk hasn't put it online yet (the portal warns that documents are taking "
+                        "longer than usual to appear). Try again in a few days, or search case {case_number} on "
+                        "the court portal ({portal})."),
+        "confidential": ("The case was found, but its {document} is marked confidential in the case's Register "
+                         "of Actions, so it isn't online. Ask the clerk's office about case {case_number}."),
+        # Listado sin ícono ni enlace (no visto todavía): sin el botón "Request" de Benchmark.
+        "": ("The case was found, but its {document} isn't online. Search case {case_number} on the court "
+             "portal ({portal}) or ask the clerk's office for it."),
+    },
+    throttle_s=2.0,
+)
+
 COUNTIES: dict[str, CountyConfig] = {
     ORANGE.key: ORANGE,
     MARION.key: MARION,
@@ -691,6 +732,7 @@ COUNTIES: dict[str, CountyConfig] = {
     MARTIN.key: MARTIN,
     ESCAMBIA.key: ESCAMBIA,
     VOLUSIA.key: VOLUSIA,
+    BREVARD.key: BREVARD,
 }
 
 
@@ -803,7 +845,13 @@ CITY_TO_COUNTY: dict[str, str] = {
     "oak hill": "volusia", "ormond by the sea": "volusia", "osteen": "volusia", "enterprise": "volusia",
     "de leon springs": "volusia", "seville": "volusia",
     "melbourne": "brevard", "palm bay": "brevard", "titusville": "brevard", "cocoa": "brevard",
-    "cocoa beach": "brevard", "lakeland": "polk", "winter haven": "polk", "haines city": "polk",
+    "cocoa beach": "brevard", "rockledge": "brevard", "satellite beach": "brevard", "indialantic": "brevard",
+    "indian harbour beach": "brevard", "melbourne beach": "brevard", "west melbourne": "brevard",
+    "cape canaveral": "brevard", "merritt island": "brevard", "viera": "brevard", "mims": "brevard",
+    "malabar": "brevard", "grant-valkaria": "brevard", "grant valkaria": "brevard", "sharpes": "brevard",
+    "port st john": "brevard", "port saint john": "brevard", "palm shores": "brevard", "micco": "brevard",
+    "barefoot bay": "brevard", "suntree": "brevard", "scottsmoor": "brevard", "canaveral groves": "brevard",
+    "lakeland": "polk", "winter haven": "polk", "haines city": "polk",
     "tampa": "hillsborough", "brandon": "hillsborough", "plant city": "hillsborough",
     "st petersburg": "pinellas", "saint petersburg": "pinellas", "clearwater": "pinellas", "largo": "pinellas",
     "miami": "miami_dade", "hialeah": "miami_dade", "miami beach": "miami_dade", "homestead": "miami_dade",
@@ -904,7 +952,11 @@ AGENCY_TO_COUNTY: dict[str, str] = {
     "ponce inlet pd": "volusia", "lake helen pd": "volusia", "orange city pd": "volusia",
     "daytona beach shores of public safety": "volusia",
     "lake county so": "lake", "polk county so": "polk",
-    "brevard county so": "brevard", "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",
+    "brevard county so": "brevard", "melbourne pd": "brevard", "palm bay pd": "brevard", "titusville pd": "brevard",
+    "cocoa pd": "brevard", "cocoa beach pd": "brevard", "rockledge pd": "brevard", "satellite beach pd": "brevard",
+    "indialantic pd": "brevard", "indian harbour beach pd": "brevard", "melbourne beach pd": "brevard",
+    "west melbourne pd": "brevard",
+    "hillsborough county so": "hillsborough", "tampa pd": "hillsborough",
     "jacksonville so": "duval", "miami dade pd": "miami_dade", "miami pd": "miami_dade",
     "broward county so": "broward", "palm beach county so": "palm_beach", "pinellas county so": "pinellas",
 }
