@@ -10,6 +10,7 @@ from core.adapter import ClerkAdapter
 
 from .benchmark_web import BenchmarkWebAdapter
 from .brevard_beca import BrevardBecaAdapter
+from .showcase_web import ShowCaseWebAdapter
 from .civitek_ocrs import CivitekOcrsAdapter
 from .orange_myeclerk import OrangeMyEClerkAdapter
 from .volusia_ccms import VolusiaCcmsAdapter
@@ -20,6 +21,7 @@ ADAPTERS: dict[str, type[ClerkAdapter]] = {
     "benchmark_web": BenchmarkWebAdapter,
     "volusia_ccms": VolusiaCcmsAdapter,
     "brevard_beca": BrevardBecaAdapter,
+    "showcase_web": ShowCaseWebAdapter,
 }
 
 

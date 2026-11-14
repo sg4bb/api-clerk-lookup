@@ -555,5 +555,20 @@
     "agency": "Brevard County Sheriff's Office",
     "charges": ["first-degree premeditated murder"],
     "expected_case": "05-2024-CF-058234-AXXX-BC"
+  },
+  {
+    "id": "chaneyfield_timothy",
+    "notes": "Polk. Pastor de Winter Haven arrestado por PCSO (agresión sexual a menor), arresto 31/07/2026. Dos casos con el mismo arresto: el de la nota es 53-2026-CF-007518 (el 007643 es otro cargo). Affidavits #2 y #7 'View On Request Pending'; se baja el #12. Incident # 260031164 (polksheriff.org).",
+    "first_name": "Timothy",
+    "middle_name": null,
+    "last_name": "Chaneyfield",
+    "county": "polk",
+    "state": "FL",
+    "incident_date": "2026-07-28",
+    "arrest_date": "2026-07-31",
+    "age": 42,
+    "agency": "Polk County Sheriff's Office",
+    "charges": ["sexual battery", "lewd or lascivious battery"],
+    "expected_case": "53-2026-CF-007518-A000-BA"
   }
 ]
