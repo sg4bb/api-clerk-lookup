@@ -280,6 +280,17 @@ class ReadersTest(unittest.TestCase):
 
 
 class PolkConfigTest(unittest.TestCase):
+    def test_documents_by_era(self):
+        """2026: "AFFIDAVIT/CITATION/NOTICE TO APPEAR FILED"; 2024 (Basta): "AFFIDAVIT COMPLAINT FILED"."""
+        from core.models import CaseCandidate, CaseDetails
+        adapter = ShowCaseWebAdapter(None, get_county("polk"), captcha=None)
+        candidate = CaseCandidate("53-2024-CF-011110-A000-XX", "BASTA, AWNY", "CF", "", None, None, "x")
+        for name in ("AFFIDAVIT COMPLAINT FILED", "AFFIDAVIT/CITATION/NOTICE TO APPEAR FILED"):
+            docket = docket_from_json([docket_row(1, 1, "BOOKING SHEET"), docket_row(2, 2, name),
+                                       docket_row(3, 3, "MOTION FOR PRE-TRIAL DETENTION")])
+            found = adapter.find_documents(CaseDetails(candidate, [], docket))
+            self.assertEqual([d.description for d in found], [name])
+
     def test_config(self):
         county = get_county("polk")
         self.assertEqual((county.platform, county.documents_on_request), ("showcase_web", True))

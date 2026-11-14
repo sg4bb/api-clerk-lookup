@@ -570,5 +570,35 @@
     "agency": "Polk County Sheriff's Office",
     "charges": ["sexual battery", "lewd or lascivious battery"],
     "expected_case": "53-2026-CF-007518-A000-BA"
+  },
+  {
+    "id": "hicks_david",
+    "notes": "Polk. Exhibicionismo en el Walmart de Mulberry (PCSO), 06/07/2026; arresto 09/07/2026. AFFIDAVIT/CITATION/NOTICE TO APPEAR #1; Incident # 260028197 (lakelandgazette.info). La nota también nombra a Thomas Hicks.",
+    "first_name": "David",
+    "middle_name": null,
+    "last_name": "Hicks",
+    "county": "polk",
+    "state": "FL",
+    "incident_date": "2026-07-06",
+    "arrest_date": "2026-07-09",
+    "age": 62,
+    "agency": "Polk County Sheriff's Office",
+    "charges": ["indecent exposure", "lewd exhibition"],
+    "expected_case": "53-2026-CF-006847-A000-BA"
+  },
+  {
+    "id": "basta_awny",
+    "notes": "Polk. Tocamiento a una menor en un Chick-fil-A de Lakeland (PCSO), 19/12/2024. Sale buscando solo 'Basta'. Documento 'AFFIDAVIT COMPLAINT FILED' (nombre de 2024); Incident # 240050893 (wavy.com). Mismo arresto: 53-2024-CF-011118.",
+    "first_name": "Awny",
+    "middle_name": "Abdel",
+    "last_name": "Malek Basta",
+    "county": "polk",
+    "state": "FL",
+    "incident_date": "2024-12-19",
+    "arrest_date": "2024-12-19",
+    "age": 57,
+    "agency": "Polk County Sheriff's Office",
+    "charges": ["lewd and lascivious touch"],
+    "expected_case": "53-2024-CF-011110-A000-XX"
   }
 ]

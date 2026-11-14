@@ -700,6 +700,8 @@ POLK = CountyConfig(
     case_type_codes={"CF": "CF", "MM": "MM", "CT": "CT"},
     document_priority=[
         r"^\s*affidavit/citation/notice to appear\b",
+        # Así se llamaba en 2024 (Basta, 53-2024-CF-011110: "AFFIDAVIT COMPLAINT FILED").
+        r"^\s*affidavit complaint\b",
         r"^\s*arrest affidavit\b",
         r"probable cause affidavit",
         r"affidavit of probable cause",
